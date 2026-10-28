@@ -1,0 +1,28 @@
+[project]
+name = "exolot"
+version = "0.1.0"
+description = "Analyze code locally from the command line with the SonarQube for IDE language server"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = []
+classifiers = [
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.urls]
+Repository = "https://github.com/skissane/exolot"
+
+[project.scripts]
+exolot = "exolot.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8"]

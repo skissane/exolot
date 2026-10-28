@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  validate-actions:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: action-validator
+        uses: mpalmer/action-validator@f55349f367686fa1df22f6e07f90f7cf88a9b28b
+        with:
+          version: 0.8.0
+
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_ACTIONS_TOKEN }}
+          fetch-depth: 0
+          fetch-tags: true
+
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      - name: Build package
+        run: uv build
+
+      - name: Tag and push version
+        if: github.ref == 'refs/heads/master'
+        run: |
+          VERSION="$(uv version --short)"
+          TAG="v${VERSION}"
+          if git rev-parse "${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists, skipping"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+            echo "Created and pushed tag ${TAG}"
+            gh release create "${TAG}" \
+              --title "Release ${TAG}" \
+              --generate-notes && \
+              echo "Created GitHub release ${TAG}" || { \
+              echo "Failed to create GitHub release ${TAG}"; \
+              exit 1; \
+            }
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_ACTIONS_TOKEN }}
