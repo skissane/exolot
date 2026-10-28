@@ -153,14 +153,30 @@ def _install(tag: str, plat: str, install_dir: Path, progress: bool) -> None:
         _extract(vsix, staging)
         vsix.unlink()
         (staging / ".complete").write_text(f"{tag} {plat or 'universal'} {digest}\n")
-        if install_dir.exists():
-            shutil.rmtree(install_dir)
+        _publish(staging, install_dir)
+
+
+def _publish(staging: Path, install_dir: Path) -> None:
+    """Move a finished install into place, tolerating concurrent installers.
+
+    The rename is atomic, so another exolot process either sees no install or
+    a complete one. If another process got there first, keep its copy.
+    """
+    try:
+        staging.rename(install_dir)
+    except OSError:
+        if (install_dir / ".complete").exists():
+            log.debug("%s was installed by another process", install_dir)
+            return
+        # A leftover directory without the marker (e.g. from an older layout).
+        shutil.rmtree(install_dir, ignore_errors=True)
         staging.rename(install_dir)
 
 
 def _download(url: str, dest: Path, progress: bool) -> None:
     log.info("downloading %s", url)
-    with urllib.request.urlopen(url) as response, open(dest, "wb") as out:
+    # The timeout applies to each blocking read, not the whole download.
+    with urllib.request.urlopen(url, timeout=60) as response, open(dest, "wb") as out:
         total = int(response.headers.get("Content-Length") or 0)
         done = 0
         last_pct = -1

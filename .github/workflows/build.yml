@@ -21,15 +21,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GH_ACTIONS_TOKEN || github.token }}
-          fetch-depth: 0
-          fetch-tags: true
-
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -40,26 +37,45 @@ jobs:
       - name: Build package
         run: uv build
 
-      - name: Tag and push version
-        if: github.ref == 'refs/heads/master'
+  # Tagging and releasing need a write-capable token, so they run in their own
+  # job, only for pushes to master, and never alongside pull request code.
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_ACTIONS_TOKEN }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Tag and release version
         run: |
           VERSION="$(uv version --short)"
           TAG="v${VERSION}"
           if git rev-parse "${TAG}" >/dev/null 2>&1; then
-            echo "Tag ${TAG} already exists, skipping"
+            echo "Tag ${TAG} already exists"
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git tag -a "${TAG}" -m "Release ${TAG}"
             git push origin "${TAG}"
             echo "Created and pushed tag ${TAG}"
-            gh release create "${TAG}" \
-              --title "Release ${TAG}" \
-              --generate-notes && \
-              echo "Created GitHub release ${TAG}" || { \
-              echo "Failed to create GitHub release ${TAG}"; \
-              exit 1; \
-            }
+          fi
+          # Checked separately so a rerun creates the release if an earlier run
+          # pushed the tag but failed to create it.
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists"
+          else
+            gh release create "${TAG}" --title "Release ${TAG}" --generate-notes
+            echo "Created GitHub release ${TAG}"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GH_ACTIONS_TOKEN }}

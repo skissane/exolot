@@ -5,7 +5,7 @@ import zipfile
 import pytest
 
 from exolot import server
-from exolot.server import ServerError, _extract, asset_name
+from exolot.server import ServerError, _extract, _publish, asset_name
 
 
 def _add(z, name, data, mode):
@@ -58,3 +58,28 @@ def test_detect_platform(monkeypatch, plat, machine, expected):
     monkeypatch.setattr(server.sys, "platform", plat)
     monkeypatch.setattr(server.platform, "machine", lambda: machine)
     assert server.detect_platform() == expected
+
+
+def test_publish_keeps_existing_complete_install(tmp_path):
+    install = tmp_path / "install"
+    install.mkdir()
+    (install / ".complete").write_text("theirs")
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / ".complete").write_text("ours")
+    (staging / "extra").write_text("x")  # non-empty, so rename onto it fails on every OS
+    (install / "extra").write_text("x")
+    _publish(staging, install)
+    assert (install / ".complete").read_text() == "theirs"
+
+
+def test_publish_replaces_incomplete_install(tmp_path):
+    install = tmp_path / "install"
+    install.mkdir()
+    (install / "junk").write_text("x")
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / ".complete").write_text("ours")
+    _publish(staging, install)
+    assert (install / ".complete").read_text() == "ours"
+    assert not (install / "junk").exists()

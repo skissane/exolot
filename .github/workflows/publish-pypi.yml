@@ -21,6 +21,15 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
+      - name: Check tag matches version
+        if: github.ref_type == 'tag'
+        run: |
+          VERSION="$(uv version --short)"
+          if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${VERSION}"
+            exit 1
+          fi
+
       - name: Build package
         run: uv build
 

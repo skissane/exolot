@@ -10,8 +10,9 @@ SonarQube for IDE (formerly SonarLint). No SonarQube account or server needed.
 
 The old `sonarlint-cli` was discontinued years ago. SonarSource's current
 SonarQube CLI needs a SonarQube Cloud or Server account, and its code analysis
-runs on the server. exolot fills the gap: fully offline, account-free analysis
-on your own machine.
+runs on the server. exolot fills the gap: account-free analysis that runs
+entirely on your own machine. It needs network access only to download the
+language server the first time (and see the note on C/C++ and C# below).
 
 ## How it works
 
@@ -72,8 +73,8 @@ from `JAVA_HOME`, the `PATH`, or `--java`.
 - Telemetry is disabled.
 - C/C++ and C# analyzers are not included in the VSIX; the server tries to
   download them from `binaries.sonarsource.com` when it starts.
-- Each run starts a fresh JVM and loads every analyzer, so expect a few
-  seconds of startup time.
+- Each run starts a fresh JVM and loads every analyzer, so even a single file
+  takes around 15 seconds.
 - The bundled analyzers are licensed by SonarSource under their own terms. exolot
   downloads them from SonarSource's releases at run time and does not
   redistribute them.

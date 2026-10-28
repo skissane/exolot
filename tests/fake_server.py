@@ -34,6 +34,8 @@ while (msg := read()) is not None:
         send({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}, "configReply": reply["result"]}})
     elif method == "textDocument/didOpen":
         doc = msg["params"]["textDocument"]
+        if "SILENT" in doc["text"]:
+            continue
         send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": "t", "value": {"kind": "begin"}}})
         send({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": {"uri": doc["uri"], "diagnostics": []}})
         send({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": {"uri": doc["uri"], "diagnostics": [
@@ -44,5 +46,8 @@ while (msg := read()) is not None:
         send({"jsonrpc": "2.0", "id": msg["id"], "result": None})
     elif method == "exit":
         break
+    elif method == "slow":
+        send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": "x", "value": {"kind": "begin"}}})
+        send({"jsonrpc": "2.0", "id": msg["id"], "result": "late"})
     elif method == "boom":
         send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -1, "message": "boom"}})

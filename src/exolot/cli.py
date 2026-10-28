@@ -71,6 +71,19 @@ def main(argv: list[str] | None = None) -> int:
     plat = args.platform
     if plat == "universal":
         plat = ""
+
+    if args.command == "analyze":
+        # Check the inputs before possibly downloading the server.
+        try:
+            files = collect_files(args.paths)
+            rules = json.loads(args.rules.read_text()) if args.rules else None
+        except (OSError, ValueError) as e:
+            print(f"exolot: {e}", file=sys.stderr)
+            return 2
+        if not files:
+            print("exolot: no files to analyze", file=sys.stderr)
+            return 0
+
     try:
         server = ensure_server(args.server_version, plat, args.java)
     except (ServerError, OSError) as e:
@@ -78,16 +91,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.command == "install":
-        print(f"Language server {args.server_version} ({plat if plat is not None else detect_platform() or 'universal'})")
+        shown = plat if plat is not None else detect_platform()
+        print(f"Language server {args.server_version} ({shown or 'universal'})")
         print(f"  installed in {server.root}")
         print(f"  using Java {server.java}")
         return 0
 
-    files = collect_files(args.paths)
-    if not files:
-        print("exolot: no files to analyze", file=sys.stderr)
-        return 0
-    rules = json.loads(args.rules.read_text()) if args.rules else None
     workspace = args.workspace or Path.cwd()
 
     try:
@@ -95,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
             issues = session.analyze(files, timeout=args.timeout)
             # Report before the server shuts down, which can take a few seconds.
             _report(issues, len(files), args.format)
-    except (RuntimeError, TimeoutError) as e:
+    except (OSError, RuntimeError, TimeoutError) as e:
         print(f"exolot: {e}", file=sys.stderr)
         return 2
     return 1 if issues else 0

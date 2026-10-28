@@ -86,6 +86,8 @@ def collect_files(paths: list[Path]) -> list[Path]:
     result: list[Path] = []
     seen: set[Path] = set()
     for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"no such file or directory: {path}")
         candidates = [path] if path.is_file() else _list_dir(path)
         for f in candidates:
             f = f.resolve()
@@ -149,7 +151,11 @@ class AnalysisSession:
         self._client: LspClient | None = None
 
     def __enter__(self) -> AnalysisSession:
-        self._start()
+        try:
+            self._start()
+        except BaseException:
+            self._kill()
+            raise
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -264,20 +270,23 @@ class AnalysisSession:
         runs are bracketed by $/progress begin/end, so we treat the session as
         done once every file has been published, no progress is active, and
         nothing has arrived for ``settle`` seconds. If some files are never
-        published, we give up waiting for them after ``stall`` quiet seconds.
+        published after ``stall`` quiet seconds, the analysis is incomplete and
+        we raise rather than report a partial result as clean.
         """
         assert self._client is not None
+        deadline = None if timeout is None else time.monotonic() + timeout
         uris = {f.as_uri(): f for f in files}
         with self._cond:
             for uri in uris:
                 self._published.pop(uri, None)
         for uri, path in uris.items():
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError("analysis did not finish in time")
             text = path.read_text(encoding="utf-8", errors="replace")
             self._client.notify(
                 "textDocument/didOpen",
                 {"textDocument": {"uri": uri, "languageId": language_id(path), "version": 1, "text": text}},
             )
-        deadline = None if timeout is None else time.monotonic() + timeout
         with self._cond:
             self._touch()
             while True:
@@ -290,8 +299,9 @@ class AnalysisSession:
                     if not missing and quiet >= settle:
                         break
                     if missing and quiet >= stall:
-                        log.warning("no results for %d file(s) after waiting; giving up on them", len(missing))
-                        break
+                        names = ", ".join(str(uris[u]) for u in missing[:5])
+                        more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
+                        raise RuntimeError(f"the server never reported results for {names}{more}")
                 if deadline is not None and now >= deadline:
                     raise TimeoutError("analysis did not finish in time")
                 self._cond.wait(timeout=0.2)
@@ -306,6 +316,9 @@ class AnalysisSession:
                 self._proc.wait(timeout=30)
             except Exception:
                 log.debug("clean shutdown failed; killing server", exc_info=True)
+        self._kill()
+
+    def _kill(self) -> None:
         if self._proc is not None and self._proc.poll() is None:
             self._proc.kill()
             self._proc.wait()

@@ -35,3 +35,14 @@ def test_error_response_raises(client):
     client.start()
     with pytest.raises(LspError, match="boom"):
         client.request("boom").result(timeout=10)
+
+
+def test_response_to_cancelled_request_is_dropped(client):
+    notes = []
+    client.on_notification("$/progress", notes.append)
+    future = client.request("slow")
+    assert future.cancel()
+    client.start()
+    # The reader must survive the response to the cancelled request.
+    assert client.request("initialize", {}).result(timeout=10) is not None
+    assert notes

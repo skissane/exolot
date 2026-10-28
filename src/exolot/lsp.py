@@ -101,7 +101,7 @@ class LspClient:
             with self._pending_lock:
                 pending, self._pending = self._pending, {}
             for future in pending.values():
-                if not future.done():
+                if future.set_running_or_notify_cancel():
                     future.set_exception(ConnectionError("language server closed the connection"))
 
     def _dispatch(self, message: dict[str, Any]) -> None:
@@ -111,6 +111,8 @@ class LspClient:
                 future = self._pending.pop(message.get("id"), None)
             if future is None:
                 log.warning("response for unknown request id %r", message.get("id"))
+            elif not future.set_running_or_notify_cancel():
+                log.debug("dropping response to cancelled request %r", message.get("id"))
             elif "error" in message:
                 future.set_exception(LspError(message["error"]))
             else:
