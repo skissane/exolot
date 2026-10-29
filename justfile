@@ -20,7 +20,8 @@ test:
 build:
     uv build
 
-# check and fix get the lint and format recipes as they're added (#6).
+# check and fix get the lint and format recipes as they're added (#6), and check
+# gets lint-workflows when it replaces CI's validate-actions job (#13).
 
 # Run all checks, without fixing anything or running tests
 check:
@@ -28,5 +29,5 @@ check:
 # Autofix lint issues and reformat code
 fix:
 
-# Run everything the CI workflow runs
+# Run everything CI's build job runs
 ci: lock-check sync check test build
