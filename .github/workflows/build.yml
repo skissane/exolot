@@ -31,11 +31,25 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
+      - name: Install just
+        uses: extractions/setup-just@v3
+        with:
+          just-version: "1.58.0"
+
+      - name: Check lockfile is up to date
+        run: just lock-check
+
+      - name: Install dependencies
+        run: just sync
+
+      - name: Run checks
+        run: just check
+
       - name: Run tests
-        run: uv run pytest -q
+        run: just test
 
       - name: Build package
-        run: uv build
+        run: just build
 
   # Tagging and releasing need a write-capable token, so they run in their own
   # job, only for pushes to master, and never alongside pull request code.

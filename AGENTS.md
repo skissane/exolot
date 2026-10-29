@@ -3,6 +3,12 @@
 Notes for AI coding agents (and humans) working on exolot.
 See `README.md` for what exolot does, how it works, and how to run the tests.
 
+## Commands
+
+CI (`.github/workflows/build.yml`) calls the `justfile`'s recipes rather than running commands inline, so run `just ci` before opening a PR to run everything CI runs.
+`just check` runs every check without fixing anything or running tests, `just fix` applies every autofix, and `just --list` shows the individual recipes.
+When you add a step to CI, add it as a recipe and include it in `check`, `fix` or `ci` as fits, so `just ci` keeps matching CI.
+
 ## Issue labels
 
 Issues are labelled `dimension:value`.
