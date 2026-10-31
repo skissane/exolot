@@ -16,6 +16,14 @@ sync:
 test:
     uv run --group dev pytest -q
 
+# Run the test suite with coverage, printing a report and writing coverage.xml
+coverage *args:
+    uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml {{args}}
+
+# Run coverage, then report coverage of the lines changed since base (extra args go to diff-cover)
+patch-coverage base='origin/master' *args: coverage
+    uv run --group dev diff-cover coverage.xml --compare-branch={{base}} --branch-coverage {{args}}
+
 # Build the sdist and wheel into dist/
 build:
     uv build

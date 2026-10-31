@@ -25,7 +25,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-dev = ["jactionlint>=2.4.0", "pytest>=8", "ruff>=0.14"]
+dev = [
+    "coverage>=7.17.0",
+    "diff-cover>=11.0.0",
+    "jactionlint>=2.4.0",
+    "pytest>=8",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.14",
+]
 
 [tool.ruff]
 line-length = 120
@@ -33,3 +40,14 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "PLC0415", "RUF100"]
+
+[tool.coverage.run]
+source = ["exolot"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.coverage.xml]
+output = "coverage.xml"
