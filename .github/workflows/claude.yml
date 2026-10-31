@@ -46,15 +46,6 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           fi
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      # Keep just-version in step with the justfile's minimum-version.
-      - name: Install just
-        uses: extractions/setup-just@v3
-        with:
-          just-version: "1.58.0"
-
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -68,7 +59,10 @@ jobs:
           # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
           # prompt: 'Update the pull request description to include a summary of changes.'
 
-          # The action's default tools can't diff or run checks, only commit and push.
+          # The action's default tools can't diff, only commit and push. No just:
+          # the action puts its write-capable token in .git/config, where the
+          # PR's own recipes and tests could read it. CI runs them instead, and
+          # Claude can read the results.
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          claude_args: '--allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(just:*)"'
+          claude_args: '--allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*)"'
