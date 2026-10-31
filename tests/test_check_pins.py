@@ -32,8 +32,11 @@ jobs:
             - --y
   other:
     steps:
-      - uses: astral-sh/setup-uv@v5
+      - uses: "astral-sh/setup-uv@v5"
       - run: echo
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV }}  # from the environment
 """
 
 
@@ -44,15 +47,17 @@ def test_steps_splits_outermost_items_only():
         "- name: Install uv",
         "- name: Install just",
         "- name: Other",
-        "- uses: astral-sh/setup-uv@v5",
+        '- uses: "astral-sh/setup-uv@v5"',
         "- run: echo",
+        "- uses: astral-sh/setup-uv@v6",
     ]
     assert found[3][-1].strip() == "- --y"
 
 
 def test_pins_reads_each_steps_own_input():
-    # The unpinned setup-uv in `other` isn't masked by `Other`'s version.
-    assert pins(WORKFLOW, "astral-sh/setup-uv", "version") == ["0.13.6", None]
+    # The unpinned setup-uv in `other` isn't masked by `Other`'s version, and
+    # an unexpected value is read as written.
+    assert pins(WORKFLOW, "astral-sh/setup-uv", "version") == ["0.13.6", None, "${{ env.UV }}"]
     assert pins(WORKFLOW, "extractions/setup-just", "just-version") == ["1.58.0"]
 
 
@@ -67,7 +72,7 @@ def repo(tmp_path: Path) -> Path:
 def test_main_passes_when_all_pinned(repo, capsys):
     (repo / ".github/workflows/a.yml").write_text(WORKFLOW.split("  other:")[0])
     assert main(repo) == 0
-    assert capsys.readouterr().out == "workflows pin uv 0.13.6 and just 1.58.0\n"
+    assert capsys.readouterr().out == "workflows pin uv 0.13.6 in 1 steps and just 1.58.0 in 1 steps\n"
 
 
 def test_main_reports_unpinned_and_mismatched_in_yaml_files(repo, capsys):
@@ -75,7 +80,17 @@ def test_main_reports_unpinned_and_mismatched_in_yaml_files(repo, capsys):
     assert main(repo) == 1
     assert capsys.readouterr().err.splitlines() == [
         ".github/workflows/a.yaml: a astral-sh/setup-uv step has no version, not 0.13.6",
+        ".github/workflows/a.yaml: a astral-sh/setup-uv step has version: ${{ env.UV }}, not 0.13.6",
         ".github/workflows/a.yaml: a extractions/setup-just step has just-version: 1.57.0, not 1.58.0",
+    ]
+
+
+def test_main_fails_when_no_step_is_recognized(repo, capsys):
+    (repo / ".github/workflows/a.yml").write_text("jobs:\n  a:\n    steps:\n      - run: echo\n")
+    assert main(repo) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "no workflow has a astral-sh/setup-uv step",
+        "no workflow has a extractions/setup-just step",
     ]
 
 

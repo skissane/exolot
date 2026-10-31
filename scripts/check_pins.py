@@ -12,7 +12,7 @@ UV = ("astral-sh/setup-uv", "version")
 JUST = ("extractions/setup-just", "just-version")
 
 _STEP_RE = re.compile(r"^(?P<indent>\s*)- ")
-_USES_RE = re.compile(r"^\s*(?:- )?uses:\s*(?P<action>[^@\s]+)@")
+_USES_RE = re.compile(r"^\s*(?:- )?uses:\s*[\"']?(?P<action>[^@\s\"']+)@")
 _JUST_MIN_RE = re.compile(r"^set minimum-version := '(?P<version>[^']+)'$", re.MULTILINE)
 
 
@@ -42,11 +42,13 @@ def steps(text: str) -> list[list[str]]:
 def pins(text: str, action: str, key: str) -> list[str | None]:
     """The value of key in each step of a workflow that uses action, or None
     where that step doesn't set it."""
-    key_re = re.compile(rf"^\s*{re.escape(key)}:\s*[\"']?(?P<value>[^\"'\s#]+)")
+    # The whole value, less a trailing comment and quotes, so an unexpected
+    # one (`${{ env.UV }}`, `latest`) is reported as written.
+    key_re = re.compile(rf"^\s*{re.escape(key)}:\s*(?P<value>.*?)\s*(?:\s#.*)?$")
     found: list[str | None] = []
     for step in steps(text):
         if any((m := _USES_RE.match(line)) and m["action"] == action for line in step):
-            values = [m["value"] for line in step if (m := key_re.match(line))]
+            values = [m["value"].strip("\"'") for line in step if (m := key_re.match(line))]
             found.append(values[0] if values else None)
     return found
 
@@ -62,28 +64,35 @@ def minimums(root: Path) -> dict[tuple[str, str], str]:
     return {UV: required.removeprefix(">="), JUST: match["version"]}
 
 
-def problems(root: Path) -> list[str]:
+def problems(root: Path) -> tuple[list[str], dict[tuple[str, str], int]]:
+    """Each pin that's missing or differs from the minimum, and how many steps
+    use each action. No step using one is a problem too, as it more likely
+    means steps() or _USES_RE no longer recognize them than that CI stopped
+    installing uv or just."""
     want = minimums(root)
     workflows = sorted((root / ".github" / "workflows").glob("*.y*ml"))
     found = []
+    counts = dict.fromkeys(want, 0)
     for path in workflows:
         text = path.read_text()
         for (action, key), version in want.items():
             for pin in pins(text, action, key):
+                counts[action, key] += 1
                 if pin != version:
                     setting = f"{key}: {pin}" if pin else f"no {key}"
                     found.append(f"{path.relative_to(root).as_posix()}: a {action} step has {setting}, not {version}")
-    return found
+    found += [f"no workflow has a {action} step" for (action, _), count in counts.items() if not count]
+    return found, counts
 
 
 def main(root: Path = Path()) -> int:
-    found = problems(root)
+    found, counts = problems(root)
     for problem in found:
         print(problem, file=sys.stderr)
     if found:
         return 1
     want = minimums(root)
-    print(f"workflows pin uv {want[UV]} and just {want[JUST]}")
+    print(f"workflows pin uv {want[UV]} in {counts[UV]} steps and just {want[JUST]} in {counts[JUST]} steps")
     return 0
 
 
