@@ -123,11 +123,11 @@ def test_cli_exit_zero_still_reports_a_failed_analysis(tmp_path, monkeypatch, ca
     assert "did not finish in time" in capsys.readouterr().err
 
 
-def _run_statistics(tmp_path, monkeypatch, capsys, *flags):
+def _run_statistics(tmp_path, monkeypatch, capsys, *flags, texts=("TWO TWO", "TWO TWO TWO", "x = 1")):
+    """Analyze one file per text: each has one fake:S1 issue, plus a fake:S2 issue per "TWO"."""
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
-    (tmp_path / "a.py").write_text("TWO TWO\n")
-    (tmp_path / "b.py").write_text("TWO TWO TWO\n")
-    (tmp_path / "c.py").write_text("x = 1\n")
+    for name, text in zip("abc", texts):
+        (tmp_path / f"{name}.py").write_text(text + "\n")
     status = cli.main(["--statistics", *flags, "--workspace", str(tmp_path), str(tmp_path)])
     return status, capsys.readouterr()
 
@@ -137,6 +137,11 @@ def test_cli_statistics_counts_issues_per_rule_most_common_first(tmp_path, monke
     assert status == 1
     assert captured.out == "5\tfake:S2\n3\tfake:S1\tFake rule one\n"
     assert "8 issue(s) in 3 file(s) analyzed" in captured.err
+
+
+def test_cli_statistics_orders_ties_by_rule_key(tmp_path, monkeypatch, capsys):
+    _, captured = _run_statistics(tmp_path, monkeypatch, capsys, texts=("TWO", "TWO TWO", "x = 1"))
+    assert captured.out == "3\tfake:S1\tFake rule one\n3\tfake:S2\n"
 
 
 def test_cli_statistics_json(tmp_path, monkeypatch, capsys):

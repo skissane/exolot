@@ -62,8 +62,9 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   VS Code's `sonarlint.rules` setting, e.g.
   `{"python:S1764": {"level": "off"}}`.
 - `--statistics` prints one line per rule instead of the issues: the number of
-  issues, the rule key and the rule's name, most common rule first, like
-  `ruff check --statistics`. With `--format json` it prints a list of
+  issues, the rule key and the rule's name, most common rule first (ties in
+  rule key order), like `ruff check --statistics`. The name is left blank if
+  the server can't list its rules. With `--format json` it prints a list of
   `{"code", "name", "count"}` objects. The exit status is the same as without it.
 - `-v` / `--verbose` shows the server's logs.
 
