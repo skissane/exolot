@@ -29,7 +29,14 @@ def send(msg):
 while (msg := read()) is not None:
     method = msg.get("method")
     if method == "initialize":
-        send({"jsonrpc": "2.0", "id": 1000, "method": "workspace/configuration", "params": {"items": [{"section": "sonarlint", "scopeUri": "file:///w"}]}})
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": 1000,
+                "method": "workspace/configuration",
+                "params": {"items": [{"section": "sonarlint", "scopeUri": "file:///w"}]},
+            }
+        )
         reply = read()
         send({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}, "configReply": reply["result"]}})
     elif method == "textDocument/didOpen":
@@ -37,10 +44,30 @@ while (msg := read()) is not None:
         if "SILENT" in doc["text"]:
             continue
         send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": "t", "value": {"kind": "begin"}}})
-        send({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": {"uri": doc["uri"], "diagnostics": []}})
-        send({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": {"uri": doc["uri"], "diagnostics": [
-            {"range": {"start": {"line": 0, "character": 2}, "end": {"line": 0, "character": 5}},
-             "severity": 2, "code": "fake:S1", "message": f"{doc['languageId']} issue"}]}})
+        send(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/publishDiagnostics",
+                "params": {"uri": doc["uri"], "diagnostics": []},
+            }
+        )
+        send(
+            {
+                "jsonrpc": "2.0",
+                "method": "textDocument/publishDiagnostics",
+                "params": {
+                    "uri": doc["uri"],
+                    "diagnostics": [
+                        {
+                            "range": {"start": {"line": 0, "character": 2}, "end": {"line": 0, "character": 5}},
+                            "severity": 2,
+                            "code": "fake:S1",
+                            "message": f"{doc['languageId']} issue",
+                        }
+                    ],
+                },
+            }
+        )
         send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": "t", "value": {"kind": "end"}}})
     elif method == "shutdown":
         send({"jsonrpc": "2.0", "id": msg["id"], "result": None})
