@@ -7,12 +7,13 @@ See `README.md` for what exolot does, how it works, and how to run the tests.
 
 CI (`.github/workflows/build.yml`) calls the `justfile`'s recipes rather than running commands inline, so run `just ci` before opening a PR to run everything CI runs.
 `just check` runs every check without fixing anything or running tests, `just fix` applies every autofix, and `just --list` shows the individual recipes.
-`just lint-workflows` (part of `just check`) runs `jactionlint --profile correctness` over the workflows; it shellchecks their `run:` steps only if `shellcheck` is on your `PATH` (it is on GitHub's Ubuntu runners), and otherwise prints a note and skips them.
+`just lint-workflows` (part of `just check`) runs `jactionlint` over the workflows and `.github/dependabot.yml`, with the rules `.github/jactionlint.yaml` turns on; it shellchecks their `run:` steps only if `shellcheck` is on your `PATH` (it is on GitHub's Ubuntu runners), and otherwise prints a note and skips them.
 Before opening a PR, also run `just patch-coverage`, which runs `just coverage` (tests with a coverage report and `coverage.xml`) and then reports which changed lines since `origin/master` the tests miss; pass another base as its first argument, e.g. `just patch-coverage origin/some-branch`.
 Cover the changed lines it reports where a test is worth it; CI's coverage job shows total coverage in its summary on every push and PR, and the patch coverage report too on PRs, which its `post-patch-coverage` job also posts as a PR comment (`just patch-coverage-post`) on PRs from this repository other than Dependabot's; there is no threshold to fail on.
 `just ci` leaves out CI's `integration` job, which runs `just integration` (the end-to-end tests, which download the ~250 MB language server); run it yourself when you change how exolot talks to the server or unpacks it.
 CI pins its tools: every `setup-uv` step sets `version` to the minimum in `pyproject.toml`'s `[tool.uv] required-version`, every `setup-just` step sets `just-version` to the `justfile`'s `minimum-version`, and `.python-version` names an exact Python patch release (the test matrix overrides it with each minor version).
 To upgrade uv or just, change the minimum and every workflow's pin together; `just check-pins` (part of `just check`) fails if they differ.
+Workflows pin every action to a full commit SHA with its version in a comment (`uses: actions/checkout@<sha> # v4.4.0`), which Dependabot keeps updated weekly; `just lint-workflows` fails on a tag or branch, or a SHA with no comment.
 When you add a step to CI, add it as a recipe and include it in `check`, `fix` or `ci` as fits, so `just ci` keeps matching CI.
 
 ## Test warnings policy
@@ -41,6 +42,7 @@ When you file an issue, give it one `type:` and one `priority:` label, a `size:`
   These are separate from `type:`, as a security problem can be a bug, a missing feature or a maintenance job.
 
 `question` is for issues that ask something rather than report or request something.
+`dependencies` marks Dependabot's PRs, which also get `type:maintenance` (`.github/dependabot.yml` sets both).
 Close duplicates and things that won't be done with GitHub's "duplicate" and "not planned" close reasons; there are no labels for them.
 
 An open issue with no `priority:` label is untriaged; find them with `is:open -label:priority:p0 -label:priority:p1 -label:priority:p2 -label:priority:p3`.

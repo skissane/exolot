@@ -1,0 +1,9 @@
+# The correctness profile (what actionlint checks), plus the supply-chain rules
+# from the default profile: actions pinned to a commit SHA with a version
+# comment for Dependabot to update, and a Dependabot cooldown.
+profile: correctness
+rules:
+  unpinned-uses: error
+  missing-version-comment: error
+  dependabot-cooldown: error
+  dependabot-execution: error
