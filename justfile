@@ -20,8 +20,11 @@ test:
 coverage *args:
     uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml {{args}}
 
-# Run coverage, then report coverage of the lines changed since base (extra args go to diff-cover)
-patch-coverage base='origin/master' *args: coverage
+# Run coverage, then report coverage of the lines changed since base
+patch-coverage base='origin/master': coverage (diff-cover base)
+
+# Report coverage of the lines changed since base from an existing coverage.xml (extra args go to diff-cover)
+diff-cover base='origin/master' *args:
     uv run --group dev diff-cover coverage.xml --compare-branch={{base}} --branch-coverage {{args}}
 
 # Build the sdist and wheel into dist/

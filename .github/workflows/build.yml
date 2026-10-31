@@ -73,10 +73,9 @@ jobs:
       - name: Build package
         run: just build
 
-  # Informational only: reports how much of the PR's changed code the tests
-  # cover, in the job summary. It never fails the build on low coverage.
+  # Informational only: reports total coverage, and on PRs how much of the
+  # changed code the tests cover, in the job summary. It never fails the build.
   coverage:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -100,8 +99,12 @@ jobs:
       - name: Install dependencies
         run: just sync
 
+      - name: Report coverage
+        run: just coverage --cov-report="markdown-append:${GITHUB_STEP_SUMMARY}"
+
       - name: Report patch coverage
-        run: just patch-coverage "origin/${BASE_REF}" --format "markdown:${GITHUB_STEP_SUMMARY}"
+        if: github.event_name == 'pull_request'
+        run: just diff-cover "origin/${BASE_REF}" --format "markdown:${GITHUB_STEP_SUMMARY}"
         env:
           BASE_REF: ${{ github.base_ref }}
 
