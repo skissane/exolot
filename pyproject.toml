@@ -44,6 +44,7 @@ select = ["E", "F", "W", "I", "UP", "PLC0415", "RUF100"]
 # The repo root, so tests can import the stdlib-only CI scripts in scripts/.
 [tool.pytest.ini_options]
 pythonpath = ["."]
+filterwarnings = ["error"]
 
 [tool.coverage.run]
 source = ["exolot", "scripts"]
@@ -56,5 +57,3 @@ skip_empty = true
 [tool.coverage.xml]
 output = "coverage.xml"
 
-[tool.pytest.ini_options]
-filterwarnings = ["error"]
