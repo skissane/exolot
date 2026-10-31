@@ -58,5 +58,5 @@ check: lint fmt-check lint-workflows
 # can, so lint-fix stops only on findings that need a hand edit.
 fix: fmt lint-fix
 
-# Run everything CI's build and test jobs run, on this machine's Python and OS
-ci: lock-check sync check test build
+# Run everything CI's build, test and coverage jobs run (except the PR-only patch coverage), on this machine's Python and OS
+ci: lock-check sync check coverage build

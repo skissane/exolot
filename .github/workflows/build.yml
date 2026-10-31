@@ -73,8 +73,9 @@ jobs:
       - name: Build package
         run: just build
 
-  # Informational only: reports total coverage, and on PRs how much of the
-  # changed code the tests cover, in the job summary. It never fails the build.
+  # Reports total coverage, and on PRs how much of the changed code the tests
+  # cover, in the job summary. Informational only: there's no coverage
+  # threshold, so it fails only if the tests or diff-cover do.
   coverage:
     runs-on: ubuntu-latest
     permissions:
