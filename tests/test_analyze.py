@@ -105,3 +105,18 @@ def test_cli_input_errors_exit_2_without_downloading(tmp_path, monkeypatch, caps
     empty = tmp_path / "empty"
     empty.mkdir()
     assert cli.main([str(empty)]) == 0
+
+
+@pytest.mark.parametrize(("flags", "expected"), [([], 1), (["--exit-zero"], 0), (["-e"], 0)])
+def test_cli_exit_status_with_issues(tmp_path, monkeypatch, capsys, flags, expected):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    (tmp_path / "a.py").write_text("x = 1\n")
+    assert cli.main([*flags, "--workspace", str(tmp_path), str(tmp_path / "a.py")]) == expected
+    assert "fake:S1" in capsys.readouterr().out
+
+
+def test_cli_exit_zero_still_reports_a_failed_analysis(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    (tmp_path / "a.py").write_text("SILENT\n")
+    assert cli.main(["--exit-zero", "--timeout", "1", "--workspace", str(tmp_path), str(tmp_path / "a.py")]) == 2
+    assert "did not finish in time" in capsys.readouterr().err

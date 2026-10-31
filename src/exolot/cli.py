@@ -47,6 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--node", help="Node.js executable for JavaScript/TypeScript analysis")
     analyze.add_argument("--workspace", type=Path, help="workspace folder (default: current directory)")
     analyze.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
+    analyze.add_argument(
+        "-e",
+        "--exit-zero",
+        action="store_true",
+        help="exit with status 0 even when issues are found (still 2 if the analysis fails)",
+    )
 
     sub.add_parser("install", parents=[server_opts], help="download and unpack the language server")
     sub.add_parser("cache-dir", help="print the cache directory")
@@ -104,10 +110,10 @@ def main(argv: list[str] | None = None) -> int:
             issues = session.analyze(files, timeout=args.timeout)
             # Report before the server shuts down, which can take a few seconds.
             _report(issues, len(files), args.format)
-    except (OSError, RuntimeError, TimeoutError) as e:
+    except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
         print(f"exolot: {e}", file=sys.stderr)
         return 2
-    return 1 if issues else 0
+    return 1 if issues and not args.exit_zero else 0
 
 
 def _report(issues: list[Issue], file_count: int, fmt: str) -> None:

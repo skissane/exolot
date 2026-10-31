@@ -42,6 +42,9 @@ KNOWN_DIGESTS: dict[str, dict[str, str]] = {
 EXTRACT_PREFIXES = ("extension/server/", "extension/analyzers/", "extension/jre/")
 EXTRACT_FILES = ("extension/package.json", "extension/LICENSE.txt", "extension/NOTICE.txt")
 
+# Written into an install directory last, so one without it is incomplete.
+COMPLETE_MARKER = ".complete"
+
 # Analyzers passed to the server, in the order the VS Code client passes them.
 # C/C++ and C# analyzers are downloaded by the server itself on demand.
 ANALYZERS = (
@@ -130,7 +133,7 @@ def ensure_server(
     if plat is None:
         plat = detect_platform()
     install_dir = cache_dir() / "servers" / f"{tag}-{plat or 'universal'}"
-    if not (install_dir / ".complete").exists():
+    if not (install_dir / COMPLETE_MARKER).exists():
         _install(tag, plat, install_dir, progress)
     root = install_dir / "extension"
     return Server(root=root, java=_find_java(root, java))
@@ -152,7 +155,7 @@ def _install(tag: str, plat: str, install_dir: Path, progress: bool) -> None:
         staging = Path(tmp) / "staging"
         _extract(vsix, staging)
         vsix.unlink()
-        (staging / ".complete").write_text(f"{tag} {plat or 'universal'} {digest}\n")
+        (staging / COMPLETE_MARKER).write_text(f"{tag} {plat or 'universal'} {digest}\n")
         _publish(staging, install_dir)
 
 
@@ -165,7 +168,7 @@ def _publish(staging: Path, install_dir: Path) -> None:
     try:
         staging.rename(install_dir)
     except OSError:
-        if (install_dir / ".complete").exists():
+        if (install_dir / COMPLETE_MARKER).exists():
             log.debug("%s was installed by another process", install_dir)
             return
         # A leftover directory without the marker (e.g. from an older layout).

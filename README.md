@@ -44,7 +44,8 @@ Directories are expanded with `git ls-files` when inside a git repository (so
 files over 2 MiB are skipped.
 
 Exit status is 0 when no issues are found, 1 when issues are found, and 2 on
-errors.
+errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
+2 when the analysis fails, like ruff's option of the same name.
 
 ### Options
 
@@ -90,6 +91,7 @@ just sync
 uv run exolot --help
 just test
 just integration      # end-to-end test against the real server (downloads it, about 250 MB)
+just self-analyze     # run exolot on its own code (also downloads the server)
 just coverage         # tests with a coverage report, coverage.xml and junit.xml
 just patch-coverage   # coverage of lines changed since origin/master
 just fix              # reformat and autofix lint issues with ruff
