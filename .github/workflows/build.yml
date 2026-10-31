@@ -73,6 +73,42 @@ jobs:
       - name: Build package
         run: just build
 
+  # Reports total coverage, and on PRs how much of the changed code the tests
+  # cover, in the job summary. Informational only: there's no coverage
+  # threshold, so it fails only if the tests or diff-cover do.
+  coverage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # Full history so diff-cover can find the merge base with the PR's base branch.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@v3
+        with:
+          just-version: "1.58.0"
+
+      - name: Install dependencies
+        run: just sync
+
+      - name: Report coverage
+        run: just coverage --cov-report="markdown-append:${GITHUB_STEP_SUMMARY}"
+
+      - name: Report patch coverage
+        if: github.event_name == 'pull_request'
+        run: just diff-cover "origin/${BASE_REF}" --format "markdown:${GITHUB_STEP_SUMMARY}"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
   # Tagging and releasing need a write-capable token, so they run in their own
   # job, only for pushes to master, and never alongside pull request code.
   release:

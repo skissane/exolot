@@ -16,6 +16,17 @@ sync:
 test:
     uv run --group dev pytest -q
 
+# Run the test suite with coverage, printing a report and writing coverage.xml
+coverage *args:
+    uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml {{args}}
+
+# Run coverage, then report coverage of the lines changed since base
+patch-coverage base='origin/master': coverage (diff-cover base)
+
+# Report coverage of the lines changed since base from an existing coverage.xml (extra args go to diff-cover)
+diff-cover base='origin/master' *args:
+    uv run --group dev diff-cover coverage.xml --compare-branch={{base}} --branch-coverage {{args}}
+
 # Build the sdist and wheel into dist/
 build:
     uv build
@@ -47,5 +58,5 @@ check: lint fmt-check lint-workflows
 # can, so lint-fix stops only on findings that need a hand edit.
 fix: fmt lint-fix
 
-# Run everything CI's build and test jobs run, on this machine's Python and OS
-ci: lock-check sync check test build
+# Run everything CI's build, test and coverage jobs run (except the PR-only patch coverage), on this machine's Python and OS
+ci: lock-check sync check coverage build
