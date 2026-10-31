@@ -36,7 +36,14 @@ def test_link_quotes_the_path_and_defaults_the_end():
 
 @pytest.mark.parametrize(
     ("template", "error"),
-    [("{nope}", "unknown field 'nope'"), ("{path", "bad link template"), ("{0}", "bad link template")],
+    [
+        ("", "empty link template"),
+        ("{nope}", "unknown field 'nope'"),
+        ("{path", "bad link template"),
+        ("{0}", "bad link template"),
+        ("{path.foo}", "bad link template"),
+        ("{line[0]}", "bad link template"),
+    ],
 )
 def test_check_link_template_rejects_bad_templates(template, error):
     with pytest.raises(ValueError, match=error):

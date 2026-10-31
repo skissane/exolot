@@ -220,6 +220,7 @@ def test_cli_statistics_markdown_with_no_issues(tmp_path, monkeypatch, capsys):
     [
         (["--format", "markdown", "--link-template", "{nope}"], "unknown field 'nope'"),
         (["--link-template", "{path}"], "needs --format markdown"),
+        (["--link-template", ""], "empty link template"),
         (["--format", "markdown", "--statistics", "--link-template", "{path}"], "needs --format markdown"),
     ],
 )
