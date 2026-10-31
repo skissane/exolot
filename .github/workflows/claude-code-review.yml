@@ -22,6 +22,11 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository)
 
     runs-on: ubuntu-latest
+    # A new push supersedes a running self-test, so only the latest report is posted.
+    # Other events get a unique group, so they never queue or cancel each other.
+    concurrency:
+      group: ${{ github.event_name == 'pull_request' && format('self-test-claude-code-review.yml-{0}', github.event.pull_request.number) || github.run_id }}
+      cancel-in-progress: true
     env:
       # Strip secrets (including the OAuth token) from the environment of
       # commands Claude runs, as the PR it reviews may contain a prompt injection.
@@ -97,4 +102,28 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPORT: ${{ steps.self-test-report.outputs.report }}
-        run: printf '%s\n' "$REPORT" | gh pr comment "$PR_NUMBER" --body-file -
+          MARKER: '<!-- self-test:claude-code-review.yml -->'
+        run: |
+          # shellcheck disable=SC2016 # $vars in the GraphQL queries are GraphQL's, not the shell's
+          # Hide this workflow's earlier reports as outdated. Matching on the author
+          # too means nobody else's comment can be hidden by copying the marker.
+          gh api graphql --paginate -F owner="${GH_REPO%/*}" -F name="${GH_REPO#*/}" -F pr="$PR_NUMBER" -f query='
+            query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
+              repository(owner: $owner, name: $name) {
+                pullRequest(number: $pr) {
+                  comments(first: 100, after: $endCursor) {
+                    nodes { id isMinimized body author { login } }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+              }
+            }' --jq '.data.repository.pullRequest.comments.nodes[]
+              | select(.author.login == "github-actions" and (.isMinimized | not)
+                and (.body | startswith(env.MARKER))) | .id' |
+          while read -r id; do
+            gh api graphql -F id="$id" -f query='
+              mutation($id: ID!) {
+                minimizeComment(input: {subjectId: $id, classifier: OUTDATED}) { clientMutationId }
+              }' >/dev/null
+          done
+          printf '%s\n\n%s\n' "$MARKER" "$REPORT" | gh pr comment "$PR_NUMBER" --body-file -
