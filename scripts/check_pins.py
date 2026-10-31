@@ -42,13 +42,15 @@ def steps(text: str) -> list[list[str]]:
 def pins(text: str, action: str, key: str) -> list[str | None]:
     """The value of key in each step of a workflow that uses action, or None
     where that step doesn't set it."""
-    # The whole value, less a trailing comment and quotes, so an unexpected
-    # one (`${{ env.UV }}`, `latest`) is reported as written.
-    key_re = re.compile(rf"^\s*{re.escape(key)}:\s*(?P<value>.*?)\s*(?:\s#.*)?$")
+    # The whole value, less its quotes or a trailing comment, so an unexpected
+    # one (`${{ env.UV }}`, `latest`, `"0.13.6 # x"`) is reported as written.
+    key_re = re.compile(
+        rf"""^\s*{re.escape(key)}:\s*(?:"(?P<double>[^"]*)"|'(?P<single>[^']*)'|(?P<plain>.*?))\s*(?:\s#.*)?$"""
+    )
     found: list[str | None] = []
     for step in steps(text):
         if any((m := _USES_RE.match(line)) and m["action"] == action for line in step):
-            values = [m["value"].strip("\"'") for line in step if (m := key_re.match(line))]
+            values = [next(v for v in m.groups() if v is not None) for line in step if (m := key_re.match(line))]
             found.append(values[0] if values else None)
     return found
 

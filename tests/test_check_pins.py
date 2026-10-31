@@ -37,6 +37,9 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: ${{ env.UV }}  # from the environment
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6 # not a comment"
 """
 
 
@@ -50,6 +53,7 @@ def test_steps_splits_outermost_items_only():
         '- uses: "astral-sh/setup-uv@v5"',
         "- run: echo",
         "- uses: astral-sh/setup-uv@v6",
+        "- uses: astral-sh/setup-uv@v6",
     ]
     assert found[3][-1].strip() == "- --y"
 
@@ -57,7 +61,12 @@ def test_steps_splits_outermost_items_only():
 def test_pins_reads_each_steps_own_input():
     # The unpinned setup-uv in `other` isn't masked by `Other`'s version, and
     # an unexpected value is read as written.
-    assert pins(WORKFLOW, "astral-sh/setup-uv", "version") == ["0.13.6", None, "${{ env.UV }}"]
+    assert pins(WORKFLOW, "astral-sh/setup-uv", "version") == [
+        "0.13.6",
+        None,
+        "${{ env.UV }}",
+        "0.13.6 # not a comment",
+    ]
     assert pins(WORKFLOW, "extractions/setup-just", "just-version") == ["1.58.0"]
 
 
@@ -81,6 +90,7 @@ def test_main_reports_unpinned_and_mismatched_in_yaml_files(repo, capsys):
     assert capsys.readouterr().err.splitlines() == [
         ".github/workflows/a.yaml: a astral-sh/setup-uv step has no version, not 0.13.6",
         ".github/workflows/a.yaml: a astral-sh/setup-uv step has version: ${{ env.UV }}, not 0.13.6",
+        ".github/workflows/a.yaml: a astral-sh/setup-uv step has version: 0.13.6 # not a comment, not 0.13.6",
         ".github/workflows/a.yaml: a extractions/setup-just step has just-version: 1.57.0, not 1.58.0",
     ]
 
