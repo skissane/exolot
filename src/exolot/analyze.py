@@ -351,12 +351,18 @@ class AnalysisSession:
 
         The server only gives them out in the "show all locations" code action
         it offers for the issue, so this asks for that. Best effort: an issue
-        the server gives no locations for is left as it is.
+        the server gives no locations for, or that timeout seconds (for all the
+        issues together) run out before, is left as it is.
         """
         assert self._client is not None
+        deadline = time.monotonic() + timeout
         for issue in issues:
             if not MORE_LOCATIONS.search(issue.message):
                 continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                log.debug("ran out of time getting secondary locations")
+                break
             try:
                 actions = self._client.request(
                     "textDocument/codeAction",
@@ -365,7 +371,7 @@ class AnalysisSession:
                         "range": issue.raw["range"],
                         "context": {"diagnostics": [issue.raw]},
                     },
-                ).result(timeout=timeout)
+                ).result(timeout=remaining)
                 issue.related = [loc for action in actions or [] for loc in _flow_locations(issue.path, action)]
             except Exception:
                 log.debug("could not get the locations of %s", issue, exc_info=True)

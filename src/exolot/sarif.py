@@ -19,12 +19,14 @@ def log(
     version: str,
     rule_names: Mapping[str, str],
     artifact_location: Callable[[Path], dict[str, str]],
+    src_root: str | None = None,
 ) -> dict[str, Any]:
     """A SARIF log with one run holding issues as results, in the order given.
 
     The driver's rules are the rules the issues break, with their names (from
     rule_names, where it has them) as short descriptions. artifact_location
-    gives the artifactLocation of a file, e.g. its path relative to a uriBaseId.
+    gives the artifactLocation of a file, e.g. its path relative to a uriBaseId;
+    src_root, if given, is the URI of the directory %SRCROOT% stands for.
     """
     issues = list(issues)
     rule_ids = sorted({issue.rule for issue in issues})
@@ -49,19 +51,14 @@ def log(
                 {"id": i, **_location(loc, artifact_location)} for i, loc in enumerate(issue.related, start=1)
             ]
         results.append(result)
-    return {
-        "$schema": SCHEMA,
-        "version": "2.1.0",
-        "runs": [
-            {
-                "tool": {
-                    "driver": {"name": "exolot", "version": version, "informationUri": INFORMATION_URI, "rules": rules}
-                },
-                "columnKind": "utf16CodeUnits",
-                "results": results,
-            }
-        ],
+    run: dict[str, Any] = {
+        "tool": {"driver": {"name": "exolot", "version": version, "informationUri": INFORMATION_URI, "rules": rules}}
     }
+    if src_root:
+        run["originalUriBaseIds"] = {"%SRCROOT%": {"uri": src_root}}
+    run["columnKind"] = "utf16CodeUnits"
+    run["results"] = results
+    return {"$schema": SCHEMA, "version": "2.1.0", "runs": [run]}
 
 
 def _location(item: Issue | Location, artifact_location: Callable[[Path], dict[str, str]]) -> dict[str, Any]:

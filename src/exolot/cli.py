@@ -173,7 +173,12 @@ def _report(issues: list[Issue], file_count: int, fmt: str, link_template: str |
 
 def _report_sarif(issues: list[Issue], file_count: int, names: dict[str, str]) -> None:
     issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
-    json.dump(sarif.log(issues, __version__, names, _artifact_location), sys.stdout, indent=2)
+    paths = {i.path for i in issues} | {loc.path for i in issues for loc in i.related}
+    roots = {_repo_root(path.parent) for path in paths} - {None}
+    # %SRCROOT% can only stand for one directory. GitHub code scanning doesn't
+    # need it defined, as it takes paths to be relative to the checkout.
+    src_root = roots.pop().as_uri() + "/" if len(roots) == 1 else None
+    json.dump(sarif.log(issues, __version__, names, _artifact_location, src_root), sys.stdout, indent=2)
     print()
     print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
     sys.stdout.flush()

@@ -115,7 +115,7 @@ while (msg := read()) is not None:
         uri = params["textDocument"]["uri"]
         path = url2pathname(urlparse(uri).path)
         actions = [{"title": "Deactivate rule", "command": {"command": "SonarLint.DeactivateRule", "arguments": []}}]
-        if "NOLOCATIONS" not in Path(path).read_text():
+        if "NOLOCATIONS" not in Path(path).read_text(encoding="utf-8", errors="replace"):
             location = {
                 "textRange": {"startLine": 1, "startLineOffset": 4, "endLine": 1, "endLineOffset": 6},
                 "uri": uri,

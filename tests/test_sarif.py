@@ -5,7 +5,7 @@ import jsonschema
 import pytest
 
 from exolot import __version__, cli, sarif
-from exolot.analyze import Issue, Location
+from exolot.analyze import AnalysisSession, Issue, Location
 from tests.test_analyze import FakeServer
 
 # From https://github.com/oasis-tcs/sarif-spec (sarif-2.1/schema), the OASIS standard's schema with its errata.
@@ -88,6 +88,23 @@ def test_log_maps_issues_to_results():
     assert "relatedLocations" not in results[1]
 
 
+def test_log_defines_srcroot():
+    log = sarif.log([issue()], "1.2.3", {}, relative, "file:///r/")
+    validate(log)
+    assert log["runs"][0]["originalUriBaseIds"] == {"%SRCROOT%": {"uri": "file:///r/"}}
+
+
+def test_related_locations_share_one_timeout(tmp_path):
+    source = tmp_path / "a.py"
+    source.write_text("FLOW\n")
+    with AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path) as session:
+        issues = session.analyze([source], settle=0.2, timeout=10)
+        session.add_related_locations(issues, timeout=0)
+    (flow,) = [i for i in issues if i.rule == "fake:S3"]
+    assert flow.message == "flow issue [+1 location]"
+    assert flow.related == []
+
+
 def test_log_with_no_issues():
     log = sarif.log([], "1.2.3", {}, relative)
     validate(log)
@@ -117,6 +134,7 @@ def test_cli_sarif(tmp_path, monkeypatch, capsys):
     assert status == 1
     assert "3 issue(s) in 2 file(s) analyzed" in err
     (run,) = log["runs"]
+    assert run["originalUriBaseIds"] == {"%SRCROOT%": {"uri": (tmp_path / "repo").resolve().as_uri() + "/"}}
     assert run["tool"]["driver"]["name"] == "exolot"
     assert run["tool"]["driver"]["version"] == __version__
     assert run["tool"]["driver"]["rules"] == [
@@ -160,6 +178,7 @@ def test_cli_sarif_file_outside_a_repo(tmp_path, monkeypatch, capsys):
     cli.main(["--format", "sarif", "--exit-zero", "--workspace", str(tmp_path), str(source)])
     log = json.loads(capsys.readouterr().out)
     validate(log)
+    assert "originalUriBaseIds" not in log["runs"][0]
     location = log["runs"][0]["results"][0]["locations"][0]["physicalLocation"]
     assert location["artifactLocation"] == {"uri": source.resolve().as_uri()}
 
