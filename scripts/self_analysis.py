@@ -33,7 +33,7 @@ POLICY = (
     "`NOSONAR` or `noqa`. See {agents} for more."
 )
 
-_HUNK_RE = re.compile(r"^@@ -\S+ \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
+_HUNK_RE = re.compile(r"^@@ -\d+(?:,(?P<old>\d+))? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
 
 
 def changed_lines(base: str) -> dict[str, set[int]]:
@@ -49,17 +49,25 @@ def changed_lines(base: str) -> dict[str, set[int]]:
 
 
 def parse_diff(diff: str) -> dict[str, set[int]]:
+    """The lines of each file that a `git diff --unified=0` adds or changes."""
     lines: dict[str, set[int]] = {}
     path = None
+    # Lines left in the current hunk, which can look like headers: a removed
+    # "-- x" shows as "--- x" and an added "++ x" as "+++ x".
+    in_hunk = 0
     for line in diff.splitlines():
-        if line.startswith("+++ "):
+        if in_hunk and line[:1] in ("+", "-"):
+            in_hunk -= 1
+        elif line.startswith("+++ "):
             # Git ends the header with a tab when the path has a space in it.
             target = line[4:].split("\t", 1)[0]
             path = target[2:] if target.startswith("b/") else None
-        elif path is not None and (m := _HUNK_RE.match(line)):
+        elif m := _HUNK_RE.match(line):
             start = int(m["start"])
             count = 1 if m["count"] is None else int(m["count"])
-            lines.setdefault(path, set()).update(range(start, start + count))
+            in_hunk = (1 if m["old"] is None else int(m["old"])) + count
+            if path is not None:
+                lines.setdefault(path, set()).update(range(start, start + count))
     return lines
 
 

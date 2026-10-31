@@ -24,7 +24,7 @@ When you add a step to CI, add it as a recipe and include it in `check`, `fix` o
 
 CI's `self-analysis` job runs exolot on its own code (`just self-analyze --exit-zero`, which you can run yourself; it downloads the language server like `just integration`).
 It lists the findings in its job summary and, on PRs from this repository other than Dependabot's, posts them as a PR comment (the `post-self-analysis` job, `scripts/self_analysis.py`), with the ones on lines the PR changes first; each run hides the previous run's comment as outdated.
-The findings are for information only: `--exit-zero` means they never fail CI, only a failed analysis does.
+The findings are for information only: `--exit-zero` means findings never fail the job, though a failed analysis still does.
 
 - Use your judgement: fix a finding when it points at a real bug or a change that makes the code clearer, and ignore the rest, e.g. cognitive-complexity warnings on code that's clear enough as it is, or a "function always returns the same value" on one that's meant to.
 - Pay most attention to findings on lines your PR changes. Don't widen a PR to fix findings elsewhere unless asked.

@@ -12,11 +12,14 @@ DIFF = """\
 diff --git a/src/a.py b/src/a.py
 --- a/src/a.py
 +++ b/src/a.py
-@@ -3 +3,2 @@ def f():
+@@ -3,2 +3,2 @@ def f():
 -    x = 1
+--- not a header
 +    x = 2
-+    y = 3
+++++ b/not a header
 @@ -10,2 +10,0 @@ def g():
+-    a = 1
+-    b = 2
 @@ -20,0 +21 @@
 +z = 4
 diff --git a/old.py b/old.py
