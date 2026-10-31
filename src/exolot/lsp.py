@@ -45,6 +45,13 @@ class LspClient:
     def start(self) -> None:
         self._reader.start()
 
+    def close(self) -> None:
+        """Close the pipes to the server. Call this once the server has exited."""
+        self._stdin.close()
+        if self._reader.is_alive():
+            self._reader.join()
+        self._stdout.close()
+
     def on_request(self, method: str, handler: Handler) -> None:
         self._request_handlers[method] = handler
 

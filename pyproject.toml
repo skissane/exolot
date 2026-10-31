@@ -51,3 +51,6 @@ skip_empty = true
 
 [tool.coverage.xml]
 output = "coverage.xml"
+
+[tool.pytest.ini_options]
+filterwarnings = ["error"]
