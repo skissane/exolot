@@ -11,6 +11,17 @@ import urllib.request
 API_URL = "https://api.github.com"
 
 
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    """Leaves every redirect to request(), which urlopen's default handler
+    would follow for a GET with the token still attached, even to another host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirects)
+
+
 def request(
     method: str,
     url: str,
@@ -21,8 +32,8 @@ def request(
     content_type: str | None = None,
 ):
     """Send an API request and return its decoded JSON response (None if empty).
-    A 307/308 redirect is followed with the same method and body, keeping the
-    token only if the host is unchanged."""
+    A 301/302/307/308 redirect (GitHub's for a renamed repo) is followed with
+    the same method and body, keeping the token only if the host is unchanged."""
     if json_body is not None:
         data = json.dumps(json_body).encode()
         content_type = "application/json"
@@ -35,12 +46,12 @@ def request(
         if urllib.parse.urlsplit(url).hostname == host:
             req.add_header("Authorization", f"Bearer {token}")
         try:
-            with urllib.request.urlopen(req, timeout=60) as response:
+            with _opener.open(req, timeout=60) as response:
                 payload = response.read()
             return json.loads(payload) if payload else None
         except urllib.error.HTTPError as e:
             location = e.headers.get("Location")
-            if e.code not in (307, 308) or not location:
+            if e.code not in (301, 302, 307, 308) or not location:
                 raise
             e.close()
             url = urllib.parse.urljoin(url, location)

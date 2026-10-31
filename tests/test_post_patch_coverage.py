@@ -162,6 +162,13 @@ def test_lists_become_tables(run):
     ]
 
 
+def test_awkward_paths_stay_in_their_cell(run):
+    report = HEAD.replace("- a&#46;py (50.0%)", "- a|b`c&#46;py (50.0%)")
+    code, _, requests = run(report=report)
+    assert code == 0
+    assert "| `` a\\|b`c.py `` | 50.0% | 2 |" in writes(requests)[0][3]["body"]
+
+
 def test_long_report_truncated(run):
     lines = "\n".join(f"  {n} x = {n}" for n in range(20_000))
     report = f"{HEAD}\n## a.py\n\n```python\n{lines}\n```\n"

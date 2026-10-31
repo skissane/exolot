@@ -1,4 +1,5 @@
 import urllib.error
+import urllib.request
 from unittest import mock
 
 import pytest
@@ -18,7 +19,7 @@ def redirect(url, location):
 
 
 def test_sends_json_with_token():
-    with mock.patch("urllib.request.urlopen", return_value=response(b'{"a": 1}')) as urlopen:
+    with mock.patch("scripts.github_comments._opener.open", return_value=response(b'{"a": 1}')) as urlopen:
         result = request("POST", "https://api.github.com/x", "tok", json_body={"b": 2})
     assert result == {"a": 1}
     req = urlopen.call_args.args[0]
@@ -30,7 +31,7 @@ def test_sends_json_with_token():
 
 
 def test_empty_response_is_none():
-    with mock.patch("urllib.request.urlopen", return_value=response(b"")):
+    with mock.patch("scripts.github_comments._opener.open", return_value=response(b"")):
         assert request("DELETE", "https://api.github.com/x", "tok") is None
 
 
@@ -40,7 +41,7 @@ def test_follows_redirects_dropping_token_off_host():
         redirect("https://uploads.github.com/b", "https://elsewhere.example/c"),
         response(b'{"url": "u"}'),
     ]
-    with mock.patch("urllib.request.urlopen", side_effect=responses) as urlopen:
+    with mock.patch("scripts.github_comments._opener.open", side_effect=responses) as urlopen:
         result = request("POST", "https://uploads.github.com/a", "tok", data=b"png")
     assert result == {"url": "u"}
     sent = [c.args[0] for c in urlopen.call_args_list]
@@ -53,9 +54,25 @@ def test_follows_redirects_dropping_token_off_host():
     assert [r.get_header("Authorization") for r in sent] == ["Bearer tok", "Bearer tok", None]
 
 
+def test_follows_get_redirects_itself():
+    # As urlopen's default handler would, with the token, to any host.
+    responses = [redirect("https://api.github.com/a", "https://elsewhere.example/b"), response(b"{}")]
+    responses[0].code = 301
+    with mock.patch("scripts.github_comments._opener.open", side_effect=responses) as urlopen:
+        request("GET", "https://api.github.com/a", "tok")
+    assert [c.args[0].get_header("Authorization") for c in urlopen.call_args_list] == ["Bearer tok", None]
+
+
+def test_opener_does_not_follow_redirects():
+    req = urllib.request.Request("https://api.github.com/a")
+    assert github_comments._NoRedirects().redirect_request(req, None, 302, "Found", {}, "https://x.example/") is None
+
+
 def test_too_many_redirects():
     with (
-        mock.patch("urllib.request.urlopen", side_effect=[redirect("https://api.github.com/x", "/x")] * 5),
+        mock.patch(
+            "scripts.github_comments._opener.open", side_effect=[redirect("https://api.github.com/x", "/x")] * 5
+        ),
         pytest.raises(RuntimeError, match="too many redirects"),
     ):
         request("GET", "https://api.github.com/x", "tok")
@@ -65,7 +82,7 @@ def test_other_errors_raised():
     error = urllib.error.HTTPError("https://api.github.com/x", 404, "Not Found", {}, None)
     with (
         error,
-        mock.patch("urllib.request.urlopen", side_effect=error),
+        mock.patch("scripts.github_comments._opener.open", side_effect=error),
         pytest.raises(urllib.error.HTTPError),
     ):
         request("GET", "https://api.github.com/x", "tok")
