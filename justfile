@@ -135,8 +135,12 @@ lint-workflows:
 check-pins:
     uv run --no-project python -m scripts.check_pins
 
+# Check that every actions/checkout step sets persist-credentials, so none keeps its token by default
+check-checkout-credentials:
+    uv run --no-project python -m scripts.check_checkout_credentials
+
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check lint-workflows check-pins
+check: lint fmt-check lint-workflows check-pins check-checkout-credentials
 
 # Reformat code and autofix lint issues. Formatting first fixes the long lines it
 # can, so lint-fix stops only on findings that need a hand edit.

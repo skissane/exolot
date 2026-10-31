@@ -17,6 +17,8 @@ Codecov works out a PR's comparison with its base commit's report only when the 
 `just ci` leaves out CI's `integration` job, which runs `just integration` (the end-to-end tests, which download the ~250 MB language server); run it yourself when you change how exolot talks to the server or unpacks it.
 CI pins its tools: every `setup-uv` step sets `version` to the minimum in `pyproject.toml`'s `[tool.uv] required-version`, every `setup-just` step sets `just-version` to the `justfile`'s `minimum-version`, and `.python-version` names an exact Python patch release (the test matrix overrides it with each minor version).
 To upgrade uv or just, change the minimum and every workflow's pin together; `just check-pins` (part of `just check`) fails if they differ.
+Every `actions/checkout` step sets `persist-credentials`: `false`, or `true` only in a job that pushes with the checkout's token, with a comment saying so; `just check-checkout-credentials` (part of `just check`) fails on one that doesn't.
+jactionlint's `artipacked` rule can't enforce this, as it skips checkout v6 and later, which still leave the token readable by every later step.
 Workflows pin every action to a full commit SHA with its version in a comment (`uses: actions/checkout@<sha> # v4.4.0`), which Dependabot keeps updated weekly; `just lint-workflows` fails on a tag or branch, or a SHA with no comment.
 When you add a step to CI, add it as a recipe and include it in `check`, `fix` or `ci` as fits, so `just ci` keeps matching CI.
 

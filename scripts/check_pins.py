@@ -13,6 +13,7 @@ JUST = ("extractions/setup-just", "just-version")
 
 _STEP_RE = re.compile(r"^(?P<indent>\s*)- ")
 _USES_RE = re.compile(r"^\s*(?:- )?uses:\s*[\"']?(?P<action>[^@\s\"']+)@")
+_WITH_RE = re.compile(r"^(?:- )?with:\s*(?:#.*)?$")
 _JUST_MIN_RE = re.compile(r"^set minimum-version := '(?P<version>[^']+)'$", re.MULTILINE)
 
 
@@ -39,9 +40,33 @@ def steps(text: str) -> list[list[str]]:
     return result
 
 
+def inputs(step: list[str]) -> list[str]:
+    """The lines of a step's `with:` mapping that start one of its keys, so
+    that a key in another of the step's mappings (`env:`), or a line of a
+    multi-line value (`sparse-checkout: |`), isn't taken for an input."""
+    found: list[str] = []
+    indent = None  # of the `with:` key, while in its mapping
+    child = None  # of the mapping's keys, once seen
+    for line in step:
+        stripped = line.strip()
+        depth = len(line) - len(line.lstrip())
+        if not stripped or stripped.startswith("#"):
+            continue
+        if indent is not None and depth > indent:
+            child = child or depth
+            if depth == child:
+                found.append(line)
+        elif _WITH_RE.match(stripped):
+            indent = depth + (2 if stripped.startswith("- ") else 0)
+            child = None
+        else:
+            indent = None
+    return found
+
+
 def pins(text: str, action: str, key: str) -> list[str | None]:
-    """The value of key in each step of a workflow that uses action, or None
-    where that step doesn't set it."""
+    """The value of input key in each step of a workflow that uses action, or
+    None where that step doesn't set it."""
     # The whole value, less its quotes or a trailing comment, so an unexpected
     # one (`${{ env.UV }}`, `latest`, `"0.13.6 # x"`) is reported as written.
     key_re = re.compile(
@@ -50,7 +75,9 @@ def pins(text: str, action: str, key: str) -> list[str | None]:
     found: list[str | None] = []
     for step in steps(text):
         if any((m := _USES_RE.match(line)) and m["action"] == action for line in step):
-            values = [next(v for v in m.groups() if v is not None) for line in step if (m := key_re.match(line))]
+            values = [
+                next(v for v in m.groups() if v is not None) for line in inputs(step) if (m := key_re.match(line))
+            ]
             found.append(values[0] if values else None)
     return found
 
