@@ -233,3 +233,19 @@ def test_cli_rejects_bad_link_templates_without_downloading(tmp_path, monkeypatc
         cli.main([*flags, str(tmp_path)])
     assert exc.value.code == 2
     assert error in capsys.readouterr().err
+
+
+def test_cli_markdown_paths_are_relative_to_the_repo_root(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    repo = tmp_path / "repo"
+    sub = repo / "sub"
+    sub.mkdir(parents=True)
+    (repo / ".git").mkdir()
+    (sub / "a.py").write_text("x = 1\n")
+    outside = tmp_path / "b.py"
+    outside.write_text("x = 1\n")
+    monkeypatch.chdir(sub)
+    cli.main(["--format", "markdown", "--link-template", "u/{path}", "--workspace", str(repo), "a.py", str(outside)])
+    out = capsys.readouterr().out
+    assert "| [sub/a.py:1](u/sub/a.py) |" in out
+    assert "| [../../b.py:1](u/../../b.py) |" in out

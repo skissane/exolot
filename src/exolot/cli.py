@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import logging
 import os
@@ -44,7 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--link-template",
         type=_link_template,
         metavar="TEMPLATE",
-        help="with --format markdown, link each location to this URL, filling in {path} (URL-quoted), {line}, "
+        help="with --format markdown, link each location to this URL, filling in {path} (URL-quoted, relative to "
+        "the git repo's root), {line}, "
         "{column}, {end_line} and {end_column}, e.g. 'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}'",
     )
     analyze.add_argument(
@@ -148,7 +150,10 @@ def _report(issues: list[Issue], file_count: int, fmt: str, link_template: str |
         json.dump([_issue_json(i) for i in issues], sys.stdout, indent=2)
         print()
     elif fmt == "markdown":
-        lines = markdown.findings_table(map(_issue_json, issues), link_template) if issues else ["No issues found."]
+        # Relative to the repo root rather than the current directory, so
+        # links to the repo's code work from any subdirectory.
+        findings = [{**_issue_json(i), "path": _repo_path(i.path)} for i in issues]
+        lines = markdown.findings_table(findings, link_template) if issues else ["No issues found."]
         print("\n".join(lines))
         print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
     else:
@@ -184,6 +189,23 @@ def _display_path(path: Path) -> str:
         return os.path.relpath(path)
     except ValueError:  # different drive on Windows
         return str(path)
+
+
+def _repo_path(path: Path) -> str:
+    """path relative to the root of the git repository holding it, or as
+    _display_path gives it when it's in none."""
+    root = _repo_root(path.parent)
+    return path.relative_to(root).as_posix() if root else _display_path(path)
+
+
+@functools.cache
+def _repo_root(directory: Path) -> Path | None:
+    """The nearest of directory and its parents with a .git directory or file
+    (a submodule's or worktree's), if any."""
+    for d in (directory, *directory.parents):
+        if (d / ".git").exists():
+            return d
+    return None
 
 
 def _issue_json(issue: Issue) -> dict[str, object]:

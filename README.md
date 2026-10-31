@@ -70,6 +70,9 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
 - `--format markdown` prints the issues as a GitHub-flavoured Markdown table
   (Location, Rule and Message), with characters Markdown or HTML would
   interpret escaped, and `--statistics` as a Count, Rule and Name table.
+  Its paths are relative to the root of the git repository each file is in
+  (so links work from any subdirectory), or to the current directory for
+  files outside one.
 - `--link-template TEMPLATE` (with `--format markdown`) links each location to
   a URL made from TEMPLATE, filling in `{path}` (URL-quoted, with forward
   slashes), `{line}`, `{column}`, `{end_line}` and `{end_column}`, e.g.
