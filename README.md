@@ -87,5 +87,6 @@ Development uses [uv](https://docs.astral.sh/uv/) and [just](https://just.system
 just sync
 uv run exolot --help
 just test
+just fix   # reformat and autofix lint issues with ruff
 just ci    # what CI's build job runs
 ```
