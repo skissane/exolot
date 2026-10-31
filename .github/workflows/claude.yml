@@ -51,7 +51,8 @@ jobs:
         6. Note anything in the workflow that looks likely to stop a normal "@claude" run working.
 
         Your final message is posted as a comment on the PR, so make it a short Markdown
-        report: a table of each check with pass, fail or skipped, then any problems found.
+        report with no heading, as the workflow adds one: a table of each check with pass,
+        fail or skipped, then any problems found.
     permissions:
       contents: read
       pull-requests: read
