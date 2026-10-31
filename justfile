@@ -103,24 +103,7 @@ lint-workflows:
 
 # Check that every workflow installs the uv version pyproject.toml requires and the just version the justfile requires
 check-pins:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    uv_min="$(sed -n 's/^required-version = ">=\(.*\)"$/\1/p' pyproject.toml)"
-    just_min="$(sed -n "s/^set minimum-version := '\(.*\)'$/\1/p" justfile)"
-    status=0
-    check() {
-        local action="$1" key="$2" want="$3" found uses
-        found="$(grep -A4 "uses: ${action}@" .github/workflows/*.yml | grep -c "${key}: \"${want}\"" || true)"
-        uses="$(grep -c "uses: ${action}@" .github/workflows/*.yml | awk -F: '{n += $2} END {print n}')"
-        if [ -z "$want" ] || [ "$found" != "$uses" ]; then
-            echo "${found} of ${uses} ${action} steps set ${key}: \"${want}\"" >&2
-            status=1
-        fi
-    }
-    check astral-sh/setup-uv version "$uv_min"
-    check extractions/setup-just just-version "$just_min"
-    [ "$status" = 0 ] && echo "workflows pin uv ${uv_min} and just ${just_min}"
-    exit "$status"
+    uv run --no-project python -m scripts.check_pins
 
 # Run all checks, without fixing anything or running tests
 check: lint fmt-check lint-workflows check-pins
