@@ -9,6 +9,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,(?P<old>\d+))? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
+# The escapes in the C-style quoted paths git gives for names with control
+# characters, double quotes or backslashes in them.
+_ESCAPE_RE = re.compile(r"\\([0-7]{1,3}|.)")
+_ESCAPES = {"a": "\a", "b": "\b", "t": "\t", "n": "\n", "v": "\v", "f": "\f", "r": "\r"}
 
 
 class GitError(Exception):
@@ -38,7 +42,8 @@ def changes_since(base: str, cwd: Path | None = None) -> Changes:
     and HEAD: committed or not, plus the files git doesn't track yet (and
     doesn't ignore). Raises GitError if git fails, e.g. base doesn't name a
     commit or, in a shallow clone, the merge base hasn't been fetched."""
-    root = Path(_git(["rev-parse", "--show-toplevel"], cwd, "not in a git repository").strip()).resolve()
+    toplevel = _git(["rev-parse", "--show-toplevel"], cwd, "not in a git repository")
+    root = Path(toplevel.removesuffix("\n")).resolve()
     _git(["rev-parse", "--verify", "--quiet", f"{base}^{{commit}}"], root, f"can't find commit {base!r}")
     merge_base = _git(
         ["merge-base", base, "HEAD"],
@@ -48,9 +53,14 @@ def changes_since(base: str, cwd: Path | None = None) -> Changes:
     diff = _git(
         [
             "diff",
+            # Whatever the user's diff.interHunkContext, so there are no
+            # context lines.
             "--unified=0",
+            "--inter-hunk-context=0",
             "--no-color",
+            # The files' own lines, not what a textconv driver makes of them.
             "--no-ext-diff",
+            "--no-textconv",
             "--no-renames",
             # Whatever the user's diff.noprefix or diff.mnemonicPrefix.
             "--src-prefix=a/",
@@ -94,7 +104,8 @@ def parse_diff(diff: str) -> dict[str, set[int]]:
             in_hunk -= 1
         elif line.startswith("+++ "):
             # Git ends the header with a tab when the path has a space in it.
-            target = line[4:].split("\t", 1)[0]
+            target = line[4:]
+            target = _unquote(target) if target.startswith('"') else target.split("\t", 1)[0]
             path = target[2:] if target.startswith("b/") else None
         elif m := _HUNK_RE.match(line):
             start = int(m["start"])
@@ -103,3 +114,12 @@ def parse_diff(diff: str) -> dict[str, set[int]]:
             if path is not None:
                 lines.setdefault(path, set()).update(range(start, start + count))
     return lines
+
+
+def _unquote(quoted: str) -> str:
+    """A path as git quotes it ("b/a\\tb"), unquoted. With core.quotePath
+    off, git escapes only ASCII characters, so each octal escape is one."""
+    return _ESCAPE_RE.sub(
+        lambda m: chr(int(m[1], 8)) if m[1][0].isdigit() else _ESCAPES.get(m[1], m[1]),
+        quoted[1 : quoted.rindex('"')],
+    )

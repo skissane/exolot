@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--link-template needs --format markdown, without --statistics")
     if getattr(args, "statistics", False) and args.format == "sarif":
         parser.error("--statistics can't be used with --format sarif")
-    if getattr(args, "changed_only", False) and not args.diff_base:
+    if getattr(args, "changed_only", False) and args.diff_base is None:
         parser.error("--changed-only needs --diff-base")
 
     logging.basicConfig(
@@ -124,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             files = collect_files(args.paths)
             rules = json.loads(args.rules.read_text()) if args.rules else None
-            changes = gitdiff.changes_since(args.diff_base) if args.diff_base else None
+            changes = gitdiff.changes_since(args.diff_base) if args.diff_base is not None else None
         except (OSError, ValueError, gitdiff.GitError) as e:
             print(f"exolot: {e}", file=sys.stderr)
             return 2

@@ -1,4 +1,5 @@
 import subprocess
+import sys
 
 import pytest
 
@@ -71,6 +72,35 @@ def test_changes_ignore_the_users_diff_prefix_settings(repo):
     git(repo, "config", "diff.noprefix", "true")
     (repo / "a.py").write_text("ONE\ntwo\nthree\n")
     assert changes_since("master", repo).lines == {repo / "a.py": {1}}
+
+
+def test_changes_ignore_the_users_context_and_textconv_settings(repo):
+    git(repo, "config", "diff.interHunkContext", "10")
+    git(repo, "config", "diff.upper.textconv", "tr a-z A-Z <")
+    (repo / ".gitattributes").write_text("*.py diff=upper\n")
+    git(repo, "add", ".gitattributes")
+    git(repo, "commit", "-q", "-m", "attributes")
+    (repo / "a.py").write_text("ONE\ntwo\nthree!\n")
+    assert changes_since("master", repo).lines[repo / "a.py"] == {1, 3}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows file names can't have tabs or quotes")
+def test_changes_to_files_git_quotes_the_names_of(repo):
+    name = 'tab\t"quote"\\ é.py'
+    (repo / name).write_text("x\n")
+    git(repo, "add", name)
+    assert changes_since("master", repo).lines == {repo / name: {1}}
+
+
+def test_changes_in_a_repo_whose_path_ends_in_a_space(repo):
+    spaced = repo.rename(repo.with_name("repo "))
+    (spaced / "a.py").write_text("ONE\ntwo\nthree\n")
+    assert changes_since("master", spaced).lines == {spaced / "a.py": {1}}
+
+
+def test_parse_diff_unquotes_paths():
+    diff = '+++ "b/a\\tb\\001\\"\\\\\\q.py"\n@@ -0,0 +1 @@\n+x\n'
+    assert parse_diff(diff) == {'a\tb\x01"\\q.py': {1}}
 
 
 def test_changes_since_an_unknown_ref(repo):

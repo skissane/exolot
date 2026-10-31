@@ -321,6 +321,8 @@ def test_cli_diff_base_errors_exit_2_without_downloading(repo, monkeypatch, caps
     monkeypatch.chdir(repo)
     assert cli.main(["--diff-base", "nope"]) == 2
     assert "exolot: can't find commit 'nope'" in capsys.readouterr().err
+    assert cli.main(["--diff-base", ""]) == 2
+    assert "exolot: can't find commit ''" in capsys.readouterr().err
 
 
 def test_cli_changed_only_needs_diff_base(tmp_path, monkeypatch, capsys):
