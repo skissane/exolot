@@ -25,4 +25,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-dev = ["jactionlint>=2.4.0", "pytest>=8"]
+dev = ["jactionlint>=2.4.0", "pytest>=8", "ruff>=0.14"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "PLC0415", "RUF100"]
