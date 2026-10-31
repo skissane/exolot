@@ -24,6 +24,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ secrets.GH_ACTIONS_TOKEN }}
+          # The branch push below uses the stored token.
+          persist-credentials: true
           ref: master
           fetch-depth: 0
 
