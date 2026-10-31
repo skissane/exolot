@@ -156,13 +156,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.format == "sarif" and issues:
                 session.add_related_locations(issues)
             elif changes is not None and (args.changed_only or not args.statistics):
-                # An issue whose secondary locations are on changed lines
-                # counts as changed too, e.g. a function's complexity, where
-                # only the nesting a change added is.
-                changed_files = changes.files()
-                candidates = [i for i in issues if i.path in changed_files and not _on_changed_lines(i, changes)]
-                if candidates:
-                    session.add_related_locations(candidates, keep_message=True)
+                _add_changed_related_locations(session, issues, changes)
             if changes is not None and args.changed_only:
                 issues = [i for i in issues if _on_changed_lines(i, changes)]
             # Report before the server shuts down, which can take a few seconds.
@@ -282,6 +276,16 @@ def _repo_root(directory: Path) -> Path | None:
         if (d / ".git").exists():
             return d
     return None
+
+
+def _add_changed_related_locations(session: AnalysisSession, issues: list[Issue], changes: gitdiff.Changes) -> None:
+    """Fill in the secondary locations of the issues in changed files whose
+    own range is unchanged, as one of those might be changed, e.g. the
+    nesting a change adds to a function with a complexity issue."""
+    changed_files = changes.files()
+    candidates = [i for i in issues if i.path in changed_files and not _on_changed_lines(i, changes)]
+    if candidates:
+        session.add_related_locations(candidates, keep_message=True)
 
 
 def _on_changed_lines(issue: Issue, changes: gitdiff.Changes) -> bool:
