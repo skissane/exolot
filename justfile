@@ -99,7 +99,7 @@ fmt-check:
 
 # Lint the GitHub Actions workflows with jactionlint
 lint-workflows:
-    uv run --group dev jactionlint --profile correctness
+    uv run --group dev jactionlint
 
 # Check that every workflow installs the uv version pyproject.toml requires and the just version the justfile requires
 check-pins:
