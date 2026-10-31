@@ -11,6 +11,8 @@ CI (`.github/workflows/build.yml`) calls the `justfile`'s recipes rather than ru
 Before opening a PR, also run `just patch-coverage`, which runs `just coverage` (tests with a coverage report and `coverage.xml`) and then reports which changed lines since `origin/master` the tests miss; pass another base as its first argument, e.g. `just patch-coverage origin/some-branch`.
 Cover the changed lines it reports where a test is worth it; CI's coverage job shows total coverage in its summary on every push and PR, and the patch coverage report too on PRs, which its `post-patch-coverage` job also posts as a PR comment (`just patch-coverage-post`) on PRs from this repository other than Dependabot's; there is no threshold to fail on.
 `just ci` leaves out CI's `integration` job, which runs `just integration` (the end-to-end tests, which download the ~250 MB language server); run it yourself when you change how exolot talks to the server or unpacks it.
+CI pins its tools: every `setup-uv` step sets `version` to the minimum in `pyproject.toml`'s `[tool.uv] required-version`, every `setup-just` step sets `just-version` to the `justfile`'s `minimum-version`, and `.python-version` names an exact Python patch release (the test matrix overrides it with each minor version).
+To upgrade uv or just, change the minimum and every workflow's pin together; `just check-pins` (part of `just check`) fails if they differ.
 When you add a step to CI, add it as a recipe and include it in `check`, `fix` or `ci` as fits, so `just ci` keeps matching CI.
 
 ## Test warnings policy

@@ -101,8 +101,29 @@ fmt-check:
 lint-workflows:
     uv run --group dev jactionlint --profile correctness
 
+# Check that every workflow installs the uv version pyproject.toml requires and the just version the justfile requires
+check-pins:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv_min="$(sed -n 's/^required-version = ">=\(.*\)"$/\1/p' pyproject.toml)"
+    just_min="$(sed -n "s/^set minimum-version := '\(.*\)'$/\1/p" justfile)"
+    status=0
+    check() {
+        local action="$1" key="$2" want="$3" found uses
+        found="$(grep -A4 "uses: ${action}@" .github/workflows/*.yml | grep -c "${key}: \"${want}\"" || true)"
+        uses="$(grep -c "uses: ${action}@" .github/workflows/*.yml | awk -F: '{n += $2} END {print n}')"
+        if [ -z "$want" ] || [ "$found" != "$uses" ]; then
+            echo "${found} of ${uses} ${action} steps set ${key}: \"${want}\"" >&2
+            status=1
+        fi
+    }
+    check astral-sh/setup-uv version "$uv_min"
+    check extractions/setup-just just-version "$just_min"
+    [ "$status" = 0 ] && echo "workflows pin uv ${uv_min} and just ${just_min}"
+    exit "$status"
+
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check lint-workflows
+check: lint fmt-check lint-workflows check-pins
 
 # Reformat code and autofix lint issues. Formatting first fixes the long lines it
 # can, so lint-fix stops only on findings that need a hand edit.
