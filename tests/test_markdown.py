@@ -1,5 +1,6 @@
 import pytest
 
+from exolot import markdown
 from exolot.markdown import check_link_template, escape, findings_table, link, statistics_table
 
 
@@ -60,4 +61,34 @@ def test_statistics_table():
         "| ---: | --- | --- |",
         "| 2 | python:S1 | Rule \\<one\\> |",
         "| 1 | x:S\\_2 |  |",
+    ]
+
+
+def test_changed_findings_sections():
+    findings = [
+        {"path": "a.py", "line": 1, "column": 1, "rule": "r", "message": "m", "changed": True},
+        {"path": "b.py", "line": 2, "column": 1, "rule": "r", "message": "m", "changed": False},
+    ]
+    assert markdown.changed_findings_sections(findings, heading="New") == [
+        "### New (1)",
+        "",
+        "| Location | Rule | Message |",
+        "| --- | --- | --- |",
+        "| a.py:1 | r | m |",
+        "",
+        "<details>",
+        "<summary>Elsewhere (1)</summary>",
+        "",
+        "| Location | Rule | Message |",
+        "| --- | --- | --- |",
+        "| b.py:2 | r | m |",
+        "",
+        "</details>",
+    ]
+    assert markdown.changed_findings_sections(findings[:1]) == [
+        "### On changed lines (1)",
+        "",
+        "| Location | Rule | Message |",
+        "| --- | --- | --- |",
+        "| a.py:1 | r | m |",
     ]

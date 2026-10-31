@@ -38,6 +38,7 @@ uvx exolot --format json .     # machine-readable output
 uvx exolot --format markdown . # a Markdown table, e.g. for a PR comment
 uvx exolot --format sarif .    # SARIF 2.1.0, e.g. for GitHub code scanning
 uvx exolot --statistics .      # count issues per rule, most common first
+uvx exolot --diff-base origin/main --changed-only  # only issues on lines your branch changes
 uvx exolot install             # just download and unpack the server
 uvx exolot cache-dir           # show where the server is cached
 ```
@@ -89,6 +90,23 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   `%SRCROOT%`, the root of the git repository each file is in (defined in the
   run's `originalUriBaseIds` when all the files are in one repository), or
   absolute `file:` URIs for files outside one. It can't be combined with `--statistics`.
+- `--diff-base REF` marks the issues on lines changed since the merge base of
+  REF and `HEAD`, like SonarQube's "new code": lines added or modified in the
+  working tree (committed or not), and every line of files git doesn't track
+  yet (unless it ignores them). It looks at the git repository the current
+  directory is in; issues in files outside it count as unchanged. JSON output
+  gets a `"changed": true` or `false` field, Markdown output puts the issues on
+  changed lines first and collapses the rest under "Elsewhere", and text
+  output ends those lines with `(changed)` and counts them in its summary.
+  The exit status still counts every issue, and `--statistics` and SARIF
+  output are unaffected. It exits with status 2 if git isn't installed, REF
+  isn't a commit, or the merge base can't be found (in a shallow clone, such
+  as `actions/checkout`'s default, fetch enough history first, e.g. with
+  `fetch-depth: 0`).
+- `--changed-only` (with `--diff-base`) analyzes only the files with changed
+  lines, and reports only the issues on changed lines, in every format; the
+  exit status and `--statistics` count only those. This lets a project adopt
+  exolot in CI without fixing its existing issues first.
 - `-v` / `--verbose` shows the server's logs.
 
 ## GitHub code scanning

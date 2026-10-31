@@ -10,7 +10,7 @@ import urllib.parse
 from collections import Counter
 from pathlib import Path
 
-from . import __version__, markdown, sarif
+from . import __version__, gitdiff, markdown, sarif
 from .analyze import AnalysisSession, Issue, collect_files
 from .server import DEFAULT_SERVER_VERSION, ServerError, cache_dir, detect_platform, ensure_server
 
@@ -64,6 +64,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="show the number of issues for each rule, most common first, instead of the issues",
     )
     analyze.add_argument(
+        "--diff-base",
+        metavar="REF",
+        help="mark the issues on lines changed since the merge base of REF and HEAD (committed or not, "
+        "and in files git doesn't track yet), in the git repository the current directory is in",
+    )
+    analyze.add_argument(
+        "--changed-only",
+        action="store_true",
+        help="with --diff-base, analyze only the changed files, and report and count only the issues on changed lines",
+    )
+    analyze.add_argument(
         "-e",
         "--exit-zero",
         action="store_true",
@@ -92,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--link-template needs --format markdown, without --statistics")
     if getattr(args, "statistics", False) and args.format == "sarif":
         parser.error("--statistics can't be used with --format sarif")
+    if getattr(args, "changed_only", False) and not args.diff_base:
+        parser.error("--changed-only needs --diff-base")
 
     logging.basicConfig(
         level=logging.INFO if getattr(args, "verbose", False) else logging.WARNING,
@@ -111,9 +124,13 @@ def main(argv: list[str] | None = None) -> int:
         try:
             files = collect_files(args.paths)
             rules = json.loads(args.rules.read_text()) if args.rules else None
-        except (OSError, ValueError) as e:
+            changes = gitdiff.changes_since(args.diff_base) if args.diff_base else None
+        except (OSError, ValueError, gitdiff.GitError) as e:
             print(f"exolot: {e}", file=sys.stderr)
             return 2
+        if changes is not None and args.changed_only:
+            changed_files = changes.files()
+            files = [f for f in files if f in changed_files]
         if not files:
             print("exolot: no files to analyze", file=sys.stderr)
             return 0
@@ -136,6 +153,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with AnalysisSession(server, workspace, rules=rules, node=args.node, verbose=args.verbose) as session:
             issues = session.analyze(files, timeout=args.timeout)
+            if changes is not None and args.changed_only:
+                issues = [i for i in issues if changes.touches(i.path, i.line)]
             # Report before the server shuts down, which can take a few seconds.
             if args.statistics:
                 _report_statistics(issues, len(files), args.format, session.rule_names() if issues else {})
@@ -144,30 +163,49 @@ def main(argv: list[str] | None = None) -> int:
                     session.add_related_locations(issues)
                 _report_sarif(issues, len(files), session.rule_names() if issues else {})
             else:
-                _report(issues, len(files), args.format, args.link_template)
+                _report(issues, len(files), args.format, args.link_template, None if args.changed_only else changes)
     except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
         print(f"exolot: {e}", file=sys.stderr)
         return 2
     return 1 if issues and not args.exit_zero else 0
 
 
-def _report(issues: list[Issue], file_count: int, fmt: str, link_template: str | None = None) -> None:
+def _report(
+    issues: list[Issue],
+    file_count: int,
+    fmt: str,
+    link_template: str | None = None,
+    changes: gitdiff.Changes | None = None,
+) -> None:
+    """Print the issues; with changes (from --diff-base without
+    --changed-only), saying which are on changed lines."""
     issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
+    findings = [_issue_json(i, changes) for i in issues]
+    summary = f"{len(issues)} issue(s)"
+    if changes is not None:
+        summary += f", {sum(f['changed'] for f in findings)} on changed lines,"
+    summary += f" in {file_count} file(s) analyzed"
     if fmt == "json":
-        json.dump([_issue_json(i) for i in issues], sys.stdout, indent=2)
+        json.dump(findings, sys.stdout, indent=2)
         print()
     elif fmt == "markdown":
         # Relative to the repo root rather than the current directory, so
         # links to the repo's code work from any subdirectory.
-        findings = [{**_issue_json(i), "path": _repo_path(i.path)} for i in issues]
-        lines = markdown.findings_table(findings, link_template) if issues else ["No issues found."]
+        findings = [{**f, "path": _repo_path(i.path)} for i, f in zip(issues, findings)]
+        if not issues:
+            lines = ["No issues found."]
+        elif changes is not None:
+            lines = markdown.changed_findings_sections(findings, link_template)
+        else:
+            lines = markdown.findings_table(findings, link_template)
         print("\n".join(lines))
-        print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
+        print(summary, file=sys.stderr)
     else:
-        for issue in issues:
+        for issue, finding in zip(issues, findings):
             location = f"{_display_path(issue.path)}:{issue.line}:{issue.column}"
-            print(f"{location}: {issue.severity} [{issue.rule}] {issue.message}")
-        print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
+            mark = " (changed)" if finding.get("changed") else ""
+            print(f"{location}: {issue.severity} [{issue.rule}] {issue.message}{mark}")
+        print(summary, file=sys.stderr)
     sys.stdout.flush()
 
 
@@ -238,8 +276,8 @@ def _repo_root(directory: Path) -> Path | None:
     return None
 
 
-def _issue_json(issue: Issue) -> dict[str, object]:
-    return {
+def _issue_json(issue: Issue, changes: gitdiff.Changes | None = None) -> dict[str, object]:
+    finding: dict[str, object] = {
         "path": _display_path(issue.path),
         "line": issue.line,
         "column": issue.column,
@@ -249,3 +287,6 @@ def _issue_json(issue: Issue) -> dict[str, object]:
         "severity": issue.severity,
         "message": issue.message,
     }
+    if changes is not None:
+        finding["changed"] = changes.touches(issue.path, issue.line)
+    return finding

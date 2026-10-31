@@ -1,11 +1,11 @@
 """Report exolot's findings on its own code as Markdown, and post the report to
 a PR as a comment, hiding the comments earlier runs posted.
 
-`report` turns `exolot --format json` output into Markdown, putting the
-findings on lines a PR changes first, in the tables `exolot --format markdown`
-makes. `post` posts that Markdown to a PR. They are separate so CI can run
-`report` in the job that runs exolot (which has the git history) and `post` in
-a job that has a write-capable token but runs nothing else.
+`report` turns `exolot --format json` output into Markdown, in the tables
+`exolot --format markdown` makes; given output from `exolot --diff-base`, it
+puts the findings on lines a PR changes first. `post` posts that Markdown to a
+PR. They are separate so CI can run `report` in the job that runs exolot and
+`post` in a job that has a write-capable token but runs nothing else.
 
 Both use only the stdlib and exolot's (stdlib-only) source, which the justfile
 puts on PYTHONPATH rather than installing the project."""
@@ -13,13 +13,12 @@ puts on PYTHONPATH rather than installing the project."""
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import urllib.error
 from pathlib import Path
 
-from exolot.markdown import findings_table
+from exolot.markdown import changed_findings_sections, findings_table
 from scripts import github_comments
 
 # Marks the comments `post` posts, so the next run can find and hide them.
@@ -36,57 +35,13 @@ POLICY = (
     "`NOSONAR` or `noqa`. See {agents} for more."
 )
 
-_HUNK_RE = re.compile(r"^@@ -\d+(?:,(?P<old>\d+))? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@")
 
-
-def changed_lines(base: str) -> dict[str, set[int]]:
-    """The lines of each file that the changes since base's merge base add or
-    change, by path relative to the repo root."""
-    diff = subprocess.run(
-        ["git", "diff", "--unified=0", "--no-color", "--no-ext-diff", "--no-renames", f"{base}...HEAD"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    return parse_diff(diff)
-
-
-def parse_diff(diff: str) -> dict[str, set[int]]:
-    """The lines of each file that a `git diff --unified=0` adds or changes."""
-    lines: dict[str, set[int]] = {}
-    path = None
-    # Lines left in the current hunk, which can look like headers: a removed
-    # "-- x" shows as "--- x" and an added "++ x" as "+++ x".
-    in_hunk = 0
-    for line in diff.splitlines():
-        if in_hunk and line[:1] in ("+", "-"):
-            in_hunk -= 1
-        elif line.startswith("+++ "):
-            # Git ends the header with a tab when the path has a space in it.
-            target = line[4:].split("\t", 1)[0]
-            path = target[2:] if target.startswith("b/") else None
-        elif m := _HUNK_RE.match(line):
-            start = int(m["start"])
-            count = 1 if m["count"] is None else int(m["count"])
-            in_hunk = (1 if m["old"] is None else int(m["old"])) + count
-            if path is not None:
-                lines.setdefault(path, set()).update(range(start, start + count))
-    return lines
-
-
-def _findings_section(findings: list[dict], changed: dict[str, set[int]] | None, link: str | None) -> list[str]:
+def _findings_section(findings: list[dict], link: str | None) -> list[str]:
     if not findings:
         return ["No findings."]
-    if changed is None:
-        return [f"### Findings ({len(findings)})", ""] + findings_table(findings, link)
-    new = [f for f in findings if f["line"] in changed.get(f["path"], ())]
-    old = [f for f in findings if f not in new]
-    out = [f"### On lines this PR changes ({len(new)})", ""]
-    out += findings_table(new, link) if new else ["None."]
-    if old:
-        out += ["", "<details>", f"<summary>Elsewhere ({len(old)})</summary>", ""]
-        out += findings_table(old, link) + ["", "</details>"]
-    return out
+    if any("changed" in f for f in findings):
+        return changed_findings_sections(findings, link, "On lines this PR changes")
+    return [f"### Findings ({len(findings)})", ""] + findings_table(findings, link)
 
 
 def _truncate(body: str, run_url: str | None) -> str:
@@ -100,14 +55,13 @@ def _truncate(body: str, run_url: str | None) -> str:
 def build_report(
     findings: list[dict],
     *,
-    changed: dict[str, set[int]] | None = None,
     repo: str | None = None,
     commit: str | None = None,
     run_url: str | None = None,
 ) -> str:
-    """The comment body for exolot's JSON findings. With changed (from
-    changed_lines), the findings on changed lines come first and the rest are
-    collapsed."""
+    """The comment body for exolot's JSON findings. If they say whether
+    they're on changed lines (with `exolot --diff-base`), those come first and
+    the rest are collapsed."""
     findings = sorted(
         ({**f, "path": f["path"].replace("\\", "/")} for f in findings),
         key=lambda f: (f["path"], f["line"], f["column"], f["rule"]),
@@ -124,14 +78,13 @@ def build_report(
         if run_url:
             analyzed += f", from [this workflow run]({run_url})"
         out += [f"{analyzed}.", ""]
-    out += _findings_section(findings, changed, link)
+    out += _findings_section(findings, link)
     return _truncate("\n".join(out) + "\n", run_url)
 
 
 def _report(args) -> None:
     findings = json.loads(args.findings.read_text())
-    changed = changed_lines(args.base) if args.base else None
-    body = build_report(findings, changed=changed, repo=args.repo, commit=args.commit, run_url=args.run_url)
+    body = build_report(findings, repo=args.repo, commit=args.commit, run_url=args.run_url)
     if args.output:
         args.output.write_text(body)
     else:
@@ -168,8 +121,11 @@ def main(argv: list[str]) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     report = sub.add_parser("report", parents=[common], help="turn exolot's JSON output into Markdown")
-    report.add_argument("findings", type=Path, help="the output of `exolot --format json`")
-    report.add_argument("--base", help="put the findings on lines changed since this commit's merge base first")
+    report.add_argument(
+        "findings",
+        type=Path,
+        help="the output of `exolot --format json`; with --diff-base, the findings on changed lines come first",
+    )
     report.add_argument("--commit", help="the commit analyzed, for links to the code")
     report.add_argument("--run-url", help="URL of the workflow run that analyzed it")
     report.add_argument("-o", "--output", type=Path, help="write here instead of to stdout")

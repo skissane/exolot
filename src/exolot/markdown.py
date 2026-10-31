@@ -64,3 +64,20 @@ def statistics_table(rows: Iterable[tuple[str, int]], names: Mapping[str, str]) 
     out = ["| Count | Rule | Name |", "| ---: | --- | --- |"]
     out += [f"| {count} | {escape(rule)} | {escape(names.get(rule, ''))} |" for rule, count in rows]
     return out
+
+
+def changed_findings_sections(
+    findings: Iterable[Mapping], link_template: str | None = None, heading: str = "On changed lines"
+) -> list[str]:
+    """The lines of a heading and table of the findings (dicts as in exolot's
+    JSON output with --diff-base) whose "changed" is true, then the rest in a
+    collapsed "Elsewhere" section, if there are any."""
+    findings = list(findings)
+    new = [f for f in findings if f.get("changed")]
+    old = [f for f in findings if not f.get("changed")]
+    out = [f"### {heading} ({len(new)})", ""]
+    out += findings_table(new, link_template) if new else ["None."]
+    if old:
+        out += ["", "<details>", f"<summary>Elsewhere ({len(old)})</summary>", ""]
+        out += findings_table(old, link_template) + ["", "</details>"]
+    return out

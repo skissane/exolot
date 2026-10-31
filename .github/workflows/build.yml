@@ -301,7 +301,7 @@ jobs:
 
     steps:
       # The PR's head rather than its merge with the base, so the findings'
-      # line numbers and links match the PR's code. Full history so the report
+      # line numbers and links match the PR's code. Full history so --diff-base
       # can find the lines the PR changes.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -336,19 +336,22 @@ jobs:
           path: .exolot-cache/servers
           key: exolot-server-${{ runner.os }}-${{ runner.arch }}-${{ steps.server.outputs.version }}
 
+      # On PRs, --diff-base marks the findings on lines the PR changes.
       - name: Analyze exolot with itself
-        run: just self-analyze --exit-zero --format json > self-analysis.json
+        run: |
+          args=(--exit-zero --format json)
+          if [ -n "$BASE_REF" ]; then
+            args+=(--diff-base "origin/${BASE_REF}")
+          fi
+          just self-analyze "${args[@]}" > self-analysis.json
+        env:
+          BASE_REF: ${{ github.base_ref }}
 
       - name: Write report
         run: |
-          args=(--commit "$COMMIT" --run-url "$RUN_URL" -o self-analysis.md)
-          if [ -n "$BASE_REF" ]; then
-            args+=(--base "origin/${BASE_REF}")
-          fi
-          just self-analysis-report self-analysis.json "${args[@]}"
+          just self-analysis-report self-analysis.json --commit "$COMMIT" --run-url "$RUN_URL" -o self-analysis.md
           cat self-analysis.md >> "$GITHUB_STEP_SUMMARY"
         env:
-          BASE_REF: ${{ github.base_ref }}
           COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
