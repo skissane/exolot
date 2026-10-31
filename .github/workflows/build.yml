@@ -138,7 +138,7 @@ jobs:
         run: just integration
 
   # Reports total coverage, and on PRs how much of the changed code the tests
-  # cover, in the job summary. Informational only: there's no coverage
+  # cover, in the job summary (and, through post-patch-coverage, a PR comment). Informational only: there's no coverage
   # threshold, so it fails only if the tests or diff-cover do.
   coverage:
     runs-on: ubuntu-latest
@@ -169,9 +169,67 @@ jobs:
 
       - name: Report patch coverage
         if: github.event_name == 'pull_request'
-        run: just diff-cover "origin/${BASE_REF}" --format "markdown:${GITHUB_STEP_SUMMARY}"
+        run: |
+          just diff-cover "origin/${BASE_REF}" --format markdown:patch-coverage.md
+          cat patch-coverage.md >> "$GITHUB_STEP_SUMMARY"
         env:
           BASE_REF: ${{ github.base_ref }}
+
+      # For post-patch-coverage to post to the PR.
+      - name: Upload patch coverage report
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: patch-coverage
+          path: patch-coverage.md
+          retention-days: 14
+
+  # Post the patch-coverage artifact (diff-cover's Markdown report) to the PR
+  # as a github-actions[bot] comment, or edit the one posted before, so it's
+  # seen without opening the coverage job's summary. Only for PRs from this
+  # repo: on a fork's or Dependabot's PR, GITHUB_TOKEN is read-only. Queued per
+  # PR, and posts only if HEAD_SHA is still the PR's head, so an older commit's
+  # run that finishes last can't overwrite a newer report. Needs no secrets,
+  # and installs nothing alongside its token: it runs the PR's stdlib-only
+  # script with `uv run --no-project`.
+  post-patch-coverage:
+    needs: coverage
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: post-patch-coverage-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@v3
+        with:
+          just-version: "1.58.0"
+
+      - name: Download patch coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: patch-coverage
+
+      - name: Post patch coverage to the PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # GITHUB_TOKEN can't look up its own login, so name it.
+        run: just patch-coverage-post "$PR_NUMBER" --commit "$HEAD_SHA" --run-url "$RUN_URL" --author 'github-actions[bot]'
 
   # Tagging and releasing need a write-capable token, so they run in their own
   # job, only for pushes to master, and never alongside pull request code.

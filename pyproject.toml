@@ -41,8 +41,12 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "PLC0415", "RUF100"]
 
+# The repo root, so tests can import the stdlib-only CI scripts in scripts/.
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [tool.coverage.run]
-source = ["exolot"]
+source = ["exolot", "scripts"]
 branch = true
 
 [tool.coverage.report]
