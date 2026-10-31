@@ -92,6 +92,7 @@ def test_changes_to_files_git_quotes_the_names_of(repo):
     assert changes_since("master", repo).lines == {repo / name: {1}}
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows drops trailing spaces from file names")
 def test_changes_in_a_repo_whose_path_ends_in_a_space(repo):
     spaced = repo.rename(repo.with_name("repo "))
     (spaced / "a.py").write_text("ONE\ntwo\nthree\n")
