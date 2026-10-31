@@ -12,8 +12,9 @@ import json
 import logging
 import subprocess
 import threading
+from collections.abc import Callable
 from concurrent.futures import Future
-from typing import IO, Any, Callable
+from typing import IO, Any
 
 log = logging.getLogger(__name__)
 

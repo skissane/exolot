@@ -117,7 +117,8 @@ def _report(issues: list[Issue], file_count: int, fmt: str) -> None:
         print()
     else:
         for issue in issues:
-            print(f"{_display_path(issue.path)}:{issue.line}:{issue.column}: {issue.severity} [{issue.rule}] {issue.message}")
+            location = f"{_display_path(issue.path)}:{issue.line}:{issue.column}"
+            print(f"{location}: {issue.severity} [{issue.rule}] {issue.message}")
         print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
     sys.stdout.flush()
 
