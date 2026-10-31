@@ -8,6 +8,14 @@ on:
   pull_request:
     paths: ['.github/workflows/claude-code-review.yml']
 
+# A new push supersedes a running self-test, so only the latest report is posted.
+# This is set on the workflow rather than the job, so a superseded run's later
+# jobs are cancelled too. Other events get a unique group, so they never queue
+# or cancel each other.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('self-test-claude-code-review.yml-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   claude-review:
     # Only run on PR comments (not plain issues) containing the trigger phrase,
@@ -22,11 +30,6 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository)
 
     runs-on: ubuntu-latest
-    # A new push supersedes a running self-test, so only the latest report is posted.
-    # Other events get a unique group, so they never queue or cancel each other.
-    concurrency:
-      group: ${{ github.event_name == 'pull_request' && format('self-test-claude-code-review.yml-{0}', github.event.pull_request.number) || github.run_id }}
-      cancel-in-progress: true
     env:
       # Strip secrets (including the OAuth token) from the environment of
       # commands Claude runs, as the PR it reviews may contain a prompt injection.
