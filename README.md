@@ -35,6 +35,7 @@ which does the same thing for Neovim.
 uvx exolot                     # analyze the current directory
 uvx exolot src/ tests/foo.py   # analyze specific files or directories
 uvx exolot --format json .     # machine-readable output
+uvx exolot --format markdown . # a Markdown table, e.g. for a PR comment
 uvx exolot --statistics .      # count issues per rule, most common first
 uvx exolot install             # just download and unpack the server
 uvx exolot cache-dir           # show where the server is cached
@@ -66,6 +67,15 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   rule key order), like `ruff check --statistics`. The name is left blank if
   the server can't list its rules. With `--format json` it prints a list of
   `{"code", "name", "count"}` objects. The exit status is the same as without it.
+- `--format markdown` prints the issues as a GitHub-flavoured Markdown table
+  (Location, Rule and Message), with characters Markdown or HTML would
+  interpret escaped, and `--statistics` as a Count, Rule and Name table.
+- `--link-template TEMPLATE` (with `--format markdown`) links each location to
+  a URL made from TEMPLATE, filling in `{path}` (URL-quoted, with forward
+  slashes), `{line}`, `{column}`, `{end_line}` and `{end_column}`, e.g.
+  `--link-template 'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}'`.
+  Give the commit the code is from: in a pull request's workflow
+  `GITHUB_SHA` is the merge commit, so use the PR's head SHA instead.
 - `-v` / `--verbose` shows the server's logs.
 
 ## Platforms

@@ -1,11 +1,14 @@
 """Report exolot's findings on its own code as Markdown, and post the report to
-a PR as a comment, hiding the comments earlier runs posted. Stdlib-only.
+a PR as a comment, hiding the comments earlier runs posted.
 
 `report` turns `exolot --format json` output into Markdown, putting the
-findings on lines a PR changes first. `post` posts that Markdown to a PR. They
-are separate so CI can run `report` in the job that runs exolot (which has the
-git history) and `post` in a job that has a write-capable token but runs
-nothing else."""
+findings on lines a PR changes first, in the tables `exolot --format markdown`
+makes. `post` posts that Markdown to a PR. They are separate so CI can run
+`report` in the job that runs exolot (which has the git history) and `post` in
+a job that has a write-capable token but runs nothing else.
+
+Both use only the stdlib and exolot's (stdlib-only) source, which the justfile
+puts on PYTHONPATH rather than installing the project."""
 
 import argparse
 import json
@@ -14,9 +17,9 @@ import re
 import subprocess
 import sys
 import urllib.error
-import urllib.parse
 from pathlib import Path
 
+from exolot.markdown import findings_table
 from scripts import github_comments
 
 # Marks the comments `post` posts, so the next run can find and hide them.
@@ -71,35 +74,18 @@ def parse_diff(diff: str) -> dict[str, set[int]]:
     return lines
 
 
-def _escape(text: str) -> str:
-    """text with the characters that would format it, end a table cell or
-    start an HTML tag backslash-escaped, on one line."""
-    text = " ".join(text.split())
-    return re.sub(r"([\\`*_\[\]<>|~&])", r"\\\1", text)
-
-
-def _table(findings: list[dict], link) -> list[str]:
-    rows = ["| Location | Rule | Message |", "| --- | --- | --- |"]
-    for f in findings:
-        location = f"{f['path']}:{f['line']}"
-        url = link(f)
-        cell = f"[{_escape(location)}]({url})" if url else _escape(location)
-        rows.append(f"| {cell} | {_escape(f['rule'])} | {_escape(f['message'])} |")
-    return rows
-
-
-def _findings_section(findings: list[dict], changed: dict[str, set[int]] | None, link) -> list[str]:
+def _findings_section(findings: list[dict], changed: dict[str, set[int]] | None, link: str | None) -> list[str]:
     if not findings:
         return ["No findings."]
     if changed is None:
-        return [f"### Findings ({len(findings)})", ""] + _table(findings, link)
+        return [f"### Findings ({len(findings)})", ""] + findings_table(findings, link)
     new = [f for f in findings if f["line"] in changed.get(f["path"], ())]
     old = [f for f in findings if f not in new]
     out = [f"### On lines this PR changes ({len(new)})", ""]
-    out += _table(new, link) if new else ["None."]
+    out += findings_table(new, link) if new else ["None."]
     if old:
         out += ["", "<details>", f"<summary>Elsewhere ({len(old)})</summary>", ""]
-        out += _table(old, link) + ["", "</details>"]
+        out += findings_table(old, link) + ["", "</details>"]
     return out
 
 
@@ -127,11 +113,8 @@ def build_report(
         key=lambda f: (f["path"], f["line"], f["column"], f["rule"]),
     )
     blob = f"https://github.com/{repo}/blob/{commit}" if repo and commit else None
-
-    def link(f: dict) -> str | None:
-        # Quoted, so a path can't end the link's URL early.
-        return f"{blob}/{urllib.parse.quote(f['path'])}#L{f['line']}" if blob else None
-
+    # Doubled braces, so a brace in repo or commit isn't taken for a field.
+    link = blob.replace("{", "{{").replace("}", "}}") + "/{path}#L{line}" if blob else None
     agents = f"[AGENTS.md]({blob}/AGENTS.md)" if blob else "AGENTS.md"
     out = [MARKER, "## exolot's findings on itself", "", POLICY.format(agents=agents), ""]
     if commit or run_url:

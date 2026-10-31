@@ -65,14 +65,15 @@ self-analyze *args:
 # Turn `just self-analyze --format json` output into a Markdown report (see --help)
 [positional-arguments]
 self-analysis-report *args:
-    uv run --no-project python -m scripts.self_analysis report "$@"
+    PYTHONPATH=src uv run --no-project python -m scripts.self_analysis report "$@"
 
-# --no-project, like patch-coverage-post, as CI runs it with a write-capable token.
+# --no-project, like patch-coverage-post, as CI runs it with a write-capable
+# token; the script imports exolot.markdown from src/ rather than installing it.
 
 # Post a self-analysis report to a PR, hiding the ones posted before: arguments are the PR number and the report
 [positional-arguments]
 self-analysis-post *args:
-    uv run --no-project python -m scripts.self_analysis post "$@"
+    PYTHONPATH=src uv run --no-project python -m scripts.self_analysis post "$@"
 
 # Build the sdist and wheel into dist/
 build:
