@@ -6,10 +6,11 @@ import json
 import logging
 import os
 import sys
+import urllib.parse
 from collections import Counter
 from pathlib import Path
 
-from . import __version__, markdown
+from . import __version__, markdown, sarif
 from .analyze import AnalysisSession, Issue, collect_files
 from .server import DEFAULT_SERVER_VERSION, ServerError, cache_dir, detect_platform, ensure_server
 
@@ -40,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = sub.add_parser("analyze", parents=[server_opts], help="analyze files (the default command)")
     analyze.add_argument("paths", nargs="*", type=Path, default=[Path(".")], help="files or directories")
-    analyze.add_argument("--format", choices=("text", "json", "markdown"), default="text")
+    analyze.add_argument("--format", choices=("text", "json", "markdown", "sarif"), default="text")
     analyze.add_argument(
         "--link-template",
         type=_link_template,
@@ -89,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if getattr(args, "link_template", None) and (args.format != "markdown" or args.statistics):
         parser.error("--link-template needs --format markdown, without --statistics")
+    if getattr(args, "statistics", False) and args.format == "sarif":
+        parser.error("--statistics can't be used with --format sarif")
 
     logging.basicConfig(
         level=logging.INFO if getattr(args, "verbose", False) else logging.WARNING,
@@ -136,6 +139,10 @@ def main(argv: list[str] | None = None) -> int:
             # Report before the server shuts down, which can take a few seconds.
             if args.statistics:
                 _report_statistics(issues, len(files), args.format, session.rule_names() if issues else {})
+            elif args.format == "sarif":
+                if issues:
+                    session.add_related_locations(issues)
+                _report_sarif(issues, len(files), session.rule_names() if issues else {})
             else:
                 _report(issues, len(files), args.format, args.link_template)
     except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
@@ -162,6 +169,29 @@ def _report(issues: list[Issue], file_count: int, fmt: str, link_template: str |
             print(f"{location}: {issue.severity} [{issue.rule}] {issue.message}")
         print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
     sys.stdout.flush()
+
+
+def _report_sarif(issues: list[Issue], file_count: int, names: dict[str, str]) -> None:
+    issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
+    paths = {i.path for i in issues} | {loc.path for i in issues for loc in i.related}
+    roots = {_repo_root(path.parent) for path in paths} - {None}
+    # %SRCROOT% can only stand for one directory. GitHub code scanning doesn't
+    # need it defined, as it takes paths to be relative to the checkout.
+    src_root = roots.pop().as_uri() + "/" if len(roots) == 1 else None
+    json.dump(sarif.log(issues, __version__, names, _artifact_location, src_root), sys.stdout, indent=2)
+    print()
+    print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
+    sys.stdout.flush()
+
+
+def _artifact_location(path: Path) -> dict[str, str]:
+    """A SARIF artifactLocation for path: relative to %SRCROOT%, the root of
+    the git repository holding it, as GitHub code scanning expects, or its
+    absolute file URI when it's in none."""
+    root = _repo_root(path.parent)
+    if root is None:
+        return {"uri": path.as_uri()}
+    return {"uri": urllib.parse.quote(path.relative_to(root).as_posix()), "uriBaseId": "%SRCROOT%"}
 
 
 def _report_statistics(issues: list[Issue], file_count: int, fmt: str, names: dict[str, str]) -> None:

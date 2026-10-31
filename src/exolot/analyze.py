@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -11,6 +12,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from . import __version__
 from .lsp import LspClient
@@ -60,6 +63,20 @@ LANGUAGE_IDS = {
 SKIP_DIRS = {".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv", ".tox", ".mypy_cache"}
 MAX_FILE_SIZE = 2 * 1024 * 1024
 SEVERITY_NAMES = {1: "error", 2: "warning", 3: "info", 4: "hint"}
+# What the server appends to the message of an issue with secondary locations.
+MORE_LOCATIONS = re.compile(r" \[\+\d+ locations?\]$")
+
+
+@dataclass
+class Location:
+    """A secondary location of an issue, e.g. the other side of a comparison."""
+
+    path: Path
+    line: int  # 1-based
+    column: int  # 1-based
+    end_line: int
+    end_column: int
+    message: str
 
 
 @dataclass
@@ -73,6 +90,7 @@ class Issue:
     message: str
     severity: str
     raw: dict[str, Any] = field(repr=False)
+    related: list[Location] = field(default_factory=list)
 
 
 def language_id(path: Path) -> str:
@@ -327,6 +345,39 @@ class AnalysisSession:
             log.debug("could not list the server's rules", exc_info=True)
             return {}
 
+    def add_related_locations(self, issues: list[Issue], timeout: float = 10) -> None:
+        """Fill in the secondary locations of each issue whose message says it
+        has some (``[+1 location]``), and take that note off its message.
+
+        The server only gives them out in the "show all locations" code action
+        it offers for the issue, so this asks for that. Best effort: an issue
+        the server gives no locations for, or that timeout seconds (for all the
+        issues together) run out before, is left as it is.
+        """
+        assert self._client is not None
+        deadline = time.monotonic() + timeout
+        for issue in issues:
+            if not MORE_LOCATIONS.search(issue.message):
+                continue
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                log.debug("ran out of time getting secondary locations")
+                break
+            try:
+                actions = self._client.request(
+                    "textDocument/codeAction",
+                    {
+                        "textDocument": {"uri": issue.path.as_uri()},
+                        "range": issue.raw["range"],
+                        "context": {"diagnostics": [issue.raw]},
+                    },
+                ).result(timeout=remaining)
+                issue.related = [loc for action in actions or [] for loc in _flow_locations(issue.path, action)]
+            except Exception:
+                log.debug("could not get the locations of %s", issue, exc_info=True)
+            if issue.related:
+                issue.message = MORE_LOCATIONS.sub("", issue.message)
+
     def close(self) -> None:
         if self._client is not None and self._proc is not None and self._proc.poll() is None:
             try:
@@ -360,4 +411,33 @@ def _to_issue(path: Path, diagnostic: dict[str, Any]) -> Issue:
         message=diagnostic.get("message", ""),
         severity=SEVERITY_NAMES.get(diagnostic.get("severity", 2), "warning"),
         raw=diagnostic,
+    )
+
+
+def _flow_locations(path: Path, action: dict[str, Any]) -> list[Location]:
+    """The locations in a SonarLint.ShowAllLocations code action, or none if
+    action is some other code action. path is the issue's file, for locations
+    that don't name theirs."""
+    command = action.get("command")
+    if not isinstance(command, dict) or command.get("command") != "SonarLint.ShowAllLocations":
+        return []
+    flows = [flow for arg in command.get("arguments") or [] for flow in arg.get("flows") or []]
+    locations = [_location(path, loc) for flow in flows for loc in flow.get("locations") or []]
+    return [loc for loc in locations if loc is not None]
+
+
+def _location(path: Path, loc: dict[str, Any]) -> Location | None:
+    """A flow location from the server as a Location, or None if it has no range."""
+    text_range = loc.get("textRange")
+    if not text_range:
+        return None
+    # Not its filePath, which on Windows the server gives as /C:/...
+    uri = loc.get("uri")
+    return Location(
+        path=Path(url2pathname(urlparse(uri).path)) if uri else path,
+        line=text_range["startLine"],
+        column=text_range["startLineOffset"] + 1,
+        end_line=text_range["endLine"],
+        end_column=text_range["endLineOffset"] + 1,
+        message=loc.get("message") or "",
     )

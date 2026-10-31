@@ -36,6 +36,7 @@ uvx exolot                     # analyze the current directory
 uvx exolot src/ tests/foo.py   # analyze specific files or directories
 uvx exolot --format json .     # machine-readable output
 uvx exolot --format markdown . # a Markdown table, e.g. for a PR comment
+uvx exolot --format sarif .    # SARIF 2.1.0, e.g. for GitHub code scanning
 uvx exolot --statistics .      # count issues per rule, most common first
 uvx exolot install             # just download and unpack the server
 uvx exolot cache-dir           # show where the server is cached
@@ -79,7 +80,42 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   `--link-template 'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}'`.
   Give the commit the code is from: in a pull request's workflow
   `GITHUB_SHA` is the merge commit, so use the PR's head SHA instead.
+- `--format sarif` prints a [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
+  log with one run: each issue is a result with its rule, message, level
+  (`error`, `warning`, or `note` for the server's info and hint severities)
+  and location, and each rule an issue breaks is listed with its name. Issues
+  the server reports with secondary locations (`[+1 location]` at the end of
+  the message) get them as related locations instead. Paths are relative to
+  `%SRCROOT%`, the root of the git repository each file is in (defined in the
+  run's `originalUriBaseIds` when all the files are in one repository), or
+  absolute `file:` URIs for files outside one. It can't be combined with `--statistics`.
 - `-v` / `--verbose` shows the server's logs.
+
+## GitHub code scanning
+
+To show exolot's issues in a repository's Security tab and as pull request
+annotations, upload its SARIF output with GitHub's `upload-sarif` action:
+
+```yaml
+jobs:
+  exolot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uvx exolot --format sarif --exit-zero . > exolot.sarif
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: exolot.sarif
+          category: exolot
+```
+
+Pin the actions to commit SHAs, as you would in your other workflows, since
+this job can write security alerts. `--exit-zero` lets the upload step run when there are issues; code
+scanning then decides whether a pull request check fails, by its own settings.
 
 ## Platforms
 

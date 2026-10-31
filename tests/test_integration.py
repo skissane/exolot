@@ -22,3 +22,16 @@ def test_finds_python_issue(tmp_path):
         names = session.rule_names()
     assert "python:S1764" in {i.rule for i in issues}
     assert names["python:S1764"] == "Identical expressions should not be used on both sides of a binary operator"
+
+
+def test_finds_secondary_locations(tmp_path):
+    source = tmp_path / "bad.py"
+    source.write_text("def f(x):\n    if x == x:\n        pass\n")
+    with AnalysisSession(ensure_server(progress=False), tmp_path) as session:
+        issues = session.analyze([source], timeout=300)
+        session.add_related_locations(issues)
+    (issue,) = [i for i in issues if i.rule == "python:S1764"]
+    assert issue.message == 'Correct one of the identical sub-expressions on both sides of operator "==".'
+    assert [(loc.path, loc.line, loc.column, loc.end_line, loc.end_column) for loc in issue.related] == [
+        (source, 2, 8, 2, 9)
+    ]
