@@ -319,9 +319,13 @@ class AnalysisSession:
         self._kill()
 
     def _kill(self) -> None:
-        if self._proc is not None and self._proc.poll() is None:
+        if self._proc is None:
+            return
+        if self._proc.poll() is None:
             self._proc.kill()
             self._proc.wait()
+        if self._client is not None:
+            self._client.close()
 
 
 def _to_issue(path: Path, diagnostic: dict[str, Any]) -> Issue:

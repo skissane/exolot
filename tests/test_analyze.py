@@ -65,6 +65,27 @@ def test_session_raises_when_a_file_is_never_published(tmp_path):
             session.analyze([a], settle=0.1, stall=0.5, timeout=10)
 
 
+def test_session_closes_server_pipes(tmp_path):
+    server = FakeServer(root=tmp_path, java=Path("java"))
+    with AnalysisSession(server, tmp_path) as session:
+        proc = session._proc
+    assert proc.returncode is not None
+    assert proc.stdin.closed and proc.stdout.closed
+
+
+def test_session_closes_pipes_of_a_server_that_died(tmp_path):
+    server = FakeServer(root=tmp_path, java=Path("java"))
+    with AnalysisSession(server, tmp_path) as session:
+        proc = session._proc
+        proc.kill()
+        proc.wait()
+    assert proc.stdin.closed and proc.stdout.closed
+
+
+def test_closing_an_unstarted_session_does_nothing(tmp_path):
+    AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path).close()
+
+
 def test_collect_files_rejects_missing_path(tmp_path):
     with pytest.raises(FileNotFoundError):
         collect_files([tmp_path / "nope"])

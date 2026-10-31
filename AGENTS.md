@@ -13,6 +13,14 @@ Cover the changed lines it reports where a test is worth it; CI's coverage job s
 `just ci` leaves out CI's `integration` job, which runs `just integration` (the end-to-end tests, which download the ~250 MB language server); run it yourself when you change how exolot talks to the server or unpacks it.
 When you add a step to CI, add it as a recipe and include it in `check`, `fix` or `ci` as fits, so `just ci` keeps matching CI.
 
+## Test warnings policy
+
+pytest turns every warning into an error (`filterwarnings = ["error"]` in `pyproject.toml`).
+This matters most for `ResourceWarning`: exolot spawns the language server and talks to it over pipes, so a process or pipe that isn't closed shows up as one, often in a later test than the one that leaked it.
+Fix the cause of a warning rather than filtering it.
+If one really can't be fixed (e.g. it comes from a dependency), filter only that warning, by category and message, as narrowly as possible (one test's `@pytest.mark.filterwarnings` rather than `pyproject.toml` if only one test triggers it), with a comment saying why.
+Never add a blanket ignore such as `ignore::ResourceWarning` or `ignore::DeprecationWarning`.
+
 ## Issue labels
 
 Issues are labelled `dimension:value`.
