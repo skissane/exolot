@@ -104,7 +104,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10
       - run: uvx exolot --format sarif --exit-zero . > exolot.sarif
       - uses: github/codeql-action/upload-sarif@v4
