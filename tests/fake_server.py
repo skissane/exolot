@@ -4,8 +4,12 @@ configuration, and publishes one diagnostic per opened document."""
 import json
 import os
 import sys
+from pathlib import Path
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 RULES_FAIL = os.environ.get("FAKE_SERVER_RULES_FAIL") == "1"
+CODE_ACTIONS_FAIL = os.environ.get("FAKE_SERVER_CODE_ACTIONS_FAIL") == "1"
 
 
 def read():
@@ -77,7 +81,17 @@ while (msg := read()) is not None:
                             "message": "another issue",
                         }
                     ]
-                    * doc["text"].count("TWO"),
+                    * doc["text"].count("TWO")
+                    # And one with a secondary location for each "FLOW".
+                    + [
+                        {
+                            "range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 3}},
+                            "severity": 1,
+                            "code": "fake:S3",
+                            "message": "flow issue [+1 location]",
+                        }
+                    ]
+                    * doc["text"].count("FLOW"),
                 },
             }
         )
@@ -94,6 +108,29 @@ while (msg := read()) is not None:
                 ]
             }
             send({"jsonrpc": "2.0", "id": msg["id"], "result": rules})
+    elif method == "textDocument/codeAction" and CODE_ACTIONS_FAIL:
+        send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32603, "message": "no actions"}})
+    elif method == "textDocument/codeAction":
+        params = msg["params"]
+        uri = params["textDocument"]["uri"]
+        path = url2pathname(urlparse(uri).path)
+        actions = [{"title": "Deactivate rule", "command": {"command": "SonarLint.DeactivateRule", "arguments": []}}]
+        if "NOLOCATIONS" not in Path(path).read_text():
+            location = {
+                "textRange": {"startLine": 1, "startLineOffset": 4, "endLine": 1, "endLineOffset": 6},
+                "uri": uri,
+                "filePath": path,
+                "message": "the other one",
+            }
+            flows = [{"locations": [location, {"uri": uri}]}]
+            actions.append({"title": "Show all locations", "command": "SonarLint.ShowAllLocations"})
+            actions.append(
+                {
+                    "title": "Show all locations",
+                    "command": {"command": "SonarLint.ShowAllLocations", "arguments": [{"flows": flows}]},
+                }
+            )
+        send({"jsonrpc": "2.0", "id": msg["id"], "result": actions})
     elif method == "shutdown":
         send({"jsonrpc": "2.0", "id": msg["id"], "result": None})
     elif method == "exit":
