@@ -1,5 +1,7 @@
 # exolot
 
+[![codecov](https://codecov.io/gh/skissane/exolot/graph/badge.svg)](https://codecov.io/gh/skissane/exolot)
+
 Analyze code locally from the command line with the language server from
 SonarQube for IDE (formerly SonarLint). No SonarQube account or server needed.
 
@@ -88,7 +90,7 @@ just sync
 uv run exolot --help
 just test
 just integration      # end-to-end test against the real server (downloads it, about 250 MB)
-just coverage         # tests with a coverage report and coverage.xml
+just coverage         # tests with a coverage report, coverage.xml and junit.xml
 just patch-coverage   # coverage of lines changed since origin/master
 just fix              # reformat and autofix lint issues with ruff
 just build smoke      # build, then check the wheel installs and runs in a fresh environment

@@ -7,4 +7,5 @@ __pycache__/
 .coverage.*
 coverage.xml
 patch-coverage.md
+junit.xml
 .exolot-cache/
