@@ -137,7 +137,8 @@ def test_cli_sarif(tmp_path, monkeypatch, capsys):
     assert results[0]["level"] == "error"
     related = results[0]["relatedLocations"]
     assert [(r["physicalLocation"]["artifactLocation"]["uri"], r.get("message")) for r in related] == [
-        ("sub%20dir/a.py", {"text": "the other one"})
+        ("sub%20dir/a.py", {"text": "the other one"}),
+        ("sub%20dir/a.py", None),
     ]
     assert related[0]["physicalLocation"]["region"] == {"startLine": 1, "startColumn": 5, "endLine": 1, "endColumn": 7}
 

@@ -12,6 +12,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from . import __version__
 from .lsp import LspClient
@@ -62,7 +64,7 @@ SKIP_DIRS = {".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "ven
 MAX_FILE_SIZE = 2 * 1024 * 1024
 SEVERITY_NAMES = {1: "error", 2: "warning", 3: "info", 4: "hint"}
 # What the server appends to the message of an issue with secondary locations.
-MORE_LOCATIONS = re.compile(r"\s*\[\+\d+ locations?\]$")
+MORE_LOCATIONS = re.compile(r" \[\+\d+ locations?\]$")
 
 
 @dataclass
@@ -408,25 +410,28 @@ def _to_issue(path: Path, diagnostic: dict[str, Any]) -> Issue:
 
 def _flow_locations(path: Path, action: dict[str, Any]) -> list[Location]:
     """The locations in a SonarLint.ShowAllLocations code action, or none if
-    action is some other code action."""
+    action is some other code action. path is the issue's file, for locations
+    that don't name theirs."""
     command = action.get("command")
     if not isinstance(command, dict) or command.get("command") != "SonarLint.ShowAllLocations":
         return []
-    locations = []
-    for arg in command.get("arguments") or []:
-        for flow in arg.get("flows") or []:
-            for loc in flow.get("locations") or []:
-                text_range = loc.get("textRange")
-                if not text_range:
-                    continue
-                locations.append(
-                    Location(
-                        path=Path(loc["filePath"]) if loc.get("filePath") else path,
-                        line=text_range["startLine"],
-                        column=text_range["startLineOffset"] + 1,
-                        end_line=text_range["endLine"],
-                        end_column=text_range["endLineOffset"] + 1,
-                        message=loc.get("message") or "",
-                    )
-                )
-    return locations
+    flows = [flow for arg in command.get("arguments") or [] for flow in arg.get("flows") or []]
+    locations = [_location(path, loc) for flow in flows for loc in flow.get("locations") or []]
+    return [loc for loc in locations if loc is not None]
+
+
+def _location(path: Path, loc: dict[str, Any]) -> Location | None:
+    """A flow location from the server as a Location, or None if it has no range."""
+    text_range = loc.get("textRange")
+    if not text_range:
+        return None
+    # Not its filePath, which on Windows the server gives as /C:/...
+    uri = loc.get("uri")
+    return Location(
+        path=Path(url2pathname(urlparse(uri).path)) if uri else path,
+        line=text_range["startLine"],
+        column=text_range["startLineOffset"] + 1,
+        end_line=text_range["endLine"],
+        end_column=text_range["endLineOffset"] + 1,
+        message=loc.get("message") or "",
+    )

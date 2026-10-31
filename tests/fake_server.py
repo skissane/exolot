@@ -119,10 +119,12 @@ while (msg := read()) is not None:
             location = {
                 "textRange": {"startLine": 1, "startLineOffset": 4, "endLine": 1, "endLineOffset": 6},
                 "uri": uri,
-                "filePath": path,
+                "filePath": "/C:/not/used",  # as the server gives it on Windows
                 "message": "the other one",
             }
-            flows = [{"locations": [location, {"uri": uri}]}]
+            # One with no file, which means the issue's, and one with no range, which is skipped.
+            elsewhere = {"textRange": {"startLine": 2, "startLineOffset": 0, "endLine": 2, "endLineOffset": 1}}
+            flows = [{"locations": [location, {"uri": uri}]}, {"locations": [elsewhere]}]
             actions.append({"title": "Show all locations", "command": "SonarLint.ShowAllLocations"})
             actions.append(
                 {
