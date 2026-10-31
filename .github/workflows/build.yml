@@ -149,7 +149,8 @@ jobs:
   # cover, in the job summary (and, through post-patch-coverage, a PR comment),
   # and uploads coverage and test results to Codecov, whose codecov/project and
   # codecov/patch statuses (thresholds in codecov.yml) are the coverage gate.
-  # The Codecov steps skip Dependabot's PRs, whose runs don't get CODECOV_TOKEN.
+  # CODECOV_TOKEN is both an Actions and a Dependabot secret, so the uploads
+  # work on Dependabot's PRs too.
   coverage:
     runs-on: ubuntu-latest
     permissions:
@@ -188,7 +189,7 @@ jobs:
       # Codecov Test Analytics, from the junit.xml `just coverage` writes. Runs
       # even if the tests failed, as that's when the results matter most.
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() && github.actor != 'dependabot[bot]' }}
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -220,14 +221,13 @@ jobs:
       # still going). It never fails the job, only warns, and is quick when the
       # base's CI has finished.
       - name: Wait for the PR base's coverage on Codecov
-        if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+        if: github.event_name == 'pull_request'
         run: just wait-for-base-coverage "$GITHUB_REPOSITORY" "$BASE_SHA"
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Upload coverage to Codecov
-        if: github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
