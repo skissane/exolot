@@ -67,7 +67,9 @@ def pins(text: str, action: str, key: str) -> list[str | None]:
     found: list[str | None] = []
     for step in steps(text):
         if any((m := _USES_RE.match(line)) and m["action"] == action for line in step):
-            values = [next(v for v in m.groups() if v is not None) for line in inputs(step) if (m := key_re.match(line))]
+            values = [
+                next(v for v in m.groups() if v is not None) for line in inputs(step) if (m := key_re.match(line))
+            ]
             found.append(values[0] if values else None)
     return found
 
