@@ -13,6 +13,7 @@ JUST = ("extractions/setup-just", "just-version")
 
 _STEP_RE = re.compile(r"^(?P<indent>\s*)- ")
 _USES_RE = re.compile(r"^\s*(?:- )?uses:\s*[\"']?(?P<action>[^@\s\"']+)@")
+_WITH_RE = re.compile(r"^(?:- )?with:\s*(?:#.*)?$")
 _JUST_MIN_RE = re.compile(r"^set minimum-version := '(?P<version>[^']+)'$", re.MULTILINE)
 
 
@@ -40,17 +41,24 @@ def steps(text: str) -> list[list[str]]:
 
 
 def inputs(step: list[str]) -> list[str]:
-    """The lines of a step's `with:` mapping, so that a key in another of its
-    mappings (`env:`) or in a multi-line string isn't taken for an input."""
+    """The lines of a step's `with:` mapping that start one of its keys, so
+    that a key in another of the step's mappings (`env:`), or a line of a
+    multi-line value (`sparse-checkout: |`), isn't taken for an input."""
     found: list[str] = []
-    indent = None
+    indent = None  # of the `with:` key, while in its mapping
+    child = None  # of the mapping's keys, once seen
     for line in step:
         stripped = line.strip()
         depth = len(line) - len(line.lstrip())
-        if indent is not None and (not stripped or stripped.startswith("#") or depth > indent):
-            found.append(line)
-        elif stripped.removeprefix("- ") == "with:":
+        if not stripped or stripped.startswith("#"):
+            continue
+        if indent is not None and depth > indent:
+            child = child or depth
+            if depth == child:
+                found.append(line)
+        elif _WITH_RE.match(stripped):
             indent = depth + (2 if stripped.startswith("- ") else 0)
+            child = None
         else:
             indent = None
     return found

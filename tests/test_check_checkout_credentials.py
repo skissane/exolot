@@ -9,7 +9,8 @@ jobs:
   build:
     steps:
       - uses: actions/checkout@v7
-        with:
+        with:  # a comment
+
           persist-credentials: false
       - uses: actions/checkout@v7
         with:
@@ -34,6 +35,10 @@ jobs:
           persist-credentials: false
         with:
           fetch-depth: 0
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            persist-credentials: false
 """
 
 
@@ -57,6 +62,7 @@ def test_main_reports_unset_and_unexpected_values(workflows, capsys):
         ".github/workflows/b.yaml: a actions/checkout step has no persist-credentials, not false or true",
         ".github/workflows/b.yaml: a actions/checkout step has persist-credentials: ${{ inputs.persist }},"
         " not false or true",
+        ".github/workflows/b.yaml: a actions/checkout step has no persist-credentials, not false or true",
         ".github/workflows/b.yaml: a actions/checkout step has no persist-credentials, not false or true",
     ]
 
