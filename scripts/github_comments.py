@@ -33,17 +33,19 @@ def request(
 ):
     """Send an API request and return its decoded JSON response (None if empty).
     A 301/302/307/308 redirect (GitHub's for a renamed repo) is followed with
-    the same method and body, keeping the token only if the host is unchanged."""
+    the same method and body, keeping the token only if the host is unchanged
+    and the scheme is still https."""
     if json_body is not None:
         data = json.dumps(json_body).encode()
         content_type = "application/json"
-    host = urllib.parse.urlsplit(url).hostname
+    origin = ("https", urllib.parse.urlsplit(url).hostname)
     for _ in range(5):
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header("Accept", "application/vnd.github+json")
         if content_type:
             req.add_header("Content-Type", content_type)
-        if urllib.parse.urlsplit(url).hostname == host:
+        parts = urllib.parse.urlsplit(url)
+        if (parts.scheme, parts.hostname) == origin:
             req.add_header("Authorization", f"Bearer {token}")
         try:
             with _opener.open(req, timeout=60) as response:

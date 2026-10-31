@@ -68,6 +68,13 @@ def test_opener_does_not_follow_redirects():
     assert github_comments._NoRedirects().redirect_request(req, None, 302, "Found", {}, "https://x.example/") is None
 
 
+def test_drops_token_on_redirect_to_http():
+    responses = [redirect("https://api.github.com/a", "http://api.github.com/b"), response(b"{}")]
+    with mock.patch("scripts.github_comments._opener.open", side_effect=responses) as urlopen:
+        request("POST", "https://api.github.com/a", "tok")
+    assert [c.args[0].get_header("Authorization") for c in urlopen.call_args_list] == ["Bearer tok", None]
+
+
 def test_too_many_redirects():
     with (
         mock.patch(
