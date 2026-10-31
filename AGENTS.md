@@ -5,8 +5,9 @@ See `README.md` for what exolot does, how it works, and how to run the tests.
 
 ## Commands
 
-CI (`.github/workflows/build.yml`) calls the `justfile`'s recipes rather than running commands inline, so run `just ci` before opening a PR to run everything CI runs, apart from the `validate-actions` job (until #13 replaces it with a recipe).
+CI (`.github/workflows/build.yml`) calls the `justfile`'s recipes rather than running commands inline, so run `just ci` before opening a PR to run everything CI runs.
 `just check` runs every check without fixing anything or running tests, `just fix` applies every autofix, and `just --list` shows the individual recipes.
+`just lint-workflows` (part of `just check`) runs `jactionlint --profile correctness` over the workflows; it shellchecks their `run:` steps only if `shellcheck` is on your `PATH` (it is on GitHub's Ubuntu runners), and otherwise prints a note and skips them.
 When you add a step to CI, add it as a recipe and include it in `check`, `fix` or `ci` as fits, so `just ci` keeps matching CI.
 
 ## Issue labels

@@ -36,10 +36,12 @@ fmt:
 fmt-check:
     uv run --group dev ruff format --check .
 
-# check gets lint-workflows when it replaces CI's validate-actions job (#13).
+# Lint the GitHub Actions workflows with jactionlint
+lint-workflows:
+    uv run --group dev jactionlint --profile correctness
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check
+check: lint fmt-check lint-workflows
 
 # Reformat code and autofix lint issues. Formatting first fixes the long lines it
 # can, so lint-fix stops only on findings that need a hand edit.
