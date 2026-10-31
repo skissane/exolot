@@ -16,6 +16,10 @@ sync:
 test:
     uv run --group dev pytest -q
 
+# Run only the integration tests, which download the language server (about 250 MB) on first run
+integration:
+    EXOLOT_INTEGRATION=1 uv run --group dev pytest -q tests/test_integration.py
+
 # Run the test suite with coverage, printing a report and writing coverage.xml
 coverage *args:
     uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml {{args}}
@@ -30,6 +34,38 @@ diff-cover base='origin/master' *args:
 # Build the sdist and wheel into dist/
 build:
     uv build
+
+# Install the wheel `just build` built into a fresh environment and check that it runs
+smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version="$(uv version --short)"
+    wheel="dist/exolot-${version}-py3-none-any.whl"
+    run() { uvx --isolated --no-cache --from "$wheel" exolot "$@"; }
+    actual="$(run --version)"
+    if [ "$actual" != "exolot ${version}" ]; then
+        echo "expected 'exolot ${version}' from ${wheel} --version, got '${actual}'" >&2
+        exit 1
+    fi
+    run --help >/dev/null
+    run cache-dir >/dev/null
+    echo "${wheel} installs and runs"
+
+# Retries while PyPI's index catches up with a new upload.
+# Check that a released version installs from PyPI and runs
+[positional-arguments]
+check-release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for delay in 0 10 20 40 80 160; do
+        sleep "$delay"
+        if actual="$(uvx --isolated --no-cache --from "exolot==$1" exolot --version)" && [ "$actual" = "exolot $1" ]; then
+            echo "exolot $1 installs from PyPI and runs"
+            exit 0
+        fi
+    done
+    echo "exolot $1 did not install from PyPI and run" >&2
+    exit 1
 
 # Lint with ruff
 lint:
@@ -58,5 +94,6 @@ check: lint fmt-check lint-workflows
 # can, so lint-fix stops only on findings that need a hand edit.
 fix: fmt lint-fix
 
+# Leaves out CI's integration job (`just integration`), which downloads the language server.
 # Run everything CI's build, test and coverage jobs run (except the PR-only patch coverage), on this machine's Python and OS
-ci: lock-check sync check coverage build
+ci: lock-check sync check coverage build smoke

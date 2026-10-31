@@ -35,3 +35,27 @@ jobs:
 
       - name: Publish to PyPI
         run: uv publish --verbose
+
+  # Checks the release installs from PyPI and runs, as users get it with uvx.
+  verify:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@v3
+        with:
+          just-version: "1.58.0"
+
+      - name: Check release installs from PyPI
+        run: just check-release "$(uv version --short)"
