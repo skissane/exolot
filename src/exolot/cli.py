@@ -203,12 +203,7 @@ def _report(
         print("\n".join(lines))
         print(summary, file=sys.stderr)
     elif fmt == "github":
-        # GitHub shows only the first few annotations of each type, so those on
-        # changed lines go first. Paths are relative to the repo root, which is
-        # what GitHub matches them against.
-        ordered = sorted(zip(issues, findings), key=lambda pair: not pair[1].get("changed"))
-        for issue, finding in ordered:
-            print(annotations.annotation({**finding, "path": _repo_path(issue.path)}))
+        _print_annotations(issues, findings)
         print(summary, file=sys.stderr)
     else:
         for issue, finding in zip(issues, findings):
@@ -217,6 +212,16 @@ def _report(
             print(f"{location}: {issue.severity} [{issue.rule}] {issue.message}{mark}")
         print(summary, file=sys.stderr)
     sys.stdout.flush()
+
+
+def _print_annotations(issues: list[Issue], findings: list[dict[str, object]]) -> None:
+    """Print the issues as GitHub workflow commands. GitHub shows only the
+    first few annotations of each type, so those on changed lines go first.
+    Paths are relative to the repo root, which is what GitHub matches them
+    against."""
+    ordered = sorted(zip(issues, findings), key=lambda pair: not pair[1].get("changed"))
+    for issue, finding in ordered:
+        print(annotations.annotation({**finding, "path": _repo_path(issue.path)}))
 
 
 def _report_sarif(issues: list[Issue], file_count: int, names: dict[str, str]) -> None:
