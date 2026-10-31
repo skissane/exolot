@@ -94,7 +94,11 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   REF and `HEAD`, like SonarQube's "new code": lines added or modified in the
   working tree (committed or not), and every line of files git doesn't track
   yet (unless it ignores them). It looks at the git repository the current
-  directory is in; issues in files outside it count as unchanged. JSON output
+  directory is in; issues in files outside it count as unchanged. An issue is
+  on changed lines if any line of its range or of its secondary locations is
+  (so a function's complexity issue counts when a change adds nesting to it),
+  which takes an extra request to the server for each issue with secondary
+  locations in a changed file. JSON output
   gets a `"changed": true` or `false` field, Markdown output puts the issues on
   changed lines first and collapses the rest under "Elsewhere", and text
   output ends those lines with `(changed)` and counts them in its summary.

@@ -27,9 +27,13 @@ class Changes:
     lines: dict[Path, set[int]] = field(default_factory=dict)
     new_files: set[Path] = field(default_factory=set)
 
-    def touches(self, path: Path, line: int) -> bool:
-        """Whether line of path (as collect_files gives it: resolved) is changed."""
-        return path in self.new_files or line in self.lines.get(path, ())
+    def touches(self, path: Path, line: int, end_line: int | None = None) -> bool:
+        """Whether any of the lines from line to end_line (default: just line)
+        of path (as collect_files gives it: resolved) is changed."""
+        if path in self.new_files:
+            return True
+        changed = self.lines.get(path, ())
+        return any(n in changed for n in range(line, max(line, end_line or line) + 1))
 
     def files(self) -> set[Path]:
         """The files with changed lines."""

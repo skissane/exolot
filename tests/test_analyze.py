@@ -8,6 +8,7 @@ import pytest
 from exolot import cli
 from exolot.analyze import AnalysisSession, collect_files, language_id
 from exolot.server import Server
+from tests.conftest import git
 
 FAKE_SERVER = Path(__file__).with_name("fake_server.py")
 
@@ -331,3 +332,30 @@ def test_cli_changed_only_needs_diff_base(tmp_path, monkeypatch, capsys):
         cli.main(["--changed-only", str(tmp_path)])
     assert exc.value.code == 2
     assert "--changed-only needs --diff-base" in capsys.readouterr().err
+
+
+def test_cli_diff_base_counts_secondary_locations_and_whole_ranges(repo, tmp_path, monkeypatch, capsys):
+    # The fake server's flow issue (fake:S3) is on line 1, with a secondary
+    # location on line 2; its fake:S1 issue is on line 1 alone.
+    _fake_server(tmp_path, monkeypatch)
+    (repo / "a.py").write_text("FLOW\nTWO\nthree\n")
+    git(repo, "commit", "-q", "-am", "flow")
+    (repo / "a.py").write_text("FLOW\nchanged\nthree\n")
+    monkeypatch.chdir(repo)
+    args = ["--diff-base", "HEAD", "--format", "json", "--workspace", str(repo), "a.py"]
+    assert cli.main(args) == 1
+    findings = json.loads(capsys.readouterr().out)
+    assert [(f["rule"], f["changed"]) for f in findings] == [("fake:S3", True), ("fake:S1", False)]
+    # The message keeps its note of the secondary locations, which only SARIF shows.
+    assert findings[0]["message"] == "flow issue [+1 location]"
+
+    assert cli.main([*args, "--changed-only"]) == 1
+    assert [f["rule"] for f in json.loads(capsys.readouterr().out)] == ["fake:S3"]
+
+    assert cli.main([*args, "--changed-only", "--format", "sarif"]) == 1
+    results = json.loads(capsys.readouterr().out)["runs"][0]["results"]
+    assert [(r["ruleId"], r["message"]["text"]) for r in results] == [("fake:S3", "flow issue")]
+
+    # Statistics without --changed-only don't need to know what changed.
+    monkeypatch.setattr(AnalysisSession, "add_related_locations", _no_download)
+    assert cli.main([*args, "--statistics"]) == 1

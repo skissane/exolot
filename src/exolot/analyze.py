@@ -345,9 +345,10 @@ class AnalysisSession:
             log.debug("could not list the server's rules", exc_info=True)
             return {}
 
-    def add_related_locations(self, issues: list[Issue], timeout: float = 10) -> None:
+    def add_related_locations(self, issues: list[Issue], timeout: float = 10, *, keep_message: bool = False) -> None:
         """Fill in the secondary locations of each issue whose message says it
-        has some (``[+1 location]``), and take that note off its message.
+        has some (``[+1 location]``), and take that note off its message
+        unless keep_message.
 
         The server only gives them out in the "show all locations" code action
         it offers for the issue, so this asks for that. Best effort: an issue
@@ -375,7 +376,7 @@ class AnalysisSession:
                 issue.related = [loc for action in actions or [] for loc in _flow_locations(issue.path, action)]
             except Exception:
                 log.debug("could not get the locations of %s", issue, exc_info=True)
-            if issue.related:
+            if issue.related and not keep_message:
                 issue.message = MORE_LOCATIONS.sub("", issue.message)
 
     def close(self) -> None:

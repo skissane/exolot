@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -139,3 +140,11 @@ def test_git_failure_without_a_message(monkeypatch):
 
 def test_empty_changes():
     assert Changes().files() == set()
+
+
+def test_changes_touch_any_line_of_a_range():
+    changes = Changes(lines={Path("/a.py"): {5}})
+    assert changes.touches(Path("/a.py"), 3, 6)
+    assert not changes.touches(Path("/a.py"), 3, 4)
+    assert not changes.touches(Path("/a.py"), 6, 2)
+    assert changes.touches(Path("/a.py"), 5)

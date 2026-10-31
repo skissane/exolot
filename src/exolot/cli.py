@@ -153,14 +153,22 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with AnalysisSession(server, workspace, rules=rules, node=args.node, verbose=args.verbose) as session:
             issues = session.analyze(files, timeout=args.timeout)
+            if args.format == "sarif" and issues:
+                session.add_related_locations(issues)
+            elif changes is not None and (args.changed_only or not args.statistics):
+                # An issue whose secondary locations are on changed lines
+                # counts as changed too, e.g. a function's complexity, where
+                # only the nesting a change added is.
+                changed_files = changes.files()
+                candidates = [i for i in issues if i.path in changed_files and not _on_changed_lines(i, changes)]
+                if candidates:
+                    session.add_related_locations(candidates, keep_message=True)
             if changes is not None and args.changed_only:
-                issues = [i for i in issues if changes.touches(i.path, i.line)]
+                issues = [i for i in issues if _on_changed_lines(i, changes)]
             # Report before the server shuts down, which can take a few seconds.
             if args.statistics:
                 _report_statistics(issues, len(files), args.format, session.rule_names() if issues else {})
             elif args.format == "sarif":
-                if issues:
-                    session.add_related_locations(issues)
                 _report_sarif(issues, len(files), session.rule_names() if issues else {})
             else:
                 _report(issues, len(files), args.format, args.link_template, None if args.changed_only else changes)
@@ -276,6 +284,12 @@ def _repo_root(directory: Path) -> Path | None:
     return None
 
 
+def _on_changed_lines(issue: Issue, changes: gitdiff.Changes) -> bool:
+    """Whether any line of issue's range, or of its secondary locations (if
+    fetched), is changed."""
+    return any(changes.touches(loc.path, loc.line, loc.end_line) for loc in (issue, *issue.related))
+
+
 def _issue_json(issue: Issue, changes: gitdiff.Changes | None = None) -> dict[str, object]:
     finding: dict[str, object] = {
         "path": _display_path(issue.path),
@@ -288,5 +302,5 @@ def _issue_json(issue: Issue, changes: gitdiff.Changes | None = None) -> dict[st
         "message": issue.message,
     }
     if changes is not None:
-        finding["changed"] = changes.touches(issue.path, issue.line)
+        finding["changed"] = _on_changed_lines(issue, changes)
     return finding
