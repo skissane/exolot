@@ -287,6 +287,126 @@ jobs:
         # GITHUB_TOKEN can't look up its own login, so name it.
         run: just patch-coverage-post "$PR_NUMBER" --commit "$HEAD_SHA" --run-url "$RUN_URL" --author 'github-actions[bot]'
 
+  # Runs exolot on its own code, for information only: --exit-zero, so its
+  # findings never fail the job (only a failed analysis does). It reports them
+  # in the job summary and, on PRs, through post-self-analysis as a PR comment,
+  # with the ones on lines the PR changes first. See AGENTS.md for how to treat
+  # them.
+  self-analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      EXOLOT_CACHE_DIR: ${{ github.workspace }}/.exolot-cache
+
+    steps:
+      # The PR's head rather than its merge with the base, so the findings'
+      # line numbers and links match the PR's code. Full history so the report
+      # can find the lines the PR changes.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.6"
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.58.0"
+
+      - name: Install dependencies
+        run: just sync
+
+      - name: Get pinned server version
+        id: server
+        run: |
+          echo "version=$(uv run --no-sync python -c 'from exolot.server import DEFAULT_SERVER_VERSION as v; print(v)')" >> "$GITHUB_OUTPUT"
+
+      # Shares the integration job's cache entry on ubuntu-latest.
+      - name: Cache language server
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .exolot-cache/servers
+          key: exolot-server-${{ runner.os }}-${{ runner.arch }}-${{ steps.server.outputs.version }}
+
+      - name: Analyze exolot with itself
+        run: just self-analyze --exit-zero --format json > self-analysis.json
+
+      - name: Write report
+        run: |
+          args=(--commit "$COMMIT" --run-url "$RUN_URL" -o self-analysis.md)
+          if [ -n "$BASE_REF" ]; then
+            args+=(--base "origin/${BASE_REF}")
+          fi
+          just self-analysis-report self-analysis.json "${args[@]}"
+          cat self-analysis.md >> "$GITHUB_STEP_SUMMARY"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      # For post-self-analysis to post to the PR.
+      - name: Upload report
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: self-analysis
+          path: self-analysis.md
+          retention-days: 14
+
+  # Posts the self-analysis job's report to the PR as a new github-actions[bot]
+  # comment, and hides the ones earlier runs posted as outdated, as the Claude
+  # self-tests do. The same conditions and precautions as post-patch-coverage:
+  # only same-repo, non-Dependabot PRs; queued per PR; posts only if HEAD_SHA
+  # is still the PR's head; runs only the PR's stdlib-only script beside its
+  # token.
+  post-self-analysis:
+    needs: self-analysis
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: post-self-analysis-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.6"
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.58.0"
+
+      - name: Download report
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: self-analysis
+
+      - name: Post report to the PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: just self-analysis-post "$PR_NUMBER" self-analysis.md --commit "$HEAD_SHA"
+
   # Tagging and releasing need a write-capable token, so they run in their own
   # job, only for pushes to master, and never alongside pull request code.
   release:

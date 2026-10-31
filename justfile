@@ -53,6 +53,27 @@ patch-coverage-post *args:
 wait-for-base-coverage *args:
     uv run --no-project python -m scripts.wait_for_base_coverage "$@"
 
+# Run exolot on its own code; extra args go to exolot, e.g. --exit-zero. Like
+# `just integration`, it downloads the language server (about 250 MB) on first
+# run, so `just ci` leaves it out; CI's self-analysis job runs it.
+
+# Analyze this repo with exolot itself
+[positional-arguments]
+self-analyze *args:
+    uv run exolot "$@"
+
+# Turn `just self-analyze --format json` output into a Markdown report (see --help)
+[positional-arguments]
+self-analysis-report *args:
+    uv run --no-project python -m scripts.self_analysis report "$@"
+
+# --no-project, like patch-coverage-post, as CI runs it with a write-capable token.
+
+# Post a self-analysis report to a PR, hiding the ones posted before: arguments are the PR number and the report
+[positional-arguments]
+self-analysis-post *args:
+    uv run --no-project python -m scripts.self_analysis post "$@"
+
 # Build the sdist and wheel into dist/
 build:
     uv build

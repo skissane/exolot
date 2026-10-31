@@ -20,6 +20,17 @@ To upgrade uv or just, change the minimum and every workflow's pin together; `ju
 Workflows pin every action to a full commit SHA with its version in a comment (`uses: actions/checkout@<sha> # v4.4.0`), which Dependabot keeps updated weekly; `just lint-workflows` fails on a tag or branch, or a SHA with no comment.
 When you add a step to CI, add it as a recipe and include it in `check`, `fix` or `ci` as fits, so `just ci` keeps matching CI.
 
+## exolot's findings on itself
+
+CI's `self-analysis` job runs exolot on its own code (`just self-analyze --exit-zero`, which you can run yourself; it downloads the language server like `just integration`).
+It lists the findings in its job summary and, on PRs from this repository other than Dependabot's, posts them as a PR comment (the `post-self-analysis` job, `scripts/self_analysis.py`), with the ones on lines the PR changes first; each run hides the previous run's comment as outdated.
+The findings are for information only: `--exit-zero` means findings never fail the job, though a failed analysis still does.
+
+- Use your judgement: fix a finding when it points at a real bug or a change that makes the code clearer, and ignore the rest, e.g. cognitive-complexity warnings on code that's clear enough as it is, or a "function always returns the same value" on one that's meant to.
+- Pay most attention to findings on lines your PR changes. Don't widen a PR to fix findings elsewhere unless asked.
+- A finding you've chosen to ignore doesn't block a PR, and needs no reply or explanation.
+- Don't suppress an ignored finding: no `NOSONAR` or `noqa` comments, and no `--rules` file to turn rules off. The comment's list of findings is fine as it is.
+
 ## Test warnings policy
 
 pytest turns every warning into an error (`filterwarnings = ["error"]` in `pyproject.toml`).
