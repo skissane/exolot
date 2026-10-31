@@ -20,9 +20,9 @@ test:
 integration:
     EXOLOT_INTEGRATION=1 uv run --group dev pytest -q tests/test_integration.py
 
-# Run the test suite with coverage, printing a report and writing coverage.xml
+# Run the test suite with coverage, printing a report and writing coverage.xml and junit.xml
 coverage *args:
-    uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml {{args}}
+    uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy {{args}}
 
 # Run coverage, then report coverage of the lines changed since base
 patch-coverage base='origin/master': coverage (diff-cover base)
@@ -44,6 +44,14 @@ diff-cover base='origin/master' *args:
 [positional-arguments]
 patch-coverage-post *args:
     uv run --no-project python -m scripts.post_patch_coverage "$@"
+
+# CI's coverage job runs this on PRs before uploading to Codecov; it never fails,
+# only warns. --no-project, like patch-coverage-post, as it runs with a token.
+
+# Wait (up to 10 minutes) for Codecov to have a PR base commit's coverage: arguments are owner/repo and the base SHA
+[positional-arguments]
+wait-for-base-coverage *args:
+    uv run --no-project python -m scripts.wait_for_base_coverage "$@"
 
 # Build the sdist and wheel into dist/
 build:
