@@ -29,5 +29,5 @@ check:
 # Autofix lint issues and reformat code
 fix:
 
-# Run everything CI's build job runs
+# Run everything CI's build and test jobs run, on this machine's Python and OS
 ci: lock-check sync check test build
