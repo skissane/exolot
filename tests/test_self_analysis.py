@@ -221,3 +221,7 @@ def test_post_reports_http_errors(report, monkeypatch, capsys):
     monkeypatch.setattr(github_comments, "request", request)
     assert main(["post", "--repo", "o/r", "7", str(report)]) == 1
     assert "HTTP 403" in capsys.readouterr().err
+
+
+def test_report_names_the_commit_without_a_run():
+    assert "Analysis of abc.\n" in build_report([], commit="abc")
