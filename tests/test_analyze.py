@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -120,3 +121,49 @@ def test_cli_exit_zero_still_reports_a_failed_analysis(tmp_path, monkeypatch, ca
     (tmp_path / "a.py").write_text("SILENT\n")
     assert cli.main(["--exit-zero", "--timeout", "1", "--workspace", str(tmp_path), str(tmp_path / "a.py")]) == 2
     assert "did not finish in time" in capsys.readouterr().err
+
+
+def _run_statistics(tmp_path, monkeypatch, capsys, *flags, texts=("TWO TWO", "TWO TWO TWO", "x = 1")):
+    """Analyze one file per text: each has one fake:S1 issue, plus a fake:S2 issue per "TWO"."""
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    for name, text in zip("abc", texts):
+        (tmp_path / f"{name}.py").write_text(text + "\n")
+    status = cli.main(["--statistics", *flags, "--workspace", str(tmp_path), str(tmp_path)])
+    return status, capsys.readouterr()
+
+
+def test_cli_statistics_counts_issues_per_rule_most_common_first(tmp_path, monkeypatch, capsys):
+    status, captured = _run_statistics(tmp_path, monkeypatch, capsys)
+    assert status == 1
+    assert captured.out == "5\tfake:S2\n3\tfake:S1\tFake rule one\n"
+    assert "8 issue(s) in 3 file(s) analyzed" in captured.err
+
+
+def test_cli_statistics_orders_ties_by_rule_key(tmp_path, monkeypatch, capsys):
+    _, captured = _run_statistics(tmp_path, monkeypatch, capsys, texts=("TWO", "TWO TWO", "x = 1"))
+    assert captured.out == "3\tfake:S1\tFake rule one\n3\tfake:S2\n"
+
+
+def test_cli_statistics_json(tmp_path, monkeypatch, capsys):
+    status, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--format", "json", "--exit-zero")
+    assert status == 0
+    assert json.loads(captured.out) == [
+        {"code": "fake:S2", "name": "", "count": 5},
+        {"code": "fake:S1", "name": "Fake rule one", "count": 3},
+    ]
+
+
+def test_cli_statistics_without_rule_names(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("FAKE_SERVER_RULES_FAIL", "1")
+    _, captured = _run_statistics(tmp_path, monkeypatch, capsys)
+    assert captured.out == "5\tfake:S2\n3\tfake:S1\n"
+
+
+def test_cli_statistics_with_no_issues(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    monkeypatch.setattr(AnalysisSession, "analyze", lambda self, files, timeout=None: [])
+    (tmp_path / "a.py").write_text("x = 1\n")
+    assert cli.main(["--statistics", "--workspace", str(tmp_path), str(tmp_path / "a.py")]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "0 issue(s) in 1 file(s) analyzed" in captured.err

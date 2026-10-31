@@ -308,6 +308,25 @@ class AnalysisSession:
             published = {uri: self._published.get(uri, []) for uri in uris}
         return [_to_issue(uris[uri], d) for uri, diags in published.items() for d in diags]
 
+    def rule_names(self, timeout: float = 60) -> dict[str, str]:
+        """Map each rule key the server knows, e.g. python:S1764, to its title.
+
+        Best effort: returns what it can, or an empty dict if the server
+        doesn't answer, since names only make the output friendlier.
+        """
+        assert self._client is not None
+        try:
+            by_language = self._client.request("sonarlint/listAllRules").result(timeout=timeout)
+            return {
+                str(rule["key"]): str(rule.get("name", ""))
+                for rules in by_language.values()
+                for rule in rules
+                if "key" in rule
+            }
+        except Exception:
+            log.debug("could not list the server's rules", exc_info=True)
+            return {}
+
     def close(self) -> None:
         if self._client is not None and self._proc is not None and self._proc.poll() is None:
             try:

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+from collections import Counter
 from pathlib import Path
 
 from . import __version__
@@ -47,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--node", help="Node.js executable for JavaScript/TypeScript analysis")
     analyze.add_argument("--workspace", type=Path, help="workspace folder (default: current directory)")
     analyze.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
+    analyze.add_argument(
+        "--statistics",
+        action="store_true",
+        help="show the number of issues for each rule, most common first, instead of the issues",
+    )
     analyze.add_argument(
         "-e",
         "--exit-zero",
@@ -109,7 +115,10 @@ def main(argv: list[str] | None = None) -> int:
         with AnalysisSession(server, workspace, rules=rules, node=args.node, verbose=args.verbose) as session:
             issues = session.analyze(files, timeout=args.timeout)
             # Report before the server shuts down, which can take a few seconds.
-            _report(issues, len(files), args.format)
+            if args.statistics:
+                _report_statistics(issues, len(files), args.format, session.rule_names())
+            else:
+                _report(issues, len(files), args.format)
     except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
         print(f"exolot: {e}", file=sys.stderr)
         return 2
@@ -125,6 +134,23 @@ def _report(issues: list[Issue], file_count: int, fmt: str) -> None:
         for issue in issues:
             location = f"{_display_path(issue.path)}:{issue.line}:{issue.column}"
             print(f"{location}: {issue.severity} [{issue.rule}] {issue.message}")
+        print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
+    sys.stdout.flush()
+
+
+def _report_statistics(issues: list[Issue], file_count: int, fmt: str, names: dict[str, str]) -> None:
+    """Print one line per rule, most issues first, like ``ruff check --statistics``."""
+    counts = Counter(issue.rule for issue in issues)
+    rows = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    if fmt == "json":
+        stats = [{"code": rule, "name": names.get(rule, ""), "count": count} for rule, count in rows]
+        json.dump(stats, sys.stdout, indent=2)
+        print()
+    else:
+        count_width = max((len(str(count)) for _, count in rows), default=0)
+        rule_width = max((len(rule) for rule, _ in rows), default=0)
+        for rule, count in rows:
+            print(f"{count:>{count_width}}\t{rule:<{rule_width}}\t{names.get(rule, '')}".rstrip())
         print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
     sys.stdout.flush()
 

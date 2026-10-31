@@ -2,7 +2,10 @@
 configuration, and publishes one diagnostic per opened document."""
 
 import json
+import os
 import sys
+
+RULES_FAIL = os.environ.get("FAKE_SERVER_RULES_FAIL") == "1"
 
 
 def read():
@@ -64,11 +67,27 @@ while (msg := read()) is not None:
                             "code": "fake:S1",
                             "message": f"{doc['languageId']} issue",
                         }
-                    ],
+                    ]
+                    # One more issue for each "TWO" in the file, from a second rule.
+                    + [
+                        {
+                            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                            "severity": 3,
+                            "code": "fake:S2",
+                            "message": "another issue",
+                        }
+                    ]
+                    * doc["text"].count("TWO"),
                 },
             }
         )
         send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": "t", "value": {"kind": "end"}}})
+    elif method == "sonarlint/listAllRules":
+        if RULES_FAIL:
+            send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32601, "message": "no such method"}})
+        else:
+            rules = {"Fake": [{"key": "fake:S1", "name": "Fake rule one", "activeByDefault": True}, {"bad": 1}]}
+            send({"jsonrpc": "2.0", "id": msg["id"], "result": rules})
     elif method == "shutdown":
         send({"jsonrpc": "2.0", "id": msg["id"], "result": None})
     elif method == "exit":
