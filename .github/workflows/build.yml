@@ -24,9 +24,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
+          version: "0.13.6"
           python-version: ${{ matrix.python-version }}
 
       # Keep just-version in step with the justfile's minimum-version.
@@ -52,8 +54,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.13.6"
 
       # Keep just-version in step with the justfile's minimum-version.
       - name: Install just
@@ -100,8 +105,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.13.6"
 
       # Keep just-version in step with the justfile's minimum-version.
       - name: Install just
@@ -152,8 +160,11 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.13.6"
 
       # Keep just-version in step with the justfile's minimum-version.
       - name: Install just
@@ -208,8 +219,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.13.6"
 
       # Keep just-version in step with the justfile's minimum-version.
       - name: Install just
@@ -247,8 +261,11 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.13.6"
 
       - name: Tag and release version
         run: |

@@ -34,6 +34,11 @@ dev = [
     "ruff>=0.14",
 ]
 
+# Refuse uv versions older than CI's, which may resolve or write uv.lock differently.
+# Keep in step with the setup-uv `version` in .github/workflows.
+[tool.uv]
+required-version = ">=0.13.6"
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"

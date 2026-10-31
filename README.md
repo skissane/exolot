@@ -81,7 +81,7 @@ from `JAVA_HOME`, the `PATH`, or `--java`.
 
 ## Development
 
-Development uses [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/) (1.58.0 or later):
+Development uses [uv](https://docs.astral.sh/uv/) (0.13.6 or later) and [just](https://just.systems/) (1.58.0 or later):
 
 ```sh
 just sync

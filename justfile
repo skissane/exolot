@@ -101,8 +101,12 @@ fmt-check:
 lint-workflows:
     uv run --group dev jactionlint --profile correctness
 
+# Check that every workflow installs the uv version pyproject.toml requires and the just version the justfile requires
+check-pins:
+    uv run --no-project python -m scripts.check_pins
+
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check lint-workflows
+check: lint fmt-check lint-workflows check-pins
 
 # Reformat code and autofix lint issues. Formatting first fixes the long lines it
 # can, so lint-fix stops only on findings that need a hand edit.

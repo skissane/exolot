@@ -18,8 +18,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
         uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.13.6"
 
       - name: Check tag matches version
         if: github.ref_type == 'tag'
