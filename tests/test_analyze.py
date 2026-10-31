@@ -8,6 +8,7 @@ import pytest
 from exolot import cli
 from exolot.analyze import AnalysisSession, collect_files, language_id
 from exolot.server import Server
+from tests.conftest import git
 
 FAKE_SERVER = Path(__file__).with_name("fake_server.py")
 
@@ -249,3 +250,112 @@ def test_cli_markdown_paths_are_relative_to_the_repo_root(tmp_path, monkeypatch,
     out = capsys.readouterr().out
     assert "| [sub/a.py:1](u/sub/a.py) |" in out
     assert "| [../../b.py:1](u/../../b.py) |" in out
+
+
+def _fake_server(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+
+
+def _no_download(*args, **kwargs):
+    raise AssertionError("should not download")
+
+
+def test_cli_diff_base_marks_issues_on_changed_lines(repo, tmp_path, monkeypatch, capsys):
+    # The fake server reports an issue on line 1 of each file.
+    _fake_server(tmp_path, monkeypatch)
+    (repo / "a.py").write_text("ONE\ntwo\nthree\n")
+    monkeypatch.chdir(repo / "sub")
+    assert cli.main(["--diff-base", "master", "--format", "json", "--workspace", str(repo), str(repo)]) == 1
+    assert [(f["path"], f["changed"]) for f in json.loads(capsys.readouterr().out)] == [
+        (str(Path("../a.py")), True),
+        ("b.py", False),
+    ]
+
+    assert cli.main(["--diff-base", "master", "--workspace", str(repo), str(repo)]) == 1
+    captured = capsys.readouterr()
+    assert "2 issue(s), 1 on changed lines, in 2 file(s) analyzed" in captured.err
+    out = captured.out.splitlines()
+    assert out[0].endswith("python issue (changed)")
+    assert out[1].endswith("python issue")
+
+    assert cli.main(["--diff-base", "master", "--format", "markdown", "--workspace", str(repo), str(repo)]) == 1
+    out = capsys.readouterr().out
+    changed, elsewhere = out.split("<details>")
+    assert "### On changed lines (1)" in changed
+    assert "| a.py:1 |" in changed
+    assert "<summary>Elsewhere (1)</summary>" in elsewhere
+    assert "| sub/b.py:1 |" in elsewhere
+
+
+def test_cli_changed_only_analyzes_and_reports_only_changes(repo, tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    (repo / "a.py").write_text("one\nTWO\nthree\n")
+    (repo / "sub" / "new.py").write_text("x = 1\n")
+    monkeypatch.chdir(repo)
+    assert cli.main(["--diff-base", "master", "--changed-only", "--format", "json", "--workspace", str(repo)]) == 1
+    out = capsys.readouterr().out
+    # a.py's issue is on line 1, which it didn't change; sub/b.py isn't analyzed.
+    assert [f["path"] for f in json.loads(out)] == [str(Path("sub/new.py"))]
+    assert "changed" not in out
+
+    assert cli.main(["--diff-base", "master", "--changed-only", "--workspace", str(repo)]) == 1
+    captured = capsys.readouterr()
+    assert "(changed)" not in captured.out
+    assert "1 issue(s) in 2 file(s) analyzed" in captured.err
+
+    (repo / "sub" / "new.py").unlink()
+    assert cli.main(["--diff-base", "master", "--changed-only", "--statistics", "--workspace", str(repo)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "0 issue(s) in 1 file(s) analyzed" in captured.err
+
+
+def test_cli_changed_only_with_no_changed_files(repo, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", _no_download)
+    monkeypatch.chdir(repo)
+    assert cli.main(["--diff-base", "master", "--changed-only"]) == 0
+    assert "no files to analyze" in capsys.readouterr().err
+
+
+def test_cli_diff_base_errors_exit_2_without_downloading(repo, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", _no_download)
+    monkeypatch.chdir(repo)
+    assert cli.main(["--diff-base", "nope"]) == 2
+    assert "exolot: can't find commit 'nope'" in capsys.readouterr().err
+    assert cli.main(["--diff-base", ""]) == 2
+    assert "exolot: can't find commit ''" in capsys.readouterr().err
+
+
+def test_cli_changed_only_needs_diff_base(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", _no_download)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--changed-only", str(tmp_path)])
+    assert exc.value.code == 2
+    assert "--changed-only needs --diff-base" in capsys.readouterr().err
+
+
+def test_cli_diff_base_counts_secondary_locations_and_whole_ranges(repo, tmp_path, monkeypatch, capsys):
+    # The fake server's flow issue (fake:S3) is on line 1, with a secondary
+    # location on line 2; its fake:S1 issue is on line 1 alone.
+    _fake_server(tmp_path, monkeypatch)
+    (repo / "a.py").write_text("FLOW\nTWO\nthree\n")
+    git(repo, "commit", "-q", "-am", "flow")
+    (repo / "a.py").write_text("FLOW\nchanged\nthree\n")
+    monkeypatch.chdir(repo)
+    args = ["--diff-base", "HEAD", "--format", "json", "--workspace", str(repo), "a.py"]
+    assert cli.main(args) == 1
+    findings = json.loads(capsys.readouterr().out)
+    assert [(f["rule"], f["changed"]) for f in findings] == [("fake:S3", True), ("fake:S1", False)]
+    # The message keeps its note of the secondary locations, which only SARIF shows.
+    assert findings[0]["message"] == "flow issue [+1 location]"
+
+    assert cli.main([*args, "--changed-only"]) == 1
+    assert [f["rule"] for f in json.loads(capsys.readouterr().out)] == ["fake:S3"]
+
+    assert cli.main([*args, "--changed-only", "--format", "sarif"]) == 1
+    results = json.loads(capsys.readouterr().out)["runs"][0]["results"]
+    assert [(r["ruleId"], r["message"]["text"]) for r in results] == [("fake:S3", "flow issue")]
+
+    # Statistics without --changed-only don't need to know what changed.
+    monkeypatch.setattr(AnalysisSession, "add_related_locations", _no_download)
+    assert cli.main([*args, "--statistics"]) == 1

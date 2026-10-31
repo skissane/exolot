@@ -6,48 +6,11 @@ import urllib.error
 import pytest
 
 from scripts import github_comments, self_analysis
-from scripts.self_analysis import MARKER, build_report, main, parse_diff
-
-DIFF = """\
-diff --git a/src/a.py b/src/a.py
---- a/src/a.py
-+++ b/src/a.py
-@@ -3,2 +3,2 @@ def f():
--    x = 1
---- not a header
-+    x = 2
-++++ b/not a header
-@@ -10,2 +10,0 @@ def g():
--    a = 1
--    b = 2
-@@ -20,0 +21 @@
-+z = 4
-diff --git a/old.py b/old.py
---- a/old.py
-+++ /dev/null
-@@ -1 +0,0 @@
--gone
-diff --git a/has space.py b/has space.py
---- a/has space.py\t
-+++ b/has space.py\t
-@@ -1 +1 @@
--x
-+y
-diff --git a/new.py b/new.py
---- /dev/null
-+++ b/new.py
-@@ -0,0 +1,2 @@
-+a
-+b
-"""
+from scripts.self_analysis import MARKER, build_report, main
 
 
-def finding(path="src/a.py", line=3, rule="python:S1", message="bad"):
-    return {"path": path, "line": line, "column": 1, "rule": rule, "severity": "warning", "message": message}
-
-
-def test_parse_diff():
-    assert parse_diff(DIFF) == {"src/a.py": {3, 4, 21}, "has space.py": {1}, "new.py": {1, 2}}
+def finding(path="src/a.py", line=3, rule="python:S1", message="bad", **extra):
+    return {"path": path, "line": line, "column": 1, "rule": rule, "severity": "warning", "message": message, **extra}
 
 
 def test_report_without_findings():
@@ -66,8 +29,11 @@ def test_report_lists_all_findings_without_base():
 
 def test_report_puts_changed_lines_first_and_links():
     body = build_report(
-        [finding(line=3), finding(line=9), finding(path="tests\\b.py", line=1)],
-        changed={"src/a.py": {3}},
+        [
+            finding(line=3, changed=True),
+            finding(line=9, changed=False),
+            finding(path="tests\\b.py", line=1, changed=False),
+        ],
         repo="o/r",
         commit="abc",
         run_url="https://run",
@@ -83,7 +49,7 @@ def test_report_puts_changed_lines_first_and_links():
 
 
 def test_report_with_no_findings_on_changed_lines():
-    body = build_report([finding(line=9)], changed={})
+    body = build_report([finding(line=9, changed=False)])
     assert "### On lines this PR changes (0)\n\nNone." in body
     assert "Elsewhere (1)" in body
 
@@ -100,19 +66,11 @@ def test_report_is_truncated_to_fit_a_comment():
     assert "[this workflow run](https://run)" in body
 
 
-def test_report_command_uses_git_diff(tmp_path, monkeypatch):
+def test_report_command_puts_changed_lines_first(tmp_path):
     findings = tmp_path / "findings.json"
-    findings.write_text(json.dumps([finding(line=4)]))
-    calls = []
-
-    def run(cmd, **kwargs):
-        calls.append(cmd)
-        return subprocess.CompletedProcess(cmd, 0, stdout=DIFF)
-
-    monkeypatch.setattr(subprocess, "run", run)
+    findings.write_text(json.dumps([finding(line=4, changed=True)]))
     out = tmp_path / "report.md"
-    assert main(["report", str(findings), "--base", "origin/master", "-o", str(out)]) == 0
-    assert calls[0][-1] == "origin/master...HEAD"
+    assert main(["report", str(findings), "-o", str(out)]) == 0
     assert "### On lines this PR changes (1)" in out.read_text()
 
 
@@ -130,16 +88,15 @@ def test_report_command_fails_on_bad_input(tmp_path, capsys):
     assert main(["report", str(tmp_path / "missing.json")]) == 1
 
 
-def test_report_command_reports_git_failure(tmp_path, monkeypatch, capsys):
-    findings = tmp_path / "findings.json"
-    findings.write_text("[]")
+def test_post_reports_gh_failure(report, monkeypatch, capsys):
+    monkeypatch.delenv("GITHUB_TOKEN")
 
     def run(cmd, **kwargs):
-        raise subprocess.CalledProcessError(128, cmd, stderr="bad revision")
+        raise subprocess.CalledProcessError(4, cmd, stderr="not logged in")
 
     monkeypatch.setattr(subprocess, "run", run)
-    assert main(["report", str(findings), "--base", "nope"]) == 1
-    assert "bad revision" in capsys.readouterr().err
+    assert main(["post", "7", str(report), "--repo", "o/r"]) == 1
+    assert "gh auth token failed:\nnot logged in" in capsys.readouterr().err
 
 
 class FakeGitHub:
