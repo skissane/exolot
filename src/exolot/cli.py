@@ -10,7 +10,7 @@ import urllib.parse
 from collections import Counter
 from pathlib import Path
 
-from . import __version__, gitdiff, markdown, sarif
+from . import __version__, annotations, gitdiff, markdown, sarif
 from .analyze import AnalysisSession, Issue, collect_files
 from .server import DEFAULT_SERVER_VERSION, ServerError, cache_dir, detect_platform, ensure_server
 
@@ -41,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = sub.add_parser("analyze", parents=[server_opts], help="analyze files (the default command)")
     analyze.add_argument("paths", nargs="*", type=Path, default=[Path(".")], help="files or directories")
-    analyze.add_argument("--format", choices=("text", "json", "markdown", "sarif"), default="text")
+    analyze.add_argument("--format", choices=("text", "json", "markdown", "sarif", "github"), default="text")
     analyze.add_argument(
         "--link-template",
         type=_link_template,
@@ -101,8 +101,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if getattr(args, "link_template", None) and (args.format != "markdown" or args.statistics):
         parser.error("--link-template needs --format markdown, without --statistics")
-    if getattr(args, "statistics", False) and args.format == "sarif":
-        parser.error("--statistics can't be used with --format sarif")
+    if getattr(args, "statistics", False) and args.format in ("sarif", "github"):
+        parser.error(f"--statistics can't be used with --format {args.format}")
     if getattr(args, "changed_only", False) and args.diff_base is None:
         parser.error("--changed-only needs --diff-base")
 
@@ -201,6 +201,14 @@ def _report(
         else:
             lines = markdown.findings_table(findings, link_template)
         print("\n".join(lines))
+        print(summary, file=sys.stderr)
+    elif fmt == "github":
+        # GitHub shows only the first few annotations of each type, so those on
+        # changed lines go first. Paths are relative to the repo root, which is
+        # what GitHub matches them against.
+        ordered = sorted(zip(issues, findings), key=lambda pair: not pair[1].get("changed"))
+        for issue, finding in ordered:
+            print(annotations.annotation({**finding, "path": _repo_path(issue.path)}))
         print(summary, file=sys.stderr)
     else:
         for issue, finding in zip(issues, findings):
