@@ -148,7 +148,8 @@ jobs:
   # Reports total coverage, and on PRs how much of the changed code the tests
   # cover, in the job summary (and, through post-patch-coverage, a PR comment),
   # and uploads coverage and test results to Codecov, whose codecov/project and
-  # codecov/patch statuses (thresholds in codecov.yml) are the coverage gate.
+  # codecov/patch statuses check it against codecov.yml's thresholds (they
+  # aren't required checks, so they report but don't block merging).
   # CODECOV_TOKEN is both an Actions and a Dependabot secret, so the uploads
   # work on Dependabot's PRs too.
   coverage:
