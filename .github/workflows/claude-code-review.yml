@@ -3,21 +3,52 @@ name: Claude Code Review
 on:
   issue_comment:
     types: [created]
+  # Self-test: a PR that changes this workflow runs its own copy of it, so the
+  # change can be checked before it reaches master. See SELF_TEST_PROMPT.
+  pull_request:
+    paths: ['.github/workflows/claude-code-review.yml']
 
 jobs:
   claude-review:
     # Only run on PR comments (not plain issues) containing the trigger phrase,
-    # and only for commenters trusted enough to grant write-scoped access to the token
+    # and only for commenters trusted enough to grant write-scoped access to the token.
+    # Self-tests run only for PRs from this repo, as fork PRs get no secrets.
     if: |
+      (github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
       contains(github.event.comment.body, '@claude review') &&
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository)
 
     runs-on: ubuntu-latest
     env:
       # Strip secrets (including the OAuth token) from the environment of
       # commands Claude runs, as the PR it reviews may contain a prompt injection.
       CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
+      SELF_TEST_PROMPT: |
+        This is a self-test, not a normal review. Pull request #${{ github.event.pull_request.number }}
+        changes .github/workflows/claude-code-review.yml, and this run uses the PR's copy of
+        that workflow so its changes can be checked before they reach master.
+        A normal run reviews a PR when someone comments "@claude review" on it.
+
+        Don't review the PR's code and don't change any files. Instead, check that your
+        environment lets you do a review, as the workflow intends:
+
+        1. Read the PR's copy of .github/workflows/claude-code-review.yml.
+        2. List the tools you have. For each Bash command pattern the workflow allows,
+           try one harmless command, e.g. `git diff --stat origin/${{ github.base_ref }}...HEAD`,
+           `git log -3 --oneline` and `git show --stat HEAD`, and say whether it worked.
+        3. Try one Bash command that should be denied, e.g. `curl -sI https://example.com`,
+           and say whether it was blocked.
+        4. Say whether the Bash sandbox started, and if not, what error you saw.
+        5. If you can run a command that shows environment variables, say whether
+           CLAUDE_CODE_OAUTH_TOKEN, GITHUB_TOKEN, GH_TOKEN and ACTIONS_ID_TOKEN_REQUEST_TOKEN
+           are set. Never print their values.
+        6. Note anything in the workflow that looks likely to stop a normal review working.
+
+        Your final message is posted as a comment on the PR, so make it a short Markdown
+        report: a table of each check with pass, fail or skipped, then any problems found.
     permissions:
       contents: read
       pull-requests: write
@@ -35,5 +66,34 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # A self-test's workflow differs from master's, so the Claude app refuses
+          # to give it a token; use the job's own token for those runs only.
+          github_token: ${{ github.event_name == 'pull_request' && github.token || '' }}
+          prompt: ${{ github.event_name == 'pull_request' && env.SELF_TEST_PROMPT || '' }}
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
+
+      - name: Extract self-test report
+        id: self-test-report
+        if: always() && github.event_name == 'pull_request'
+        env:
+          EXECUTION_FILE: ${{ steps.claude-review.outputs.execution_file }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          report=$(jq -r '[.[] | select(.type == "result")] | last | .result // empty' "$EXECUTION_FILE" 2>/dev/null || true)
+          if [ -z "$report" ]; then
+            report="Claude produced no report. See the [workflow run]($RUN_URL)."
+          fi
+          report="### Self-test of claude-code-review.yml"$'\n\n'"$report"
+          printf '%s\n' "$report" >> "$GITHUB_STEP_SUMMARY"
+          delimiter="EOF_$(openssl rand -hex 16)"
+          printf 'report<<%s\n%s\n%s\n' "$delimiter" "$report" "$delimiter" >> "$GITHUB_OUTPUT"
+
+      - name: Comment self-test report on PR
+        if: always() && steps.self-test-report.outputs.report != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPORT: ${{ steps.self-test-report.outputs.report }}
+        run: printf '%s\n' "$REPORT" | gh pr comment "$PR_NUMBER" --body-file -
