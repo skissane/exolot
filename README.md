@@ -35,6 +35,7 @@ which does the same thing for Neovim.
 uvx exolot                     # analyze the current directory
 uvx exolot src/ tests/foo.py   # analyze specific files or directories
 uvx exolot --format json .     # machine-readable output
+uvx exolot --statistics .      # count issues per rule, most common first
 uvx exolot install             # just download and unpack the server
 uvx exolot cache-dir           # show where the server is cached
 ```
@@ -60,6 +61,10 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
 - `--rules FILE` reads rule settings from a JSON file, in the same format as
   VS Code's `sonarlint.rules` setting, e.g.
   `{"python:S1764": {"level": "off"}}`.
+- `--statistics` prints one line per rule instead of the issues: the number of
+  issues, the rule key and the rule's name, most common rule first, like
+  `ruff check --statistics`. With `--format json` it prints a list of
+  `{"code", "name", "count"}` objects. The exit status is the same as without it.
 - `-v` / `--verbose` shows the server's logs.
 
 ## Platforms

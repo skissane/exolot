@@ -19,4 +19,6 @@ def test_finds_python_issue(tmp_path):
     source.write_text("def f(x):\n    if x == x:\n        pass\n")
     with AnalysisSession(ensure_server(progress=False), tmp_path) as session:
         issues = session.analyze([source], timeout=300)
+        names = session.rule_names()
     assert "python:S1764" in {i.rule for i in issues}
+    assert names["python:S1764"] == "Identical expressions should not be used on both sides of a binary operator"
