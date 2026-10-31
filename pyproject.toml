@@ -25,4 +25,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["jactionlint>=2.4.0", "pytest>=8"]

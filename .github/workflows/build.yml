@@ -7,17 +7,6 @@ on:
   pull_request:
 
 jobs:
-  validate-actions:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - name: action-validator
-        uses: mpalmer/action-validator@f55349f367686fa1df22f6e07f90f7cf88a9b28b
-        with:
-          version: 0.8.0
-
   build:
     runs-on: ubuntu-latest
     permissions:

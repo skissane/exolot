@@ -20,11 +20,14 @@ test:
 build:
     uv build
 
-# check and fix get the lint and format recipes as they're added (#6), and check
-# gets lint-workflows when it replaces CI's validate-actions job (#13).
+# Lint the GitHub Actions workflows with jactionlint
+lint-workflows:
+    uv run --group dev jactionlint --profile correctness
+
+# check and fix get the lint and format recipes as they're added (#6).
 
 # Run all checks, without fixing anything or running tests
-check:
+check: lint-workflows
 
 # Autofix lint issues and reformat code
 fix:
