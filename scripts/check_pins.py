@@ -72,7 +72,7 @@ def problems(root: Path) -> list[str]:
             for pin in pins(text, action, key):
                 if pin != version:
                     setting = f"{key}: {pin}" if pin else f"no {key}"
-                    found.append(f"{path.relative_to(root)}: a {action} step has {setting}, not {version}")
+                    found.append(f"{path.relative_to(root).as_posix()}: a {action} step has {setting}, not {version}")
     return found
 
 
