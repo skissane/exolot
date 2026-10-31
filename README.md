@@ -81,8 +81,11 @@ from `JAVA_HOME`, the `PATH`, or `--java`.
 
 ## Development
 
+Development uses [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/) (1.58.0 or later):
+
 ```sh
-uv sync
+just sync
 uv run exolot --help
-uv run pytest
+just test
+just ci    # what CI's build job runs
 ```
