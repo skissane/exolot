@@ -31,6 +31,20 @@ patch-coverage base='origin/master': coverage (diff-cover base)
 diff-cover base='origin/master' *args:
     uv run --group dev diff-cover coverage.xml --compare-branch={{base}} --branch-coverage {{args}}
 
+# patch-coverage-post's arguments are a PR number and, optionally, --report
+# (default patch-coverage.md, from `just diff-cover origin/master --format
+# markdown:patch-coverage.md`), --commit and --run-url (see --help for the
+# rest). It comments with $GITHUB_TOKEN (default `gh auth token`, so locally it
+# posts as you), posts nothing unless --commit is still the PR's head, and edits
+# its previous comment rather than posting another. --no-project, as it needs
+# only the standard library: CI runs it with a write-capable token, and nothing
+# should be installed alongside that.
+
+# Post a patch coverage report to a PR as a comment, or update the existing one
+[positional-arguments]
+patch-coverage-post *args:
+    uv run --no-project python -m scripts.post_patch_coverage "$@"
+
 # Build the sdist and wheel into dist/
 build:
     uv build
