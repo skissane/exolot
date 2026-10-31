@@ -365,8 +365,8 @@ jobs:
   # comment, and hides the ones earlier runs posted as outdated, as the Claude
   # self-tests do. The same conditions and precautions as post-patch-coverage:
   # only same-repo, non-Dependabot PRs; queued per PR; posts only if HEAD_SHA
-  # is still the PR's head; runs only the PR's stdlib-only script beside its
-  # token.
+  # is still the PR's head; runs only the PR's stdlib-only script (and the
+  # exolot source it imports, without installing the project) beside its token.
   post-self-analysis:
     needs: self-analysis
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}

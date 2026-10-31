@@ -172,3 +172,80 @@ def test_cli_statistics_with_no_issues(tmp_path, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "0 issue(s) in 1 file(s) analyzed" in captured.err
+
+
+def test_cli_markdown_with_links(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "b.py").write_text("x = 1\n")
+    (tmp_path / "a b.py").write_text("x = 1\n")
+    status = cli.main(["--format", "markdown", "--link-template", "https://x/{path}#L{line}", "."])
+    assert status == 1
+    captured = capsys.readouterr()
+    assert captured.out == (
+        "| Location | Rule | Message |\n"
+        "| --- | --- | --- |\n"
+        "| [a b.py:1](https://x/a%20b.py#L1) | fake:S1 | python issue |\n"
+        "| [b.py:1](https://x/b.py#L1) | fake:S1 | python issue |\n"
+    )
+    assert "2 issue(s) in 2 file(s) analyzed" in captured.err
+
+
+def test_cli_markdown_with_no_issues(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    monkeypatch.setattr(AnalysisSession, "analyze", lambda self, files, timeout=None: [])
+    (tmp_path / "a.py").write_text("x = 1\n")
+    assert cli.main(["--format", "markdown", "--workspace", str(tmp_path), str(tmp_path / "a.py")]) == 0
+    assert capsys.readouterr().out == "No issues found.\n"
+
+
+def test_cli_statistics_markdown(tmp_path, monkeypatch, capsys):
+    status, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--format", "markdown")
+    assert status == 1
+    assert captured.out == (
+        "| Count | Rule | Name |\n| ---: | --- | --- |\n| 5 | fake:S2 |  |\n| 3 | fake:S1 | Fake rule one |\n"
+    )
+    assert "8 issue(s) in 3 file(s) analyzed" in captured.err
+
+
+def test_cli_statistics_markdown_with_no_issues(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(AnalysisSession, "analyze", lambda self, files, timeout=None: [])
+    status, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--format", "markdown")
+    assert status == 0
+    assert captured.out == "No issues found.\n"
+
+
+@pytest.mark.parametrize(
+    ("flags", "error"),
+    [
+        (["--format", "markdown", "--link-template", "{nope}"], "unknown field 'nope'"),
+        (["--link-template", "{path}"], "needs --format markdown"),
+        (["--link-template", ""], "empty link template"),
+        (["--format", "markdown", "--statistics", "--link-template", "{path}"], "needs --format markdown"),
+    ],
+)
+def test_cli_rejects_bad_link_templates_without_downloading(tmp_path, monkeypatch, capsys, flags, error):
+    def fail(*args, **kwargs):
+        raise AssertionError("should not download")
+
+    monkeypatch.setattr(cli, "ensure_server", fail)
+    with pytest.raises(SystemExit) as exc:
+        cli.main([*flags, str(tmp_path)])
+    assert exc.value.code == 2
+    assert error in capsys.readouterr().err
+
+
+def test_cli_markdown_paths_are_relative_to_the_repo_root(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    repo = tmp_path / "repo"
+    sub = repo / "sub"
+    sub.mkdir(parents=True)
+    (repo / ".git").mkdir()
+    (sub / "a.py").write_text("x = 1\n")
+    outside = tmp_path / "b.py"
+    outside.write_text("x = 1\n")
+    monkeypatch.chdir(sub)
+    cli.main(["--format", "markdown", "--link-template", "u/{path}", "--workspace", str(repo), "a.py", str(outside)])
+    out = capsys.readouterr().out
+    assert "| [sub/a.py:1](u/sub/a.py) |" in out
+    assert "| [../../b.py:1](u/../../b.py) |" in out

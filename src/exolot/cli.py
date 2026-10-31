@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import logging
 import os
@@ -8,7 +9,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from . import __version__
+from . import __version__, markdown
 from .analyze import AnalysisSession, Issue, collect_files
 from .server import DEFAULT_SERVER_VERSION, ServerError, cache_dir, detect_platform, ensure_server
 
@@ -39,7 +40,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = sub.add_parser("analyze", parents=[server_opts], help="analyze files (the default command)")
     analyze.add_argument("paths", nargs="*", type=Path, default=[Path(".")], help="files or directories")
-    analyze.add_argument("--format", choices=("text", "json"), default="text")
+    analyze.add_argument("--format", choices=("text", "json", "markdown"), default="text")
+    analyze.add_argument(
+        "--link-template",
+        type=_link_template,
+        metavar="TEMPLATE",
+        help="with --format markdown, link each location to this URL, filling in {path} (URL-quoted, relative to "
+        "the git repo's root), {line}, "
+        "{column}, {end_line} and {end_column}, e.g. 'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}'",
+    )
     analyze.add_argument(
         "--rules",
         type=Path,
@@ -65,11 +74,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _link_template(value: str) -> str:
+    try:
+        return markdown.check_link_template(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or (argv[0] not in COMMANDS and argv[0] not in ("-h", "--help", "--version")):
         argv.insert(0, "analyze")
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if getattr(args, "link_template", None) and (args.format != "markdown" or args.statistics):
+        parser.error("--link-template needs --format markdown, without --statistics")
 
     logging.basicConfig(
         level=logging.INFO if getattr(args, "verbose", False) else logging.WARNING,
@@ -118,18 +137,25 @@ def main(argv: list[str] | None = None) -> int:
             if args.statistics:
                 _report_statistics(issues, len(files), args.format, session.rule_names() if issues else {})
             else:
-                _report(issues, len(files), args.format)
+                _report(issues, len(files), args.format, args.link_template)
     except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
         print(f"exolot: {e}", file=sys.stderr)
         return 2
     return 1 if issues and not args.exit_zero else 0
 
 
-def _report(issues: list[Issue], file_count: int, fmt: str) -> None:
+def _report(issues: list[Issue], file_count: int, fmt: str, link_template: str | None = None) -> None:
     issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
     if fmt == "json":
         json.dump([_issue_json(i) for i in issues], sys.stdout, indent=2)
         print()
+    elif fmt == "markdown":
+        # Relative to the repo root rather than the current directory, so
+        # links to the repo's code work from any subdirectory.
+        findings = [{**_issue_json(i), "path": _repo_path(i.path)} for i in issues]
+        lines = markdown.findings_table(findings, link_template) if issues else ["No issues found."]
+        print("\n".join(lines))
+        print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
     else:
         for issue in issues:
             location = f"{_display_path(issue.path)}:{issue.line}:{issue.column}"
@@ -146,6 +172,9 @@ def _report_statistics(issues: list[Issue], file_count: int, fmt: str, names: di
         stats = [{"code": rule, "name": names.get(rule, ""), "count": count} for rule, count in rows]
         json.dump(stats, sys.stdout, indent=2)
         print()
+    elif fmt == "markdown":
+        print("\n".join(markdown.statistics_table(rows, names) if rows else ["No issues found."]))
+        print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
     else:
         count_width = max((len(str(count)) for _, count in rows), default=0)
         rule_width = max((len(rule) for rule, _ in rows), default=0)
@@ -160,6 +189,23 @@ def _display_path(path: Path) -> str:
         return os.path.relpath(path)
     except ValueError:  # different drive on Windows
         return str(path)
+
+
+def _repo_path(path: Path) -> str:
+    """path relative to the root of the git repository holding it, or as
+    _display_path gives it when it's in none."""
+    root = _repo_root(path.parent)
+    return path.relative_to(root).as_posix() if root else _display_path(path)
+
+
+@functools.cache
+def _repo_root(directory: Path) -> Path | None:
+    """The nearest of directory and its parents with a .git directory or file
+    (a submodule's or worktree's), if any."""
+    for d in (directory, *directory.parents):
+        if (d / ".git").exists():
+            return d
+    return None
 
 
 def _issue_json(issue: Issue) -> dict[str, object]:
