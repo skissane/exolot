@@ -162,6 +162,11 @@ def test_cli_statistics_without_rule_names(tmp_path, monkeypatch, capsys):
 def test_cli_statistics_with_no_issues(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     monkeypatch.setattr(AnalysisSession, "analyze", lambda self, files, timeout=None: [])
+
+    def no_rule_names(self):
+        raise AssertionError("rule names aren't needed when there are no issues")
+
+    monkeypatch.setattr(AnalysisSession, "rule_names", no_rule_names)
     (tmp_path / "a.py").write_text("x = 1\n")
     assert cli.main(["--statistics", "--workspace", str(tmp_path), str(tmp_path / "a.py")]) == 0
     captured = capsys.readouterr()

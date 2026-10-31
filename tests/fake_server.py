@@ -86,7 +86,13 @@ while (msg := read()) is not None:
         if RULES_FAIL:
             send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32601, "message": "no such method"}})
         else:
-            rules = {"Fake": [{"key": "fake:S1", "name": "Fake rule one", "activeByDefault": True}, {"bad": 1}]}
+            rules = {
+                "Fake": [
+                    {"key": "fake:S1", "name": "Fake rule one", "activeByDefault": True},
+                    {"key": "fake:S2", "name": None},
+                    {"bad": 1},
+                ]
+            }
             send({"jsonrpc": "2.0", "id": msg["id"], "result": rules})
     elif method == "shutdown":
         send({"jsonrpc": "2.0", "id": msg["id"], "result": None})

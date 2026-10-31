@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             issues = session.analyze(files, timeout=args.timeout)
             # Report before the server shuts down, which can take a few seconds.
             if args.statistics:
-                _report_statistics(issues, len(files), args.format, session.rule_names())
+                _report_statistics(issues, len(files), args.format, session.rule_names() if issues else {})
             else:
                 _report(issues, len(files), args.format)
     except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
