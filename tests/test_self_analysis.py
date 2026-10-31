@@ -24,6 +24,12 @@ diff --git a/old.py b/old.py
 +++ /dev/null
 @@ -1 +0,0 @@
 -gone
+diff --git a/has space.py b/has space.py
+--- a/has space.py\t
++++ b/has space.py\t
+@@ -1 +1 @@
+-x
++y
 diff --git a/new.py b/new.py
 --- /dev/null
 +++ b/new.py
@@ -38,7 +44,7 @@ def finding(path="src/a.py", line=3, rule="python:S1", message="bad"):
 
 
 def test_parse_diff():
-    assert parse_diff(DIFF) == {"src/a.py": {3, 4, 21}, "new.py": {1, 2}}
+    assert parse_diff(DIFF) == {"src/a.py": {3, 4, 21}, "has space.py": {1}, "new.py": {1, 2}}
 
 
 def test_report_without_findings():
@@ -225,3 +231,8 @@ def test_post_reports_http_errors(report, monkeypatch, capsys):
 
 def test_report_names_the_commit_without_a_run():
     assert "Analysis of abc.\n" in build_report([], commit="abc")
+
+
+def test_report_quotes_paths_in_links():
+    body = build_report([finding(path="a) [x](https://evil.example).py")], repo="o/r", commit="abc")
+    assert "](https://github.com/o/r/blob/abc/a%29%20%5Bx%5D%28https%3A//evil.example%29.py#L3)" in body

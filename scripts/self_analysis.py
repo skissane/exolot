@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 from pathlib import Path
 
 from scripts import github_comments
@@ -52,7 +53,8 @@ def parse_diff(diff: str) -> dict[str, set[int]]:
     path = None
     for line in diff.splitlines():
         if line.startswith("+++ "):
-            target = line[4:]
+            # Git ends the header with a tab when the path has a space in it.
+            target = line[4:].split("\t", 1)[0]
             path = target[2:] if target.startswith("b/") else None
         elif path is not None and (m := _HUNK_RE.match(line)):
             start = int(m["start"])
@@ -119,7 +121,8 @@ def build_report(
     blob = f"https://github.com/{repo}/blob/{commit}" if repo and commit else None
 
     def link(f: dict) -> str | None:
-        return f"{blob}/{f['path']}#L{f['line']}" if blob else None
+        # Quoted, so a path can't end the link's URL early.
+        return f"{blob}/{urllib.parse.quote(f['path'])}#L{f['line']}" if blob else None
 
     agents = f"[AGENTS.md]({blob}/AGENTS.md)" if blob else "AGENTS.md"
     out = [MARKER, "## exolot's findings on itself", "", POLICY.format(agents=agents), ""]
