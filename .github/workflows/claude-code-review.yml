@@ -28,12 +28,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+
+      # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB isolates Claude's commands with
+      # bubblewrap, which needs these packages and unprivileged user namespaces.
+      # Without them Claude has no Bash at all. Mirrors the step the action runs
+      # itself when allowed_non_write_users is set.
+      - name: Install subprocess isolation dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends bubblewrap socat
+          if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@v3
+        with:
+          just-version: "1.58.0"
 
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The action's default tools can't diff or run checks, only commit and push.
+          claude_args: '--allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(just:*)"'
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
