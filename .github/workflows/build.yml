@@ -31,6 +31,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
+      # Keep just-version in step with the justfile's minimum-version.
       - name: Install just
         uses: extractions/setup-just@v3
         with:
