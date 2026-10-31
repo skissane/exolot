@@ -16,6 +16,7 @@ def client():
     yield c
     proc.kill()
     proc.wait()
+    c.close()
 
 
 def test_answers_server_requests_during_a_request(client):
