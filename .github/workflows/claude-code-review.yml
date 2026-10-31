@@ -20,14 +20,17 @@ jobs:
   claude-review:
     # Only run on PR comments (not plain issues) containing the trigger phrase,
     # and only for commenters trusted enough to grant write-scoped access to the token.
-    # Self-tests run only for PRs from this repo, as fork PRs get no secrets.
+    # Self-tests run only for PRs from this repo, as fork PRs get no secrets, and not
+    # when Dependabot triggers them: claude-code-action refuses bot actors, and
+    # Dependabot's runs get only Dependabot secrets, so no CLAUDE_CODE_OAUTH_TOKEN.
     if: |
       (github.event_name == 'issue_comment' &&
       github.event.issue.pull_request &&
       contains(github.event.comment.body, '@claude review') &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository)
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]')
 
     runs-on: ubuntu-latest
     env:
