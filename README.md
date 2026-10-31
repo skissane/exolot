@@ -132,6 +132,7 @@ summary, without a token or code scanning, print them as annotations:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: astral-sh/setup-uv@v10
       - run: uvx exolot --format github --diff-base "origin/$GITHUB_BASE_REF" .
 ```
