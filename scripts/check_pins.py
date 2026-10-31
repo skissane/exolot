@@ -39,9 +39,26 @@ def steps(text: str) -> list[list[str]]:
     return result
 
 
+def inputs(step: list[str]) -> list[str]:
+    """The lines of a step's `with:` mapping, so that a key in another of its
+    mappings (`env:`) or in a multi-line string isn't taken for an input."""
+    found: list[str] = []
+    indent = None
+    for line in step:
+        stripped = line.strip()
+        depth = len(line) - len(line.lstrip())
+        if indent is not None and (not stripped or stripped.startswith("#") or depth > indent):
+            found.append(line)
+        elif stripped.removeprefix("- ") == "with:":
+            indent = depth + (2 if stripped.startswith("- ") else 0)
+        else:
+            indent = None
+    return found
+
+
 def pins(text: str, action: str, key: str) -> list[str | None]:
-    """The value of key in each step of a workflow that uses action, or None
-    where that step doesn't set it."""
+    """The value of input key in each step of a workflow that uses action, or
+    None where that step doesn't set it."""
     # The whole value, less its quotes or a trailing comment, so an unexpected
     # one (`${{ env.UV }}`, `latest`, `"0.13.6 # x"`) is reported as written.
     key_re = re.compile(
@@ -50,7 +67,7 @@ def pins(text: str, action: str, key: str) -> list[str | None]:
     found: list[str | None] = []
     for step in steps(text):
         if any((m := _USES_RE.match(line)) and m["action"] == action for line in step):
-            values = [next(v for v in m.groups() if v is not None) for line in step if (m := key_re.match(line))]
+            values = [next(v for v in m.groups() if v is not None) for line in inputs(step) if (m := key_re.match(line))]
             found.append(values[0] if values else None)
     return found
 
