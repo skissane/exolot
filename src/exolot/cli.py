@@ -17,6 +17,7 @@ from pathlib import Path
 
 from . import __version__, annotations, clone, compiledb, config, gitdiff, markdown, problems, sarif
 from .analyze import SERVER_LOG_LEVELS, AnalysisSession, Issue, collect_files, language_id
+from .exclude import Exclude
 from .server import DEFAULT_SERVER_VERSION, Server, ServerError, cache_dir, detect_platform, ensure_server
 
 COMMANDS = ("analyze", "analyze-repo", "install", "cache-dir")
@@ -404,20 +405,11 @@ def _load_inputs(args: argparse.Namespace) -> _Inputs:
     return inputs
 
 
-def _exclude_patterns(args: argparse.Namespace, settings: config.Config) -> list[str]:
-    root = _repo_root(Path.cwd()) or Path.cwd().resolve()
-    configured = [_prefix_glob(pattern, root, settings.path.parent) for pattern in settings.exclude]
-    return configured + args.exclude
-
-
-def _prefix_glob(pattern: str, root: Path, base: Path) -> str:
-    if pattern.startswith("/"):
-        return pattern.removeprefix("/")
-    try:
-        prefix = base.resolve().relative_to(root).as_posix()
-    except ValueError:
-        return pattern
-    return f"{prefix}/{pattern}" if prefix not in ("", ".") else pattern
+def _exclude_patterns(args: argparse.Namespace, settings: config.Config) -> list[Exclude]:
+    """The config file's exclude globs, relative to its directory, then
+    --exclude's, relative to the current directory."""
+    configured = [Exclude(pattern, settings.path.parent) for pattern in settings.exclude] if settings.path else []
+    return configured + [Exclude(pattern, Path.cwd()) for pattern in args.exclude]
 
 
 def _find_compilation_database(args: argparse.Namespace, inputs: _Inputs) -> None:
