@@ -117,7 +117,7 @@ def test_comment_puts_changed_lines_first_and_links():
     assert "### On changed lines (1)" in new
     assert "[src/a.py:3](https://x/src/a.py#L3)" in new
     assert "Elsewhere (1)" in old
-    assert "src/a.py:9" in old
+    assert "[src/a.py:9](https://x/src/a.py#L9)" in old
 
 
 def test_comment_names_the_commit_without_a_run():
@@ -137,3 +137,10 @@ def test_comment_is_truncated_to_fit(run_url):
     assert body.endswith("._\n")
     assert "Report truncated" in body
     assert ("[this workflow run](https://run)" in body.rsplit("\n\n", 1)[1]) == bool(run_url)
+
+
+def test_comment_closes_a_truncated_elsewhere_section():
+    findings = [finding(line=1, changed=True)] + [finding(line=n, message="x" * 500) for n in range(2, 200)]
+    body = markdown.comment(findings, changed=True)
+    assert body.count("<details>") == body.count("</details>") == 1
+    assert body.index("</details>") < body.index("Report truncated")

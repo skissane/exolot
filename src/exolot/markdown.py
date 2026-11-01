@@ -125,5 +125,8 @@ def _truncate(body: str, run_url: str | None) -> str:
     if len(body) <= MAX_COMMENT_CHARS:
         return body
     cut = body[: body.rfind("\n", 0, MAX_COMMENT_CHARS)]
+    # Close a section the cut lands in, so the note isn't collapsed in it.
+    if cut.count("<details>") > cut.count("</details>"):
+        cut += "\n\n</details>"
     where = f" or see [this workflow run]({run_url})" if run_url else ""
     return f"{cut}\n\n_Report truncated: run exolot yourself for all of it{where}._\n"

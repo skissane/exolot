@@ -76,9 +76,10 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   Its paths are relative to the root of the git repository each file is in
   (so links work from any subdirectory), or to the current directory for
   files outside one.
-- `--link-template TEMPLATE` (with `--format markdown`) links each location to
-  a URL made from TEMPLATE, filling in `{path}` (URL-quoted, with forward
-  slashes), `{line}`, `{column}`, `{end_line}` and `{end_column}`, e.g.
+- `--link-template TEMPLATE` (with `--format markdown` or `github-comment`)
+  links each location to a URL made from TEMPLATE, filling in `{path}`
+  (URL-quoted, with forward slashes), `{line}`, `{column}`, `{end_line}` and
+  `{end_column}`, e.g.
   `--link-template 'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}'`.
   Give the commit the code is from: in a pull request's workflow
   `GITHUB_SHA` is the merge commit, so use the PR's head SHA instead.
