@@ -62,18 +62,13 @@ wait-for-base-coverage *args:
 self-analyze *args:
     uv run exolot "$@"
 
-# Turn `just self-analyze --format json` output into a Markdown report (see --help)
-[positional-arguments]
-self-analysis-report *args:
-    PYTHONPATH=src uv run --no-project python -m scripts.self_analysis report "$@"
-
 # --no-project, like patch-coverage-post, as CI runs it with a write-capable
-# token; the script imports exolot.markdown from src/ rather than installing it.
+# token; the script uses only the stdlib, so the project isn't installed.
 
-# Post a self-analysis report to a PR, hiding the ones posted before: arguments are the PR number and the report
+# Post a `just self-analyze --format github-comment` report to a PR, hiding the ones posted before: arguments are the PR number and the report
 [positional-arguments]
 self-analysis-post *args:
-    PYTHONPATH=src uv run --no-project python -m scripts.self_analysis post "$@"
+    uv run --no-project python -m scripts.self_analysis "$@"
 
 # Build the sdist and wheel into dist/
 build:

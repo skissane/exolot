@@ -36,6 +36,7 @@ uvx exolot                     # analyze the current directory
 uvx exolot src/ tests/foo.py   # analyze specific files or directories
 uvx exolot --format json .     # machine-readable output
 uvx exolot --format markdown . # a Markdown table, e.g. for a PR comment
+uvx exolot --format github-comment . # a report to post as a PR comment
 uvx exolot --format sarif .    # SARIF 2.1.0, e.g. for GitHub code scanning
 uvx exolot --statistics .      # count issues per rule, most common first
 uvx exolot --diff-base origin/main --changed-only  # only issues on lines your branch changes
@@ -75,12 +76,25 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   Its paths are relative to the root of the git repository each file is in
   (so links work from any subdirectory), or to the current directory for
   files outside one.
-- `--link-template TEMPLATE` (with `--format markdown`) links each location to
-  a URL made from TEMPLATE, filling in `{path}` (URL-quoted, with forward
-  slashes), `{line}`, `{column}`, `{end_line}` and `{end_column}`, e.g.
+- `--link-template TEMPLATE` (with `--format markdown` or `github-comment`)
+  links each location to a URL made from TEMPLATE, filling in `{path}`
+  (URL-quoted, with forward slashes), `{line}`, `{column}`, `{end_line}` and
+  `{end_column}`, e.g.
   `--link-template 'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}'`.
   Give the commit the code is from: in a pull request's workflow
   `GITHUB_SHA` is the merge commit, so use the PR's head SHA instead.
+  In GitHub Actions (when `GITHUB_ACTIONS` is `true`), it defaults to links to
+  the commit checked out in the current directory's git repository, in the
+  workflow's repository (`GITHUB_SERVER_URL` and `GITHUB_REPOSITORY`), so the
+  links match the code analyzed; `--no-links` turns that off.
+- `--format github-comment` prints a Markdown report for a pull request
+  comment: an "exolot's findings" heading, the `preamble` from the project's
+  config file (see below), the commit analyzed and, in GitHub Actions, a link
+  to the workflow run, then the issues in `--format markdown`'s tables, with
+  a count, or with `--diff-base` those on changed lines first. It's cut short,
+  with a note saying so, to stay under GitHub's 65,536-character limit for a
+  comment. exolot doesn't post it: use `gh pr comment --body-file`, or an
+  action that posts or updates a comment. It can't be combined with `--statistics`.
 - `--format sarif` prints a [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
   log with one run: each issue is a result with its rule, message, level
   (`error`, `warning`, or `note` for the server's info and hint severities)
@@ -112,6 +126,23 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   exit status and `--statistics` count only those. This lets a project adopt
   exolot in CI without fixing its existing issues first.
 - `-v` / `--verbose` shows the server's logs.
+
+## Configuration
+
+exolot reads settings from a `.exolot.toml` file, or the `[tool.exolot]`
+table of a `pyproject.toml`, in the current directory or the nearest parent
+that has one (but not above the root of the git repository it's in). In each
+directory, `.exolot.toml` comes first; a `pyproject.toml` without a
+`[tool.exolot]` table is skipped. An unknown setting is an error (exit
+status 2). The settings are:
+
+- `preamble`: Markdown that `--format github-comment` puts after its heading,
+  e.g. how the project wants its contributors to treat the issues:
+
+  ```toml
+  [tool.exolot]
+  preamble = "Fix the issues on lines you changed; the rest can wait."
+  ```
 
 ## GitHub code scanning
 

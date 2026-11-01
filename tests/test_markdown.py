@@ -92,3 +92,55 @@ def test_changed_findings_sections():
         "| --- | --- | --- |",
         "| a.py:1 | r | m |",
     ]
+
+
+def test_comment_without_findings():
+    assert markdown.comment([]) == "## exolot's findings\n\nNo issues found.\n"
+
+
+def test_comment_lists_all_findings_with_a_count():
+    body = markdown.comment([finding(line=3), finding(line=9)], preamble="  Read *this*.\n")
+    assert body.startswith("## exolot's findings\n\nRead *this*.\n\n### Findings (2)\n\n| Location |")
+    assert "<details>" not in body
+
+
+def test_comment_puts_changed_lines_first_and_links():
+    body = markdown.comment(
+        [finding(line=3, changed=True), finding(line=9, changed=False)],
+        link_template="https://x/{path}#L{line}",
+        changed=True,
+        commit="abc",
+        run_url="https://run",
+    )
+    new, old = body.split("<details>")
+    assert "Analysis of abc, from [this workflow run](https://run).\n" in new
+    assert "### On changed lines (1)" in new
+    assert "[src/a.py:3](https://x/src/a.py#L3)" in new
+    assert "Elsewhere (1)" in old
+    assert "[src/a.py:9](https://x/src/a.py#L9)" in old
+
+
+def test_comment_names_the_commit_without_a_run():
+    body = markdown.comment([], commit="abc")
+    assert "Analysis of abc.\n" in body
+    assert "workflow run" not in body
+
+
+def test_comment_ignores_a_blank_preamble():
+    assert markdown.comment([], preamble=" \n") == markdown.comment([])
+
+
+@pytest.mark.parametrize("run_url", [None, "https://run"])
+def test_comment_is_truncated_to_fit(run_url):
+    body = markdown.comment([finding(line=n, message="x" * 500) for n in range(1, 200)], run_url=run_url)
+    assert len(body) <= markdown.MAX_COMMENT_CHARS + 200
+    assert body.endswith("._\n")
+    assert "Report truncated" in body
+    assert ("[this workflow run](https://run)" in body.rsplit("\n\n", 1)[1]) == bool(run_url)
+
+
+def test_comment_closes_a_truncated_elsewhere_section():
+    findings = [finding(line=1, changed=True)] + [finding(line=n, message="x" * 500) for n in range(2, 200)]
+    body = markdown.comment(findings, changed=True)
+    assert body.count("<details>") == body.count("</details>") == 1
+    assert body.index("</details>") < body.index("Report truncated")
