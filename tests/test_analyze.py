@@ -252,7 +252,11 @@ def test_cli_markdown_paths_are_relative_to_the_repo_root(tmp_path, monkeypatch,
     assert "| [../../b.py:1](u/../../b.py) |" in out
 
 
-def test_cli_github_annotations(tmp_path, monkeypatch, capsys):
+def _annotations(err):
+    return [line for line in err.splitlines() if line.startswith("::")]
+
+
+def test_cli_annotations_go_to_stderr(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     repo = tmp_path / "repo"
     sub = repo / "sub"
@@ -260,36 +264,39 @@ def test_cli_github_annotations(tmp_path, monkeypatch, capsys):
     (repo / ".git").mkdir()
     (sub / "a.py").write_text("TWO\n")
     monkeypatch.chdir(sub)
-    assert cli.main(["--format", "github-annotations", "--workspace", str(repo), "a.py"]) == 1
+    assert cli.main(["--annotations", "--workspace", str(repo), "a.py"]) == 1
     captured = capsys.readouterr()
-    assert captured.out.splitlines() == [
+    assert captured.out == "a.py:1:1: info [fake:S2] another issue\na.py:1:3: warning [fake:S1] python issue\n"
+    assert _annotations(captured.err) == [
         "::notice file=sub/a.py,line=1,col=1,endLine=1,endColumn=2,title=fake%3AS2::another issue",
         "::warning file=sub/a.py,line=1,col=3,endLine=1,endColumn=6,title=fake%3AS1::python issue",
     ]
     assert "2 issue(s) in 1 file(s) analyzed" in captured.err
 
 
-def test_cli_github_annotations_put_changed_lines_first(repo, tmp_path, monkeypatch, capsys):
+def test_cli_annotations_put_changed_lines_first(repo, tmp_path, monkeypatch, capsys):
     _fake_server(tmp_path, monkeypatch)
     (repo / "sub" / "b.py").write_text("changed\n")
     monkeypatch.chdir(repo)
-    assert (
-        cli.main(["--diff-base", "master", "--format", "github-annotations", "--workspace", str(repo), str(repo)]) == 1
-    )
-    captured = capsys.readouterr()
-    assert [line.split(",")[0] for line in captured.out.splitlines()] == [
-        "::warning file=sub/b.py",
-        "::warning file=a.py",
-    ]
-    assert "2 issue(s), 1 on changed lines, in 2 file(s) analyzed" in captured.err
+    args = ["--diff-base", "master", "--annotations", "--workspace", str(repo), str(repo)]
+    for extra in ([], ["--format", "github-comment"], ["--statistics"]):
+        assert cli.main([*args, *extra]) == 1
+        captured = capsys.readouterr()
+        assert [line.split(",")[0] for line in _annotations(captured.err)] == [
+            "::warning file=sub/b.py",
+            "::warning file=a.py",
+        ]
+        assert "::" not in captured.out
+
+    assert cli.main([*args, "--changed-only"]) == 1
+    assert [line.split(",")[0] for line in _annotations(capsys.readouterr().err)] == ["::warning file=sub/b.py"]
 
 
-def test_cli_statistics_cant_be_annotations(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(cli, "ensure_server", _no_download)
-    with pytest.raises(SystemExit) as exc:
-        cli.main(["--statistics", "--format", "github-annotations", str(tmp_path)])
-    assert exc.value.code == 2
-    assert "--statistics can't be used with --format github-annotations" in capsys.readouterr().err
+def test_cli_no_annotations_by_default(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    (tmp_path / "a.py").write_text("x = 1\n")
+    assert cli.main(["--workspace", str(tmp_path), str(tmp_path / "a.py")]) == 1
+    assert "::" not in capsys.readouterr().err
 
 
 def _fake_server(tmp_path, monkeypatch):

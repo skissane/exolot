@@ -25,7 +25,7 @@ When you add a step to CI, add it as a recipe and include it in `check`, `fix` o
 ## exolot's findings on itself
 
 CI's `self-analysis` job runs exolot on its own code (`just self-analyze --exit-zero --diff-base origin/<base branch>` on PRs, which you can run yourself, adding `--changed-only` to see just the findings on lines you changed; it downloads the language server like `just integration`).
-It lists the findings in its job summary and, on PRs from this repository other than Dependabot's, posts them as a PR comment (made with `--format github-comment`, which starts it with the policy in `pyproject.toml`'s `[tool.exolot]` `preamble`, and posted by the `post-self-analysis` job, `scripts/self_analysis.py`), with the ones on lines the PR changes first; each run hides the previous run's comment as outdated.
+It shows the findings as annotations on the PR's diff (`--annotations`), lists them in its job summary and, on PRs from this repository other than Dependabot's, posts them as a PR comment (made with `--format github-comment`, which starts it with the policy in `pyproject.toml`'s `[tool.exolot]` `preamble`, and posted by the `post-self-analysis` job, `scripts/self_analysis.py`), with the ones on lines the PR changes first; each run hides the previous run's comment as outdated.
 The findings are for information only: `--exit-zero` means findings never fail the job, though a failed analysis still does.
 
 - Use your judgement: fix a finding when it points at a real bug or a change that makes the code clearer, and ignore the rest, e.g. cognitive-complexity warnings on code that's clear enough as it is, or a "function always returns the same value" on one that's meant to.

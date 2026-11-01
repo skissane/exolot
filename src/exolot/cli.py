@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("paths", nargs="*", type=Path, default=[Path(".")], help="files or directories")
     analyze.add_argument(
         "--format",
-        choices=("text", "json", "markdown", "github-comment", "github-annotations", "sarif"),
+        choices=("text", "json", "markdown", "github-comment", "sarif"),
         default="text",
     )
     analyze.add_argument(
@@ -86,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --diff-base, analyze only the changed files, and report and count only the issues on changed lines",
     )
     analyze.add_argument(
+        "--annotations",
+        action="store_true",
+        help="also print each issue to stderr as a GitHub Actions workflow command, which GitHub shows as an "
+        "annotation on the PR's diff (issues on changed lines first, with --diff-base)",
+    )
+    analyze.add_argument(
         "-e",
         "--exit-zero",
         action="store_true",
@@ -115,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--link-template needs --format markdown or github-comment, without --statistics")
     if getattr(args, "no_links", False) and (not linkable or args.link_template):
         parser.error("--no-links needs --format markdown or github-comment, without --statistics or --link-template")
-    if getattr(args, "statistics", False) and args.format in ("sarif", "github-comment", "github-annotations"):
+    if getattr(args, "statistics", False) and args.format in ("sarif", "github-comment"):
         parser.error(f"--statistics can't be used with --format {args.format}")
     if getattr(args, "changed_only", False) and args.diff_base is None:
         parser.error("--changed-only needs --diff-base")
@@ -170,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
             issues = session.analyze(files, timeout=args.timeout)
             if args.format == "sarif" and issues:
                 session.add_related_locations(issues)
-            elif changes is not None and (args.changed_only or not args.statistics):
+            elif changes is not None and (args.changed_only or args.annotations or not args.statistics):
                 _add_changed_related_locations(session, issues, changes)
             if changes is not None and args.changed_only:
                 issues = [i for i in issues if _on_changed_lines(i, changes)]
@@ -183,6 +189,8 @@ def main(argv: list[str] | None = None) -> int:
                 _report_comment(issues, len(files), args, settings, None if args.changed_only else changes)
             else:
                 _report(issues, len(files), args.format, _links(args), None if args.changed_only else changes)
+            if args.annotations:
+                _print_annotations(issues, None if args.changed_only else changes)
     except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
         print(f"exolot: {e}", file=sys.stderr)
         return 2
@@ -219,9 +227,6 @@ def _report(
             lines = markdown.findings_table(findings, link_template)
         print("\n".join(lines))
         print(summary, file=sys.stderr)
-    elif fmt == "github-annotations":
-        _print_annotations(issues, findings)
-        print(summary, file=sys.stderr)
     else:
         for issue, finding in zip(issues, findings):
             location = f"{_display_path(issue.path)}:{issue.line}:{issue.column}"
@@ -231,14 +236,17 @@ def _report(
     sys.stdout.flush()
 
 
-def _print_annotations(issues: list[Issue], findings: list[dict[str, object]]) -> None:
-    """Print the issues as GitHub workflow commands. GitHub shows only the
-    first few annotations of each type, so those on changed lines go first.
-    Paths are relative to the repo root, which is what GitHub matches them
-    against."""
-    ordered = sorted(zip(issues, findings), key=lambda pair: not pair[1].get("changed"))
-    for issue, finding in ordered:
-        print(annotations.annotation({**finding, "path": _repo_path(issue.path)}))
+def _print_annotations(issues: list[Issue], changes: gitdiff.Changes | None = None) -> None:
+    """Print the issues to stderr as GitHub workflow commands, which the
+    Actions runner turns into annotations, leaving stdout for the report.
+    GitHub shows only the first few annotations of each type, so with changes
+    those on changed lines go first. Paths are relative to the repo root,
+    which is what GitHub matches them against."""
+    issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
+    findings = [{**_issue_json(i, changes), "path": _repo_path(i.path)} for i in issues]
+    for finding in sorted(findings, key=lambda f: not f.get("changed")):
+        print(annotations.annotation(finding), file=sys.stderr)
+    sys.stderr.flush()
 
 
 def _report_comment(
