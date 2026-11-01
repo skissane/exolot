@@ -410,9 +410,7 @@ def test_cli_changed_only_with_no_changed_files(repo, monkeypatch, capsys):
         (["--statistics", "--format", "markdown"], "markdown"),
     ],
 )
-def test_cli_changed_only_with_no_changed_files_prints_an_empty_report(
-    repo, monkeypatch, capsys, flags, report_kind
-):
+def test_cli_changed_only_with_no_changed_files_prints_an_empty_report(repo, monkeypatch, capsys, flags, report_kind):
     monkeypatch.setattr(cli, "ensure_server", _no_download)
     monkeypatch.chdir(repo)
     assert cli.main(["--diff-base", "master", "--changed-only", *flags]) == 0
