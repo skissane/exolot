@@ -76,6 +76,15 @@ def test_session_raises_when_the_server_exits(tmp_path):
             session.analyze([a], settle=0.1, stall=5, timeout=10)
 
 
+def test_session_waits_while_the_server_reports_progress(tmp_path):
+    a = tmp_path / "a.py"
+    a.write_text("BUSY\n")
+    server = FakeServer(root=tmp_path, java=Path("java"))
+    with AnalysisSession(server, tmp_path) as session:
+        with pytest.raises(TimeoutError):
+            session.analyze([a], settle=0.1, stall=0.1, timeout=1)
+
+
 def test_session_closes_server_pipes(tmp_path):
     server = FakeServer(root=tmp_path, java=Path("java"))
     with AnalysisSession(server, tmp_path) as session:

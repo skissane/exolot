@@ -53,6 +53,16 @@ while (msg := read()) is not None:
         if "CRASH" in doc["text"]:
             sys.exit(1)
         send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": "t", "value": {"kind": "begin"}}})
+        if "BUSY" in doc["text"]:
+            # Publish, but never end the progress, as if still analyzing.
+            send(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/publishDiagnostics",
+                    "params": {"uri": doc["uri"], "diagnostics": []},
+                }
+            )
+            continue
         send(
             {
                 "jsonrpc": "2.0",
