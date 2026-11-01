@@ -6,6 +6,14 @@ import subprocess
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _outside_github_actions(monkeypatch):
+    """Run every test as if outside GitHub Actions, even in CI, so exolot
+    doesn't link to the workflow's repository unless a test asks it to."""
+    for name in ("GITHUB_ACTIONS", "GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def git(repo, *args):
     subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
 

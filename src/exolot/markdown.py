@@ -1,4 +1,5 @@
-"""Markdown output: findings and statistics as GitHub-flavoured Markdown tables."""
+"""Markdown output: findings and statistics as GitHub-flavoured Markdown tables,
+and findings as a PR comment."""
 
 from __future__ import annotations
 
@@ -81,3 +82,48 @@ def changed_findings_sections(
         out += ["", "<details>", f"<summary>Elsewhere ({len(old)})</summary>", ""]
         out += findings_table(old, link_template) + ["", "</details>"]
     return out
+
+
+# GitHub rejects a comment over 65,536 characters. Leave room for the
+# truncation note, and for a marker a script posting the comment might add.
+MAX_COMMENT_CHARS = 65_000
+
+
+def comment(
+    findings: list[Mapping],
+    *,
+    link_template: str | None = None,
+    changed: bool = False,
+    preamble: str | None = None,
+    commit: str | None = None,
+    run_url: str | None = None,
+) -> str:
+    """A PR comment reporting findings (dicts as in exolot's JSON output, with
+    "changed" if changed): a heading, the preamble, the commit analyzed and the
+    workflow run that analyzed it, then the findings, those on changed lines
+    first if changed. It's cut short to fit in a GitHub comment."""
+    out = ["## exolot's findings", ""]
+    if preamble and preamble.strip():
+        out += [preamble.strip(), ""]
+    if commit or run_url:
+        analyzed = "Analysis"
+        if commit:
+            analyzed += f" of {commit}"
+        if run_url:
+            analyzed += f", from [this workflow run]({run_url})"
+        out += [f"{analyzed}.", ""]
+    if not findings:
+        out.append("No issues found.")
+    elif changed:
+        out += changed_findings_sections(findings, link_template)
+    else:
+        out += [f"### Findings ({len(findings)})", ""] + findings_table(findings, link_template)
+    return _truncate("\n".join(out) + "\n", run_url)
+
+
+def _truncate(body: str, run_url: str | None) -> str:
+    if len(body) <= MAX_COMMENT_CHARS:
+        return body
+    cut = body[: body.rfind("\n", 0, MAX_COMMENT_CHARS)]
+    where = f" or see [this workflow run]({run_url})" if run_url else ""
+    return f"{cut}\n\n_Report truncated: run exolot yourself for all of it{where}._\n"

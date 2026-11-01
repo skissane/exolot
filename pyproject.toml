@@ -35,6 +35,14 @@ dev = [
     "ruff>=0.14",
 ]
 
+# The policy at the top of the self-analysis PR comment (see AGENTS.md).
+[tool.exolot]
+preamble = """
+**For information only.** Fix the findings worth fixing; it's fine to ignore the rest, which don't block the PR, \
+and there's no need to suppress them with a rules file, `NOSONAR` or `noqa`. \
+See [AGENTS.md](https://github.com/skissane/exolot/blob/master/AGENTS.md) for more.
+"""
+
 # Refuse uv versions older than CI's, which may resolve or write uv.lock differently.
 # Keep in step with the setup-uv `version` in .github/workflows.
 [tool.uv]
