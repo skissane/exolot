@@ -133,7 +133,9 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   which GitHub shows as an annotation, whatever `--format` prints on stdout;
   see [Workflow annotations](#workflow-annotations). The command is `error`,
   `warning` or `notice` (for the server's info and hint severities), and paths
-  are relative to the root of the git repository each file is in. With
+  are relative to the root of the git repository each file is in (files
+  outside one get paths relative to the current directory, which GitHub can't
+  place on a diff, so their annotations show only in the run). With
   `--diff-base`, the issues on changed lines come first.
 - `-v` / `--verbose` shows the server's logs.
 

@@ -42,11 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = sub.add_parser("analyze", parents=[server_opts], help="analyze files (the default command)")
     analyze.add_argument("paths", nargs="*", type=Path, default=[Path(".")], help="files or directories")
-    analyze.add_argument(
-        "--format",
-        choices=("text", "json", "markdown", "github-comment", "sarif"),
-        default="text",
-    )
+    analyze.add_argument("--format", choices=("text", "json", "markdown", "github-comment", "sarif"), default="text")
     analyze.add_argument(
         "--link-template",
         type=_link_template,
