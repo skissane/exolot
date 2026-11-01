@@ -258,14 +258,21 @@ def _resolve_local_options(args: argparse.Namespace) -> None:
 
 def _analyze_kept_clone(args: argparse.Namespace) -> int:
     """Clone into --keep DIR and analyze it there. Raises CloneError, after
-    removing what it made, so the same DIR can be used again."""
+    removing what it made (DIR was new or empty), so the same DIR can be used
+    again."""
     created = not args.keep.exists()
     try:
         return _analyze_clone(args, args.keep.resolve())
     except clone.CloneError:
-        shutil.rmtree(args.keep / ".git", ignore_errors=True)
         if created:
             shutil.rmtree(args.keep, ignore_errors=True)
+        else:
+            # .git, and any files a checkout wrote before it failed.
+            for child in args.keep.iterdir():
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(child, ignore_errors=True)
+                else:
+                    child.unlink(missing_ok=True)
         raise
 
 

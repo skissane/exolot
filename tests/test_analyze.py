@@ -650,7 +650,15 @@ def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, mo
     keep = tmp_path / "kept"
     if existing:
         keep.mkdir()
-    assert cli.main(["analyze-repo", str(repo), "--ref", "nope", "--keep", str(keep)]) == 2
+
+    def fail_after_checking_out_some_files(source, dest, ref=None):
+        (dest / ".git").mkdir(parents=True)
+        (dest / "sub").mkdir()
+        (dest / "a.py").write_text("x\n")
+        raise cli.clone.CloneError("git checkout failed")
+
+    monkeypatch.setattr(cli.clone, "clone", fail_after_checking_out_some_files)
+    assert cli.main(["analyze-repo", str(repo), "--keep", str(keep)]) == 2
     assert keep.exists() == existing
     if existing:
         assert not any(keep.iterdir())
