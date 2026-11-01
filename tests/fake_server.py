@@ -10,6 +10,17 @@ from urllib.request import url2pathname
 
 RULES_FAIL = os.environ.get("FAKE_SERVER_RULES_FAIL") == "1"
 CODE_ACTIONS_FAIL = os.environ.get("FAKE_SERVER_CODE_ACTIONS_FAIL") == "1"
+# The plugin states to report, as JSON: {"plugin name": state}, or "fail" to fail.
+PLUGIN_STATES = os.environ.get("FAKE_SERVER_PLUGIN_STATES", "{}")
+
+# How the real server logs a sensor's failure: its name, then the stack trace.
+SENSOR_FAILURE = [
+    "[Error - 01:02:03.004] [sonarlint : sonarlint-analysis-scheduler] Error executing sensor: 'OmniSharp'",
+    "[Error - 01:02:03.004] [sonarlint : sonarlint-analysis-scheduler] java.lang.IllegalStateException: "
+    "Unable to start OmniSharp\n\tat org.sonarsource.Sensor.execute(Sensor.java:100)\n"
+    'Caused by: java.io.IOException: Cannot run program "dotnet": Exec failed, error: 2\n\tat java.base/X.start\n'
+    "Caused by: java.io.IOException: Exec failed, error: 2\n\tat java.base/Y.forkAndExec\n\t... 28 more",
+]
 
 
 def read():
@@ -67,6 +78,15 @@ while (msg := read()) is not None:
         if "CRASH" in doc["text"]:
             sys.exit(1)
         send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": "t", "value": {"kind": "begin"}}})
+        if "SENSORFAIL" in doc["text"]:
+            for message in SENSOR_FAILURE:
+                log(message)
+        if "NEEDCDB" in doc["text"]:
+            send({"jsonrpc": "2.0", "method": "sonarlint/needCompilationDatabase"})
+        if "SHOWMSG" in doc["text"]:
+            for kind in (1, 3, 2):
+                message = f"message\n::of type {kind}" if kind != 2 else " "  # an empty one is ignored
+                send({"jsonrpc": "2.0", "method": "window/showMessage", "params": {"type": kind, "message": message}})
         if "BUSY" in doc["text"]:
             # Publish, but never end the progress, as if still analyzing.
             send(
@@ -159,7 +179,15 @@ while (msg := read()) is not None:
                 }
             )
         send({"jsonrpc": "2.0", "id": msg["id"], "result": actions})
+    elif method == "sonarlint/getPluginStatuses":
+        if PLUGIN_STATES == "fail":
+            send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32601, "message": "no such method"}})
+        else:
+            statuses = [{"pluginName": name, "state": state} for name, state in json.loads(PLUGIN_STATES).items()]
+            send({"jsonrpc": "2.0", "id": msg["id"], "result": {"pluginStatuses": statuses}})
     elif method == "shutdown":
+        # Like the real server, which logs errors such as ClosedSelectorException as it shuts down.
+        log("[Error - 01:02:03.004] after shutdown")
         send({"jsonrpc": "2.0", "id": msg["id"], "result": None})
     elif method == "exit":
         break

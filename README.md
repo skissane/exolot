@@ -50,6 +50,19 @@ Directories are expanded with `git ls-files` when inside a git repository (so
 `.gitignore` is respected), and by walking the tree otherwise. Binary files and
 files over 2 MiB are skipped.
 
+When the server can't analyze some language, exolot prints a warning for each
+cause and says in the summary line how many files weren't analyzed, e.g.
+`0 issue(s) in 12 file(s) analyzed; 30 C# file(s) not analyzed (analyzer failed)`.
+The causes it spots are an analyzer the server couldn't download or load, an
+analyzer that failed (e.g. C# analysis needs `dotnet` installed), and C/C++
+files without a compilation database; it also warns about the errors and
+warnings the server shows, such as not finding the Node.js it needs. The
+`markdown` and `github-comment` formats show these warnings above the
+findings, `--annotations` before the issues' annotations, and `sarif` as the
+run's tool execution notifications. `--log-level error` shows the server's own account
+of what went wrong. They're warnings, not errors, so they don't change the
+exit status.
+
 Exit status is 0 when no issues are found, 1 when issues are found, and 2 on
 errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
 2 when the analysis fails, like ruff's option of the same name.
@@ -164,14 +177,16 @@ status 2 if the repository or REF can't be fetched.
   `warning` or `notice` (for the server's info and hint severities), and paths
   are relative to the root of the git repository each file is in (files
   outside one get paths relative to the current directory, which GitHub can't
-  place on a diff, so their annotations show only in the run). With
-  `--diff-base`, the issues on changed lines come first.
+  place on a diff, so their annotations show only in the run). Warnings about
+  files that weren't analyzed come first, as `::warning` annotations with no
+  file, then with `--diff-base` the issues on changed lines.
 - `--log-level LEVEL` shows the server's log messages at `LEVEL` and above,
   where `LEVEL` is `debug`, `info`, `warn` or `error` (by default exolot
   shows none of them). The server only sends `debug` messages when asked for
   them, so the other levels also make it log less. At any level, messages
   without a level show too, and so does anything the server writes to stderr
-  (e.g. the JVM's own errors). With `debug` or `info`, exolot also shows its
+  (e.g. the JVM's own errors). Errors the server logs while it shuts down,
+  such as `ClosedSelectorException`, show only with `debug`. With `debug` or `info`, exolot also shows its
   own progress messages, such as when it downloads the server.
 - `-v` / `--verbose` shows all of the server's log messages, the same as
   `--log-level debug`.
@@ -215,8 +230,10 @@ one that posts it). Don't redirect stderr away from the step's log, or the
 runner won't see them.
 
 GitHub shows at most 10 annotations of each type (error, warning, notice) per
-step and 50 per job, so `--diff-base` puts the issues on the pull request's
-changed lines first, and `--changed-only` drops the rest. Run exolot from the
+step and 50 per job. So that a warning that some files weren't analyzed
+(meaning the issues may be incomplete) isn't cut off, those come first, on
+the run's summary rather than the diff. Then `--diff-base` puts the issues on
+the pull request's changed lines first, and `--changed-only` drops the rest. Run exolot from the
 repository's checkout, as annotation paths are relative to its root.
 
 ## GitHub code scanning
@@ -258,7 +275,8 @@ from `JAVA_HOME`, the `PATH`, or `--java`.
   SonarQube for IDE installation you have.
 - Telemetry is disabled.
 - C/C++ and C# analyzers are not included in the VSIX; the server tries to
-  download them from `binaries.sonarsource.com` when it starts.
+  download them from `binaries.sonarsource.com` when it starts. If it can't,
+  exolot warns that those files weren't analyzed.
 - Each run starts a fresh JVM and loads every analyzer, so even a single file
   takes around 15 seconds.
 - The bundled analyzers are licensed by SonarSource under their own terms. exolot
