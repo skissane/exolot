@@ -229,17 +229,16 @@ def _run_analyze(args: argparse.Namespace) -> int:
         return 2
     if not inputs.files:
         print("exolot: no files to analyze", file=sys.stderr)
-        if args.format != "text" or args.statistics:
+        # Text output has nothing to show, but other formats' readers expect
+        # a report, even an empty one.
+        if args.format != "text":
             _report_any(None, [], args, inputs, [])
         return 0
     if not inputs.to_analyze():
         # Don't start the server for nothing.
         assert inputs.skipped is not None
         print(f"exolot: warning: {inputs.skipped.message()}", file=sys.stderr)
-        if args.format == "text" and not args.statistics:
-            print(problems.summary(0, len(inputs.files), [inputs.skipped]), file=sys.stderr)
-        else:
-            _report_any(None, [], args, inputs, [inputs.skipped])
+        _report_any(None, [], args, inputs, [inputs.skipped])
         return 0
     server = _ensure_server(args)
     if server is None:
@@ -489,7 +488,8 @@ def _report_any(
     """Print the report --format and --statistics ask for, and with
     --annotations, the annotations. With --changed-only, every issue is on a
     changed line, so none are marked as such. unanalyzed is why some files
-    weren't analyzed."""
+    weren't analyzed. session is None when nothing was analyzed, so there
+    are no issues and no rule names to look up."""
     report = _Report(len(inputs.files), unanalyzed)
     changes = None if args.changed_only else inputs.changes
     names = session.rule_names() if session is not None and issues else {}

@@ -199,6 +199,13 @@ def test_cli_doesnt_start_the_server_when_every_file_is_skipped(c_project, monke
     )
 
 
+@pytest.mark.parametrize("fmt", ["text", "json"])
+def test_cli_annotates_the_warning_when_every_file_is_skipped(c_project, capsys, fmt):
+    assert cli.main(["--format", fmt, "--annotations", "b.c", "d.cpp"]) == 0
+    err = capsys.readouterr().err
+    assert "::warning title=exolot::No compilation database" in err
+
+
 @pytest.mark.parametrize(
     ("flags", "report_kind"),
     [
