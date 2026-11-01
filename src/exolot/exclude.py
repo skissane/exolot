@@ -27,20 +27,17 @@ class Exclude:
 
     def matches(self, path: Path) -> bool:
         """Whether this glob skips path, an absolute, resolved file path."""
-        pattern, anchored, dir_only = _normalize(self.pattern)
+        pattern, anchored, dir_only = _normalize(_fold(self.pattern))
         if not pattern:
             return False
         try:
-            parts = list(path.relative_to(self.base.resolve()).parts)
+            parts = [_fold(part) for part in path.relative_to(self.base.resolve()).parts]
         except ValueError:
             parts = None
-        if CASE_INSENSITIVE:
-            pattern = pattern.lower()
-            parts = None if parts is None else [p.lower() for p in parts]
         if not anchored:
             # Outside base, only the file's own name is checked, so that its
             # parents above base don't count.
-            names = parts if parts is not None else [path.name.lower() if CASE_INSENSITIVE else path.name]
+            names = parts if parts is not None else [_fold(path.name)]
             if dir_only:
                 names = names[:-1]
             return any(fnmatchcase(name, pattern) for name in names)
@@ -55,6 +52,11 @@ class Exclude:
 def is_excluded(path: Path, excludes: list[Exclude] | tuple[Exclude, ...]) -> bool:
     """Whether any of excludes skips path, an absolute, resolved file path."""
     return any(exclude.matches(path) for exclude in excludes)
+
+
+def _fold(text: str) -> str:
+    """text in the case that matching compares."""
+    return text.lower() if CASE_INSENSITIVE else text
 
 
 def _normalize(pattern: str) -> tuple[str, bool, bool]:
