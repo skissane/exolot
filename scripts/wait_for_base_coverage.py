@@ -29,7 +29,6 @@ import argparse
 import http.client
 import json
 import os
-import sys
 import time
 import urllib.error
 import urllib.parse
@@ -108,7 +107,7 @@ def base_ci_state(repo: str, sha: str, check_name: str, token: str | None, timeo
     return ("succeeded" if conclusion == "success" else "failed"), f"{check_name} {conclusion}"
 
 
-def main(argv=None, *, clock=time.monotonic, sleep=time.sleep) -> int:
+def main(argv=None, *, clock=time.monotonic, sleep=time.sleep) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("repo", help="the repository, as owner/name")
     parser.add_argument("sha", help="the PR's base commit")
@@ -145,14 +144,14 @@ def main(argv=None, *, clock=time.monotonic, sleep=time.sleep) -> int:
         )
         if has_coverage:
             print(f"Attempt {attempt}: Codecov has the base report for {args.sha} ({coverage})")
-            return 0
+            return
         state, ci = base_ci_state(
             args.repo, args.sha, args.check_name, token, min(args.request_timeout, max(deadline - clock(), 1))
         )
         print(f"Attempt {attempt}: Codecov: {coverage}; base CI: {ci}", flush=True)
         if state == "failed":
             print(f"::warning::Codecov has no coverage for base commit {args.sha}, whose CI didn't succeed ({ci})")
-            return 0
+            return
         if state in ("succeeded", "none"):
             if finished_at is None:
                 finished_at = clock()
@@ -161,15 +160,15 @@ def main(argv=None, *, clock=time.monotonic, sleep=time.sleep) -> int:
             finished_at = None
         if finished_at is not None and clock() - finished_at >= args.grace:
             print(f"::warning::Codecov has no coverage for base commit {args.sha}, whose CI has finished ({ci})")
-            return 0
+            return
         if clock() + args.interval > deadline:
             print(
                 f"::warning::Codecov still has no coverage for base commit {args.sha} "
                 f"after {args.timeout:g} seconds ({ci})"
             )
-            return 0
+            return
         sleep(args.interval)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
