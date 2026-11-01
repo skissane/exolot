@@ -43,7 +43,9 @@ def build_parser() -> argparse.ArgumentParser:
     analyze = sub.add_parser("analyze", parents=[server_opts], help="analyze files (the default command)")
     analyze.add_argument("paths", nargs="*", type=Path, default=[Path(".")], help="files or directories")
     analyze.add_argument(
-        "--format", choices=("text", "json", "markdown", "github-comment", "github", "sarif"), default="text"
+        "--format",
+        choices=("text", "json", "markdown", "github-comment", "github-annotations", "sarif"),
+        default="text",
     )
     analyze.add_argument(
         "--link-template",
@@ -113,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--link-template needs --format markdown or github-comment, without --statistics")
     if getattr(args, "no_links", False) and (not linkable or args.link_template):
         parser.error("--no-links needs --format markdown or github-comment, without --statistics or --link-template")
-    if getattr(args, "statistics", False) and args.format in ("sarif", "github-comment", "github"):
+    if getattr(args, "statistics", False) and args.format in ("sarif", "github-comment", "github-annotations"):
         parser.error(f"--statistics can't be used with --format {args.format}")
     if getattr(args, "changed_only", False) and args.diff_base is None:
         parser.error("--changed-only needs --diff-base")
@@ -217,7 +219,7 @@ def _report(
             lines = markdown.findings_table(findings, link_template)
         print("\n".join(lines))
         print(summary, file=sys.stderr)
-    elif fmt == "github":
+    elif fmt == "github-annotations":
         _print_annotations(issues, findings)
         print(summary, file=sys.stderr)
     else:

@@ -260,7 +260,7 @@ def test_cli_github_annotations(tmp_path, monkeypatch, capsys):
     (repo / ".git").mkdir()
     (sub / "a.py").write_text("TWO\n")
     monkeypatch.chdir(sub)
-    assert cli.main(["--format", "github", "--workspace", str(repo), "a.py"]) == 1
+    assert cli.main(["--format", "github-annotations", "--workspace", str(repo), "a.py"]) == 1
     captured = capsys.readouterr()
     assert captured.out.splitlines() == [
         "::notice file=sub/a.py,line=1,col=1,endLine=1,endColumn=2,title=fake%3AS2::another issue",
@@ -273,7 +273,9 @@ def test_cli_github_annotations_put_changed_lines_first(repo, tmp_path, monkeypa
     _fake_server(tmp_path, monkeypatch)
     (repo / "sub" / "b.py").write_text("changed\n")
     monkeypatch.chdir(repo)
-    assert cli.main(["--diff-base", "master", "--format", "github", "--workspace", str(repo), str(repo)]) == 1
+    assert (
+        cli.main(["--diff-base", "master", "--format", "github-annotations", "--workspace", str(repo), str(repo)]) == 1
+    )
     captured = capsys.readouterr()
     assert [line.split(",")[0] for line in captured.out.splitlines()] == [
         "::warning file=sub/b.py",
@@ -285,9 +287,9 @@ def test_cli_github_annotations_put_changed_lines_first(repo, tmp_path, monkeypa
 def test_cli_statistics_cant_be_annotations(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "ensure_server", _no_download)
     with pytest.raises(SystemExit) as exc:
-        cli.main(["--statistics", "--format", "github", str(tmp_path)])
+        cli.main(["--statistics", "--format", "github-annotations", str(tmp_path)])
     assert exc.value.code == 2
-    assert "--statistics can't be used with --format github" in capsys.readouterr().err
+    assert "--statistics can't be used with --format github-annotations" in capsys.readouterr().err
 
 
 def _fake_server(tmp_path, monkeypatch):

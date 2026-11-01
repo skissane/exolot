@@ -38,7 +38,7 @@ uvx exolot --format json .     # machine-readable output
 uvx exolot --format markdown . # a Markdown table, e.g. for a PR comment
 uvx exolot --format github-comment . # a report to post as a PR comment
 uvx exolot --format sarif .    # SARIF 2.1.0, e.g. for GitHub code scanning
-uvx exolot --format github .   # GitHub Actions annotations
+uvx exolot --format github-annotations . # GitHub Actions annotations
 uvx exolot --statistics .      # count issues per rule, most common first
 uvx exolot --diff-base origin/main --changed-only  # only issues on lines your branch changes
 uvx exolot install             # just download and unpack the server
@@ -105,7 +105,7 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   `%SRCROOT%`, the root of the git repository each file is in (defined in the
   run's `originalUriBaseIds` when all the files are in one repository), or
   absolute `file:` URIs for files outside one. It can't be combined with `--statistics`.
-- `--format github` prints each issue as a GitHub Actions [workflow command](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands)
+- `--format github-annotations` prints each issue as a GitHub Actions [workflow command](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands)
   (`::warning file=src/a.py,line=12,col=5,endLine=12,endColumn=9,title=python:S1234::message`),
   like `ruff check --output-format github`, which GitHub shows as annotations;
   see [Workflow annotations](#workflow-annotations). The command is `error`,
@@ -165,7 +165,7 @@ summary, without a token or code scanning, print them as annotations:
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10
-      - run: uvx exolot --format github --diff-base "origin/$GITHUB_BASE_REF" .
+      - run: uvx exolot --format github-annotations --diff-base "origin/$GITHUB_BASE_REF" .
 ```
 
 GitHub shows at most 10 annotations of each type (error, warning, notice) per
