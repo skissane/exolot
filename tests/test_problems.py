@@ -149,11 +149,11 @@ def test_session_finds_what_the_server_couldnt_analyze(tmp_path, monkeypatch, ca
         ("the JavaScript analyzer couldn't be downloaded", ["d.js"]),
         ("the C/C++/Objective-C analyzer needs a compilation database (compile_commands.json)", ["c.c"]),
         ('the OmniSharp analyzer failed (Cannot run program "dotnet": Exec failed, error: 2)', ["b.cs"]),
-        # Errors and warnings the server shows the user are warnings too; other messages are info.
-        ("message of type 1", []),
+        # Errors and warnings the server shows the user are warnings too, on one line; other messages are info.
+        ("message ::of type 1", []),
     ]
     shown = [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "exolot.analyze"]
-    assert ("INFO", "message of type 3") in shown
+    assert ("INFO", "message ::of type 3") in shown
 
 
 def test_session_goes_without_plugin_states_the_server_doesnt_give(tmp_path, monkeypatch):
@@ -205,7 +205,7 @@ def test_cli_shows_server_messages_when_analysis_fails(cli_files, capsys, tmp_pa
     (tmp_path / "busy.py").write_text("SHOWMSG BUSY\n")
     assert cli.main(["--timeout", "2", "busy.py"]) == 2
     err = capsys.readouterr().err
-    assert "exolot: warning: message of type 1\n" in err
+    assert "exolot: warning: message ::of type 1\n" in err
     assert "did not finish in time" in err
 
 

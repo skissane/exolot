@@ -85,7 +85,7 @@ while (msg := read()) is not None:
             send({"jsonrpc": "2.0", "method": "sonarlint/needCompilationDatabase"})
         if "SHOWMSG" in doc["text"]:
             for kind in (1, 3, 2):
-                message = f"message of type {kind}" if kind != 2 else " "  # an empty one is ignored
+                message = f"message\n::of type {kind}" if kind != 2 else " "  # an empty one is ignored
                 send({"jsonrpc": "2.0", "method": "window/showMessage", "params": {"type": kind, "message": message}})
         if "BUSY" in doc["text"]:
             # Publish, but never end the progress, as if still analyzing.

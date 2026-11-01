@@ -331,7 +331,9 @@ class AnalysisSession:
     def _on_show_message(self, params: dict[str, Any]) -> None:
         """The server shows errors and warnings to the user this way, e.g.
         when it can't find the Node.js it needs to analyze JavaScript."""
-        message = str(params.get("message", "")).strip()
+        # On one line, as a line of its own could be taken for a GitHub
+        # Actions workflow command when exolot prints it.
+        message = " ".join(str(params.get("message", "")).split())
         if not message:
             return
         if params.get("type") in (1, 2):  # Error, Warning
