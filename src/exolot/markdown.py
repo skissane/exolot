@@ -89,6 +89,15 @@ def changed_findings_sections(
 MAX_COMMENT_CHARS = 65_000
 
 
+def warnings_alert(messages: Iterable[str]) -> list[str]:
+    """A GitHub warning alert (a quote elsewhere) listing messages, then a
+    blank line, or nothing if there are none."""
+    messages = list(messages)
+    if not messages:
+        return []
+    return ["> [!WARNING]", *(f"> - {escape(m)}" for m in messages), ""]
+
+
 def comment(
     findings: list[Mapping],
     *,
@@ -97,11 +106,12 @@ def comment(
     preamble: str | None = None,
     commit: str | None = None,
     run_url: str | None = None,
+    warnings: Iterable[str] = (),
 ) -> str:
     """A PR comment reporting findings (dicts as in exolot's JSON output, with
     "changed" if changed): a heading, the preamble, the commit analyzed and the
-    workflow run that analyzed it, then the findings, those on changed lines
-    first if changed. It's cut short to fit in a GitHub comment."""
+    workflow run that analyzed it, the warnings, then the findings, those on
+    changed lines first if changed. It's cut short to fit in a GitHub comment."""
     out = ["## exolot's findings", ""]
     if preamble and preamble.strip():
         out += [preamble.strip(), ""]
@@ -112,6 +122,7 @@ def comment(
         if run_url:
             analyzed += f", from [this workflow run]({run_url})"
         out += [f"{analyzed}.", ""]
+    out += warnings_alert(warnings)
     if not findings:
         out.append("No issues found.")
     elif changed:

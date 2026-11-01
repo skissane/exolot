@@ -15,7 +15,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import __version__, annotations, clone, config, gitdiff, markdown, sarif
+from . import __version__, annotations, clone, config, gitdiff, markdown, problems, sarif
 from .analyze import SERVER_LOG_LEVELS, AnalysisSession, Issue, collect_files
 from .server import DEFAULT_SERVER_VERSION, Server, ServerError, cache_dir, detect_platform, ensure_server
 
@@ -378,32 +378,59 @@ def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[
             _add_changed_related_locations(session, issues, changes)
         if changes is not None and args.changed_only:
             issues = [i for i in issues if _on_changed_lines(i, changes)]
+        unanalyzed = session.unanalyzed(inputs.files)
+        for problem in unanalyzed:
+            print(f"exolot: warning: {problem.message()}", file=sys.stderr)
         # Report before the server shuts down, which can take a few seconds.
-        _report_any(session, issues, args, inputs)
+        _report_any(session, issues, args, inputs, unanalyzed)
     return issues
 
 
-def _report_any(session: AnalysisSession, issues: list[Issue], args: argparse.Namespace, inputs: _Inputs) -> None:
+def _report_any(
+    session: AnalysisSession,
+    issues: list[Issue],
+    args: argparse.Namespace,
+    inputs: _Inputs,
+    unanalyzed: list[problems.Problem],
+) -> None:
     """Print the report --format and --statistics ask for, and with
     --annotations, the annotations. With --changed-only, every issue is on a
-    changed line, so none are marked as such."""
-    file_count = len(inputs.files)
+    changed line, so none are marked as such. unanalyzed is why some files
+    weren't analyzed."""
+    report = _Report(len(inputs.files), unanalyzed)
     changes = None if args.changed_only else inputs.changes
     if args.statistics:
-        _report_statistics(issues, file_count, args.format, session.rule_names() if issues else {})
+        _report_statistics(issues, report, args.format, session.rule_names() if issues else {})
     elif args.format == "sarif":
-        _report_sarif(issues, file_count, session.rule_names() if issues else {})
+        _report_sarif(issues, report, session.rule_names() if issues else {})
     elif args.format == "github-comment":
-        _report_comment(issues, file_count, args, inputs.settings, changes)
+        _report_comment(issues, report, args, inputs.settings, changes)
     else:
-        _report(issues, file_count, args.format, _links(args), changes)
+        _report(issues, report, args.format, _links(args), changes)
     if args.annotations:
         _print_annotations(issues, changes)
 
 
+@dataclass
+class _Report:
+    """What every report says besides the issues: how many files there were,
+    and why some of them (if any) weren't analyzed."""
+
+    file_count: int
+    unanalyzed: list[problems.Problem]
+
+    def summary(self, issue_count: int, changed: int | None = None) -> str:
+        return problems.summary(issue_count, self.file_count, self.unanalyzed, changed)
+
+    def markdown_warnings(self) -> list[str]:
+        """Markdown saying why files weren't analyzed, if any weren't,
+        followed by a blank line."""
+        return markdown.warnings_alert([p.message(hint=False) for p in self.unanalyzed])
+
+
 def _report(
     issues: list[Issue],
-    file_count: int,
+    report: _Report,
     fmt: str,
     link_template: str | None = None,
     changes: gitdiff.Changes | None = None,
@@ -412,10 +439,7 @@ def _report(
     --changed-only), saying which are on changed lines."""
     issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
     findings = [_issue_json(i, changes) for i in issues]
-    summary = f"{len(issues)} issue(s)"
-    if changes is not None:
-        summary += f", {sum(f['changed'] for f in findings)} on changed lines,"
-    summary += f" in {file_count} file(s) analyzed"
+    summary = report.summary(len(issues), sum(f["changed"] for f in findings) if changes is not None else None)
     if fmt == "json":
         json.dump(findings, sys.stdout, indent=2)
         print()
@@ -423,12 +447,13 @@ def _report(
         # Relative to the repo root rather than the current directory, so
         # links to the repo's code work from any subdirectory.
         findings = [{**f, "path": _repo_path(i.path)} for i, f in zip(issues, findings)]
+        lines = report.markdown_warnings()
         if not issues:
-            lines = ["No issues found."]
+            lines.append("No issues found.")
         elif changes is not None:
-            lines = markdown.changed_findings_sections(findings, link_template)
+            lines += markdown.changed_findings_sections(findings, link_template)
         else:
-            lines = markdown.findings_table(findings, link_template)
+            lines += markdown.findings_table(findings, link_template)
         print("\n".join(lines))
         print(summary, file=sys.stderr)
     else:
@@ -455,7 +480,7 @@ def _print_annotations(issues: list[Issue], changes: gitdiff.Changes | None = No
 
 def _report_comment(
     issues: list[Issue],
-    file_count: int,
+    report: _Report,
     args: argparse.Namespace,
     settings: config.Config,
     changes: gitdiff.Changes | None = None,
@@ -470,13 +495,12 @@ def _report_comment(
         preamble=settings.preamble,
         commit=_head_commit(),
         run_url=actions[1] if actions else None,
+        warnings=[p.message(hint=False) for p in report.unanalyzed],
     )
     sys.stdout.write(body)
     sys.stdout.flush()
-    summary = f"{len(issues)} issue(s)"
-    if changes is not None:
-        summary += f", {sum(f['changed'] for f in findings)} on changed lines,"
-    print(f"{summary} in {file_count} file(s) analyzed", file=sys.stderr)
+    changed = sum(f["changed"] for f in findings) if changes is not None else None
+    print(report.summary(len(issues), changed), file=sys.stderr)
 
 
 def _links(args: argparse.Namespace) -> str | None:
@@ -517,16 +541,18 @@ def _head_commit() -> str | None:
     return proc.stdout.strip() or None
 
 
-def _report_sarif(issues: list[Issue], file_count: int, names: dict[str, str]) -> None:
+def _report_sarif(issues: list[Issue], report: _Report, names: dict[str, str]) -> None:
     issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
     paths = {i.path for i in issues} | {loc.path for i in issues for loc in i.related}
     roots = {_repo_root(path.parent) for path in paths} - {None}
     # %SRCROOT% can only stand for one directory. GitHub code scanning doesn't
     # need it defined, as it takes paths to be relative to the checkout.
     src_root = roots.pop().as_uri() + "/" if len(roots) == 1 else None
-    json.dump(sarif.log(issues, __version__, names, _artifact_location, src_root), sys.stdout, indent=2)
+    warnings = [p.message(hint=False) for p in report.unanalyzed]
+    log = sarif.log(issues, __version__, names, _artifact_location, src_root, warnings)
+    json.dump(log, sys.stdout, indent=2)
     print()
-    print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
+    print(report.summary(len(issues)), file=sys.stderr)
     sys.stdout.flush()
 
 
@@ -540,7 +566,7 @@ def _artifact_location(path: Path) -> dict[str, str]:
     return {"uri": urllib.parse.quote(path.relative_to(root).as_posix()), "uriBaseId": "%SRCROOT%"}
 
 
-def _report_statistics(issues: list[Issue], file_count: int, fmt: str, names: dict[str, str]) -> None:
+def _report_statistics(issues: list[Issue], report: _Report, fmt: str, names: dict[str, str]) -> None:
     """Print one line per rule, most issues first, like ``ruff check --statistics``."""
     counts = Counter(issue.rule for issue in issues)
     rows = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
@@ -549,14 +575,15 @@ def _report_statistics(issues: list[Issue], file_count: int, fmt: str, names: di
         json.dump(stats, sys.stdout, indent=2)
         print()
     elif fmt == "markdown":
-        print("\n".join(markdown.statistics_table(rows, names) if rows else ["No issues found."]))
-        print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
+        table = markdown.statistics_table(rows, names) if rows else ["No issues found."]
+        print("\n".join(report.markdown_warnings() + table))
+        print(report.summary(len(issues)), file=sys.stderr)
     else:
         count_width = max((len(str(count)) for _, count in rows), default=0)
         rule_width = max((len(rule) for rule, _ in rows), default=0)
         for rule, count in rows:
             print(f"{count:>{count_width}}\t{rule:<{rule_width}}\t{names.get(rule, '')}".rstrip())
-        print(f"{len(issues)} issue(s) in {file_count} file(s) analyzed", file=sys.stderr)
+        print(report.summary(len(issues)), file=sys.stderr)
     sys.stdout.flush()
 
 

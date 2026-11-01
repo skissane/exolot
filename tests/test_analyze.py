@@ -747,6 +747,9 @@ def test_cli_log_level(tmp_path, monkeypatch, capfd, caplog, args, expected):
         for r in caplog.records
         if r.name == "exolot.languageserver"
     }
+    # What the server logs after shutdown is noise, shown only with debug.
+    after_shutdown = "[Error - 01:02:03.004] after shutdown"
+    assert (logs.pop(after_shutdown, None) is not None) == ("Debug" in expected)
     known = {"Debug": "DEBUG", "Info": "INFO", "Warn": "WARNING", "Error": "ERROR"}
     assert [(m[1 : m.index(" ")], level) for m, level in logs.items() if m.split()[0][1:] in known] == [
         (name, known[name]) for name in expected

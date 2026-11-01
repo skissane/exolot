@@ -20,6 +20,7 @@ def log(
     rule_names: Mapping[str, str],
     artifact_location: Callable[[Path], dict[str, str]],
     src_root: str | None = None,
+    warnings: Iterable[str] = (),
 ) -> dict[str, Any]:
     """A SARIF log with one run holding issues as results, in the order given.
 
@@ -27,6 +28,8 @@ def log(
     rule_names, where it has them) as short descriptions. artifact_location
     gives the artifactLocation of a file, e.g. its path relative to a uriBaseId;
     src_root, if given, is the URI of the directory %SRCROOT% stands for.
+    warnings, e.g. that some files weren't analyzed, are the run's
+    invocation's tool execution notifications.
     """
     issues = list(issues)
     rule_ids = sorted({issue.rule for issue in issues})
@@ -54,6 +57,10 @@ def log(
     run: dict[str, Any] = {
         "tool": {"driver": {"name": "exolot", "version": version, "informationUri": INFORMATION_URI, "rules": rules}}
     }
+    warnings = list(warnings)
+    if warnings:
+        notifications = [{"level": "warning", "message": {"text": text}} for text in warnings]
+        run["invocations"] = [{"executionSuccessful": True, "toolExecutionNotifications": notifications}]
     if src_root:
         run["originalUriBaseIds"] = {"%SRCROOT%": {"uri": src_root}}
     run["columnKind"] = "utf16CodeUnits"

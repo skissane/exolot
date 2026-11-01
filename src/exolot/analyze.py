@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
-from . import __version__
+from . import __version__, problems
 from .lsp import LspClient
 from .server import Server
 
@@ -185,6 +185,12 @@ class AnalysisSession:
         self._folder_configured = threading.Event()
         self._proc: subprocess.Popen[bytes] | None = None
         self._client: LspClient | None = None
+        # What the server has said about analyzers that couldn't analyze:
+        # the sensors that failed, with the reason if known, in order.
+        self._sensor_failures: dict[str, str | None] = {}
+        self._failed_sensor: str | None = None  # awaiting its stack trace
+        self._needs_compilation_database = False
+        self._shutting_down = False
 
     def __enter__(self) -> AnalysisSession:
         try:
@@ -210,6 +216,8 @@ class AnalysisSession:
         client.on_notification("textDocument/publishDiagnostics", self._on_diagnostics)
         client.on_notification("$/progress", self._on_progress)
         client.on_notification("window/logMessage", self._on_log)
+        client.on_notification("window/showMessage", self._on_show_message)
+        client.on_notification("sonarlint/needCompilationDatabase", self._on_need_compilation_database)
         client.on_request("workspace/configuration", self._on_configuration)
         client.on_request("window/workDoneProgress/create", lambda params: None)
         client.on_request("sonarlint/isOpenInEditor", lambda uri: True)
@@ -294,15 +302,42 @@ class AnalysisSession:
         return self.log_level is not None and self.log_level <= logging.DEBUG
 
     def _on_log(self, params: dict[str, Any]) -> None:
-        if self.log_level is None:
-            return
         message = params.get("message", "").rstrip()
+        self._note_sensor_failure(message)
+        # After shutdown the server logs errors, e.g. ClosedSelectorException,
+        # that are just noise, so they show only with verbose logs.
+        if self.log_level is None or (self._shutting_down and not self._verbose_logs):
+            return
         prefix = _SERVER_LOG_PREFIX.match(message)
         level = SERVER_LOG_LEVELS.get(prefix.group(1).lower()) if prefix else None
         if level is None:
             server_log.info("server: %s", message)
         elif level >= self.log_level:
             server_log.log(level, "server: %s", message)
+
+    def _note_sensor_failure(self, message: str) -> None:
+        """Note a sensor's failure from the server's log: one message names
+        the sensor and a later one has the stack trace, with the reason."""
+        sensor = problems.failed_sensor(message)
+        if sensor is not None:
+            self._sensor_failures.setdefault(sensor, None)
+            self._failed_sensor = sensor
+        elif self._failed_sensor is not None and problems.is_stack_trace(message):
+            if self._sensor_failures.get(self._failed_sensor) is None:
+                self._sensor_failures[self._failed_sensor] = problems.stack_trace_reason(message)
+            self._failed_sensor = None
+
+    def _on_show_message(self, params: dict[str, Any]) -> None:
+        """The server shows errors and warnings to the user this way, e.g.
+        when it can't find the Node.js it needs to analyze JavaScript."""
+        message = str(params.get("message", "")).strip()
+        if params.get("type") in (1, 2):  # Error, Warning
+            log.warning("warning: %s", message)
+        else:
+            log.info("%s", message)
+
+    def _on_need_compilation_database(self, params: Any) -> None:
+        self._needs_compilation_database = True
 
     def analyze(
         self,
@@ -363,6 +398,28 @@ class AnalysisSession:
             raise RuntimeError(f"the server never reported results for {names}{more}")
         return not missing and quiet >= settle
 
+    def unanalyzed(self, files: list[Path], timeout: float = 10) -> list[problems.Problem]:
+        """Why the server couldn't analyze some of files, which it has
+        analyzed: what kept each analyzer that couldn't from analyzing, with
+        the files it would have analyzed."""
+        languages = {path: language_id(path) for path in files}
+        return problems.find(
+            languages, self._plugin_states(timeout), self._sensor_failures, self._needs_compilation_database
+        )
+
+    def _plugin_states(self, timeout: float) -> dict[str, int]:
+        """The state of each of the server's plugins (analyzers), by name.
+        Best effort: an empty dict if the server doesn't say."""
+        assert self._client is not None
+        try:
+            result = self._client.request(
+                "sonarlint/getPluginStatuses", {"configScopeId": self.workspace.as_uri()}
+            ).result(timeout=timeout)
+            return {str(p["pluginName"]): p["state"] for p in result["pluginStatuses"]}
+        except Exception:
+            log.debug("could not get the server's plugin statuses", exc_info=True)
+            return {}
+
     def rule_names(self, timeout: float = 10) -> dict[str, str]:
         """Map each rule key the server knows, e.g. python:S1764, to its title.
 
@@ -418,6 +475,7 @@ class AnalysisSession:
 
     def close(self) -> None:
         if self._client is not None and self._proc is not None and self._proc.poll() is None:
+            self._shutting_down = True
             try:
                 self._client.request("shutdown").result(timeout=30)
                 self._client.notify("exit")
