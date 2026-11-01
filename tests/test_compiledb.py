@@ -38,6 +38,13 @@ def test_find_stops_at_the_repo_root(tmp_path):
     assert compiledb.find([tmp_path / "repo"]) == []
 
 
+def test_find_outside_a_repo_looks_up_to_the_root(tmp_path):
+    (tmp_path / "a" / "b").mkdir(parents=True)
+    assert compiledb.find([tmp_path / "a" / "b"]) == []  # nothing above tmp_path has one
+    database = _database(tmp_path / "compile_commands.json")
+    assert compiledb.find([tmp_path / "a" / "b"]) == [database]
+
+
 def test_config_compile_commands_is_relative_to_the_config_file(tmp_path):
     (tmp_path / ".exolot.toml").write_text('compile-commands = "build/compile_commands.json"\n')
     (tmp_path / "sub").mkdir()
