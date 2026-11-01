@@ -1,4 +1,4 @@
-from exolot.annotations import annotation, escape_data, escape_property
+from exolot.annotations import annotation, escape_data, escape_property, warning
 
 
 def finding(**extra):
@@ -41,3 +41,7 @@ def test_annotation_escapes_path_and_message_and_uses_forward_slashes():
 def test_annotation_without_end_position():
     line = annotation({k: v for k, v in finding().items() if k not in ("endLine", "endColumn")})
     assert "line=3,col=5,endLine=3,endColumn=5," in line
+
+
+def test_warning_has_no_location():
+    assert warning("30 C# files: not analyzed\n50%") == "::warning title=exolot::30 C# files: not analyzed%0A50%25"

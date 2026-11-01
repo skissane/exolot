@@ -18,6 +18,12 @@ def escape_property(text: str) -> str:
     return escape_data(text).replace(":", "%3A").replace(",", "%2C")
 
 
+def warning(message: str, title: str = "exolot") -> str:
+    """A workflow command for a warning about the run rather than a line of
+    code, which GitHub shows on the run's summary page."""
+    return f"::warning title={escape_property(title)}::{escape_data(message)}"
+
+
 def annotation(finding: Mapping) -> str:
     """The workflow command for a finding (a dict as in exolot's JSON output):
     ``::warning file=PATH,line=N,col=N,endLine=N,endColumn=N,title=RULE::MESSAGE``,

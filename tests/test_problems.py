@@ -237,6 +237,14 @@ def test_cli_text_and_statistics_summaries(cli_files, capsys, flags):
     assert SUMMARY in capsys.readouterr().err
 
 
+def test_cli_annotations_put_files_not_analyzed_first(cli_files, capsys):
+    cli.main(["--annotations", *cli_files])
+    lines = [line for line in capsys.readouterr().err.splitlines() if line.startswith("::")]
+    assert lines[0] == f"::warning title=exolot::T{WARNING[1:]}."
+    assert len(lines) == 4  # then one issue for each file
+    assert all(line.startswith("::warning file=") for line in lines[1:])
+
+
 def test_cli_sarif_warns_about_files_not_analyzed(cli_files, capsys):
     cli.main(["--format", "sarif", *cli_files])
     captured = capsys.readouterr()

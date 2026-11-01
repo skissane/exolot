@@ -56,9 +56,10 @@ cause and says in the summary line how many files weren't analyzed, e.g.
 The causes it spots are an analyzer the server couldn't download or load, an
 analyzer that failed (e.g. C# analysis needs `dotnet` installed), and C/C++
 files without a compilation database; it also warns about the errors and
-warnings the server shows, such as not finding the Node.js it needs. The `markdown` and `github-comment`
-formats show these warnings above the findings, and `sarif` as the run's tool
-execution notifications. `--log-level error` shows the server's own account
+warnings the server shows, such as not finding the Node.js it needs. The
+`markdown` and `github-comment` formats show these warnings above the
+findings, `--annotations` before the issues' annotations, and `sarif` as the
+run's tool execution notifications. `--log-level error` shows the server's own account
 of what went wrong. They're warnings, not errors, so they don't change the
 exit status.
 
@@ -176,8 +177,9 @@ status 2 if the repository or REF can't be fetched.
   `warning` or `notice` (for the server's info and hint severities), and paths
   are relative to the root of the git repository each file is in (files
   outside one get paths relative to the current directory, which GitHub can't
-  place on a diff, so their annotations show only in the run). With
-  `--diff-base`, the issues on changed lines come first.
+  place on a diff, so their annotations show only in the run). Warnings about
+  files that weren't analyzed come first, as `::warning` annotations with no
+  file, then with `--diff-base` the issues on changed lines.
 - `--log-level LEVEL` shows the server's log messages at `LEVEL` and above,
   where `LEVEL` is `debug`, `info`, `warn` or `error` (by default exolot
   shows none of them). The server only sends `debug` messages when asked for
@@ -228,8 +230,10 @@ one that posts it). Don't redirect stderr away from the step's log, or the
 runner won't see them.
 
 GitHub shows at most 10 annotations of each type (error, warning, notice) per
-step and 50 per job, so `--diff-base` puts the issues on the pull request's
-changed lines first, and `--changed-only` drops the rest. Run exolot from the
+step and 50 per job. So that a warning that some files weren't analyzed
+(meaning the issues may be incomplete) isn't cut off, those come first, on
+the run's summary rather than the diff. Then `--diff-base` puts the issues on
+the pull request's changed lines first, and `--changed-only` drops the rest. Run exolot from the
 repository's checkout, as annotation paths are relative to its root.
 
 ## GitHub code scanning

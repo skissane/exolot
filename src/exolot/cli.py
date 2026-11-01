@@ -415,7 +415,7 @@ def _report_any(
     else:
         _report(issues, report, args.format, _links(args), changes)
     if args.annotations:
-        _print_annotations(issues, changes)
+        _print_annotations(issues, changes, unanalyzed)
 
 
 @dataclass
@@ -472,12 +472,20 @@ def _report(
     sys.stdout.flush()
 
 
-def _print_annotations(issues: list[Issue], changes: gitdiff.Changes | None = None) -> None:
+def _print_annotations(
+    issues: list[Issue],
+    changes: gitdiff.Changes | None = None,
+    unanalyzed: list[problems.Problem] | None = None,
+) -> None:
     """Print the issues to stderr as GitHub workflow commands, which the
     Actions runner turns into annotations, leaving stdout for the report.
-    GitHub shows only the first few annotations of each type, so with changes
-    those on changed lines go first. Paths are relative to the repo root,
-    which is what GitHub matches them against."""
+    GitHub shows only the first few annotations of each type, so the
+    warnings about files that weren't analyzed (unanalyzed), which say the
+    rest can't be trusted to be complete, go first, then with changes the
+    issues on changed lines. Paths are relative to the repo root, which is
+    what GitHub matches them against."""
+    for problem in unanalyzed or []:
+        print(annotations.warning(problem.sentence()), file=sys.stderr)
     issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
     findings = [{**_issue_json(i, changes), "path": _repo_path(i.path)} for i in issues]
     for finding in sorted(findings, key=lambda f: not f.get("changed")):
