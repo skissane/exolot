@@ -170,8 +170,10 @@ summary, without a token or code scanning, add `--annotations`:
 
 The Actions runner turns the `::` lines exolot prints on stderr into
 annotations, so stdout is free for a report in any format, e.g.
-`--format github-comment > comment.md` to post as a PR comment from the same
-run. Don't redirect stderr away from the step's log, or the runner won't see them.
+`--format github-comment --exit-zero > comment.md` to post as a PR comment
+from the same run (`--exit-zero` so the issues don't fail the step and skip the
+one that posts it). Don't redirect stderr away from the step's log, or the
+runner won't see them.
 
 GitHub shows at most 10 annotations of each type (error, warning, notice) per
 step and 50 per job, so `--diff-base` puts the issues on the pull request's

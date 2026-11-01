@@ -279,9 +279,15 @@ def test_cli_annotations_put_changed_lines_first(repo, tmp_path, monkeypatch, ca
     (repo / "sub" / "b.py").write_text("changed\n")
     monkeypatch.chdir(repo)
     args = ["--diff-base", "master", "--annotations", "--workspace", str(repo), str(repo)]
-    for extra in ([], ["--format", "github-comment"], ["--statistics"]):
+    cases = [
+        ([], "python issue (changed)"),
+        (["--format", "github-comment"], "### On changed lines (1)"),
+        (["--statistics"], "fake:S1"),
+    ]
+    for extra, report in cases:
         assert cli.main([*args, *extra]) == 1
         captured = capsys.readouterr()
+        assert report in captured.out
         assert [line.split(",")[0] for line in _annotations(captured.err)] == [
             "::warning file=sub/b.py",
             "::warning file=a.py",
