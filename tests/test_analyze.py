@@ -749,12 +749,23 @@ def test_cli_analyze_repo_resolves_local_options_before_changing_directory(repo,
     assert calls[0][2] == str(tmp_path / "java")
 
 
-def test_cli_analyze_repo_resolves_excludes_before_changing_directory(repo, tmp_path, monkeypatch):
-    seen = {}
-    monkeypatch.setattr(cli, "_clone_and_analyze", lambda args: seen.setdefault("exclude", args.exclude) and 0)
+def test_cli_analyze_repo_excludes_relative_to_the_clone(repo, tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
-    assert cli.main(["analyze-repo", "repo", "--exclude", "*.m"]) == 0
-    assert seen["exclude"] == ["*.m"]
+    assert cli.main(["analyze-repo", "repo", "--exclude", "sub/*"]) == 1
+    assert capsys.readouterr().out == "a.py:1:3: warning [fake:S1] python issue\n"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_collect_files_excludes_symlinks_by_their_listed_path(tmp_path, monkeypatch):
+    outside = tmp_path / "outside.py"
+    outside.write_text("x = 1\n")
+    (tmp_path / "proj" / "vendor").mkdir(parents=True)
+    (tmp_path / "proj" / "vendor" / "link.py").symlink_to(outside)
+    (tmp_path / "proj" / "kept.py").write_text("x = 1\n")
+    monkeypatch.chdir(tmp_path / "proj")
+    files = collect_files([Path()], [Exclude("vendor/**", tmp_path / "proj")])
+    assert files == [(tmp_path / "proj" / "kept.py").resolve()]
 
 
 def test_cli_config_excludes_are_relative_to_the_config_file(tmp_path, monkeypatch):

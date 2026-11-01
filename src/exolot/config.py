@@ -12,7 +12,7 @@ class ConfigError(Exception):
     pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Config:
     # Markdown that --format github-comment puts after its heading.
     preamble: str | None = None

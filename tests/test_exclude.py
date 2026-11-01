@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,9 @@ FILE = BASE / "vendor" / "lib" / "a.py"
         ("lib/**", False),
         ("./vendor", True),
         ("./vendor/**", True),
+        ("./lib", False),
+        ("vendor/lib/a.py/**", False),
+        ("vendor/lib/**/**", True),
         ("/vendor", True),
         ("/lib", False),
         ("vendor/lib/a.py/", False),
@@ -38,6 +42,8 @@ FILE = BASE / "vendor" / "lib" / "a.py"
         ("", False),
         ("/", False),
         ("./", False),
+        # No negation: `!` is just a character.
+        ("!a.py", False),
     ],
 )
 def test_matches(pattern, skipped):
@@ -63,3 +69,26 @@ def test_is_excluded():
     assert is_excluded(FILE, [Exclude("*.m", BASE), Exclude("lib", BASE)])
     assert not is_excluded(FILE, [Exclude("*.m", BASE)])
     assert not is_excluded(FILE, [])
+
+
+def test_dir_glob_doesnt_match_a_file_of_that_name():
+    assert not Exclude("foo/**", BASE).matches(BASE / "foo")
+    assert Exclude("foo/**", BASE).matches(BASE / "foo" / "bar")
+
+
+def test_base_case_is_folded_too(monkeypatch):
+    monkeypatch.setattr(exclude, "CASE_INSENSITIVE", True)
+    assert Exclude("vendor/**", BASE.parent / "REPO").matches(FILE)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_unresolved_base(tmp_path):
+    (tmp_path / "real").mkdir()
+    (tmp_path / "link").symlink_to(tmp_path / "real", target_is_directory=True)
+    target = (tmp_path / "real" / "vendor" / "a.py").resolve()
+    assert Exclude("vendor/**", tmp_path / "link").matches(target)
+
+
+def test_many_double_stars_stay_fast():
+    deep = BASE.joinpath(*["d"] * 40, "a.py")
+    assert not Exclude("/".join(["**", "d"] * 10) + "/x/**", BASE).matches(deep)
