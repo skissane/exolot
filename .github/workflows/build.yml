@@ -289,9 +289,9 @@ jobs:
 
   # Runs exolot on its own code, for information only: --exit-zero, so its
   # findings never fail the job (only a failed analysis does). It reports them
-  # in the job summary and, on PRs, through post-self-analysis as a PR comment,
-  # with the ones on lines the PR changes first. See AGENTS.md for how to treat
-  # them.
+  # as annotations, in the job summary and, on PRs, through post-self-analysis
+  # as a PR comment, with the ones on lines the PR changes first. See AGENTS.md
+  # for how to treat them.
   self-analysis:
     runs-on: ubuntu-latest
     permissions:
@@ -338,10 +338,12 @@ jobs:
 
       # On PRs, --diff-base marks the findings on lines the PR changes. The
       # report links to the checked-out commit and this run, and starts with
-      # the preamble in pyproject.toml's [tool.exolot].
+      # the preamble in pyproject.toml's [tool.exolot]. --annotations also
+      # prints the findings on stderr, which the runner shows as annotations
+      # on the PR's diff (changed lines first, as GitHub shows only 10 per type).
       - name: Analyze exolot with itself
         run: |
-          args=(--exit-zero --format github-comment)
+          args=(--exit-zero --format github-comment --annotations)
           if [ -n "$BASE_REF" ]; then
             args+=(--diff-base "origin/${BASE_REF}")
           fi

@@ -38,6 +38,7 @@ uvx exolot --format json .     # machine-readable output
 uvx exolot --format markdown . # a Markdown table, e.g. for a PR comment
 uvx exolot --format github-comment . # a report to post as a PR comment
 uvx exolot --format sarif .    # SARIF 2.1.0, e.g. for GitHub code scanning
+uvx exolot --annotations .     # also show the issues as GitHub Actions annotations
 uvx exolot --statistics .      # count issues per rule, most common first
 uvx exolot --diff-base origin/main --changed-only  # only issues on lines your branch changes
 uvx exolot install             # just download and unpack the server
@@ -116,6 +117,7 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   gets a `"changed": true` or `false` field, Markdown output puts the issues on
   changed lines first and collapses the rest under "Elsewhere", and text
   output ends those lines with `(changed)` and counts them in its summary.
+  `--annotations` puts the issues on changed lines first.
   The exit status still counts every issue, and `--statistics` and SARIF
   output are unaffected. It exits with status 2 if git isn't installed, REF
   isn't a commit, or the merge base can't be found (in a shallow clone, such
@@ -125,6 +127,16 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
   lines, and reports only the issues on changed lines, in every format; the
   exit status and `--statistics` count only those. This lets a project adopt
   exolot in CI without fixing its existing issues first.
+- `--annotations` also prints each issue to stderr as a GitHub Actions
+  [workflow command](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands)
+  (`::warning file=src/a.py,line=12,col=5,endLine=12,endColumn=9,title=python:S1234::message`),
+  which GitHub shows as an annotation, whatever `--format` prints on stdout;
+  see [Workflow annotations](#workflow-annotations). The command is `error`,
+  `warning` or `notice` (for the server's info and hint severities), and paths
+  are relative to the root of the git repository each file is in (files
+  outside one get paths relative to the current directory, which GitHub can't
+  place on a diff, so their annotations show only in the run). With
+  `--diff-base`, the issues on changed lines come first.
 - `-v` / `--verbose` shows the server's logs.
 
 ## Configuration
@@ -143,6 +155,32 @@ status 2). The settings are:
   [tool.exolot]
   preamble = "Fix the issues on lines you changed; the rest can wait."
   ```
+
+## Workflow annotations
+
+To show exolot's issues on a pull request's diff and in the workflow run's
+summary, without a token or code scanning, add `--annotations`:
+
+```yaml
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+      - run: uvx exolot --annotations --diff-base "origin/$GITHUB_BASE_REF" .
+```
+
+The Actions runner turns the `::` lines exolot prints on stderr into
+annotations, so stdout is free for a report in any format, e.g.
+`--format github-comment --exit-zero > comment.md` to post as a PR comment
+from the same run (`--exit-zero` so the issues don't fail the step and skip the
+one that posts it). Don't redirect stderr away from the step's log, or the
+runner won't see them.
+
+GitHub shows at most 10 annotations of each type (error, warning, notice) per
+step and 50 per job, so `--diff-base` puts the issues on the pull request's
+changed lines first, and `--changed-only` drops the rest. Run exolot from the
+repository's checkout, as annotation paths are relative to its root.
 
 ## GitHub code scanning
 

@@ -11,7 +11,7 @@ import urllib.parse
 from collections import Counter
 from pathlib import Path
 
-from . import __version__, config, gitdiff, markdown, sarif
+from . import __version__, annotations, config, gitdiff, markdown, sarif
 from .analyze import AnalysisSession, Issue, collect_files
 from .server import DEFAULT_SERVER_VERSION, ServerError, cache_dir, detect_platform, ensure_server
 
@@ -80,6 +80,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--changed-only",
         action="store_true",
         help="with --diff-base, analyze only the changed files, and report and count only the issues on changed lines",
+    )
+    analyze.add_argument(
+        "--annotations",
+        action="store_true",
+        help="also print each issue to stderr as a GitHub Actions workflow command, which GitHub shows as an "
+        "annotation on the PR's diff (issues on changed lines first, with --diff-base)",
     )
     analyze.add_argument(
         "-e",
@@ -166,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
             issues = session.analyze(files, timeout=args.timeout)
             if args.format == "sarif" and issues:
                 session.add_related_locations(issues)
-            elif changes is not None and (args.changed_only or not args.statistics):
+            elif changes is not None and (args.changed_only or args.annotations or not args.statistics):
                 _add_changed_related_locations(session, issues, changes)
             if changes is not None and args.changed_only:
                 issues = [i for i in issues if _on_changed_lines(i, changes)]
@@ -179,6 +185,8 @@ def main(argv: list[str] | None = None) -> int:
                 _report_comment(issues, len(files), args, settings, None if args.changed_only else changes)
             else:
                 _report(issues, len(files), args.format, _links(args), None if args.changed_only else changes)
+            if args.annotations:
+                _print_annotations(issues, None if args.changed_only else changes)
     except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
         print(f"exolot: {e}", file=sys.stderr)
         return 2
@@ -222,6 +230,19 @@ def _report(
             print(f"{location}: {issue.severity} [{issue.rule}] {issue.message}{mark}")
         print(summary, file=sys.stderr)
     sys.stdout.flush()
+
+
+def _print_annotations(issues: list[Issue], changes: gitdiff.Changes | None = None) -> None:
+    """Print the issues to stderr as GitHub workflow commands, which the
+    Actions runner turns into annotations, leaving stdout for the report.
+    GitHub shows only the first few annotations of each type, so with changes
+    those on changed lines go first. Paths are relative to the repo root,
+    which is what GitHub matches them against."""
+    issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
+    findings = [{**_issue_json(i, changes), "path": _repo_path(i.path)} for i in issues]
+    for finding in sorted(findings, key=lambda f: not f.get("changed")):
+        print(annotations.annotation(finding), file=sys.stderr)
+    sys.stderr.flush()
 
 
 def _report_comment(
