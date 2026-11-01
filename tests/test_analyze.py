@@ -421,6 +421,36 @@ def test_cli_changed_only_with_no_changed_files(repo, monkeypatch, capsys):
     assert "no files to analyze" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("flags", "report_kind"),
+    [
+        (["--format", "json"], "json"),
+        (["--format", "sarif"], "sarif"),
+        (["--format", "markdown"], "markdown"),
+        (["--format", "github-comment"], "github-comment"),
+        (["--statistics", "--format", "json"], "json"),
+        (["--statistics", "--format", "markdown"], "markdown"),
+    ],
+)
+def test_cli_changed_only_with_no_changed_files_prints_an_empty_report(repo, monkeypatch, capsys, flags, report_kind):
+    monkeypatch.setattr(cli, "ensure_server", _no_download)
+    monkeypatch.chdir(repo)
+    assert cli.main(["--diff-base", "master", "--changed-only", *flags]) == 0
+    captured = capsys.readouterr()
+    assert "no files to analyze" in captured.err
+    if report_kind == "json":
+        assert json.loads(captured.out) == []
+    elif report_kind == "sarif":
+        log = json.loads(captured.out)
+        assert log["version"] == "2.1.0"
+        assert len(log["runs"]) == 1
+        assert log["runs"][0]["results"] == []
+    elif report_kind == "markdown":
+        assert captured.out == "No issues found.\n"
+    else:
+        assert "No issues found.\n" in captured.out
+
+
 def test_cli_diff_base_errors_exit_2_without_downloading(repo, monkeypatch, capsys):
     monkeypatch.setattr(cli, "ensure_server", _no_download)
     monkeypatch.chdir(repo)
