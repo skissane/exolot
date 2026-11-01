@@ -6,6 +6,7 @@ import functools
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -234,22 +235,32 @@ def _run_analyze_repo(args: argparse.Namespace) -> int:
         if args.keep.exists() and (not args.keep.is_dir() or any(args.keep.iterdir())):
             print(f"exolot: {args.keep} isn't an empty directory", file=sys.stderr)
             return 2
-        return _analyze_clone(args, args.keep.resolve())
+        created = not args.keep.exists()
+        try:
+            return _analyze_clone(args, args.keep.resolve())
+        except clone.CloneError as e:
+            print(f"exolot: {e}", file=sys.stderr)
+            # Leave nothing behind that would stop the same --keep DIR being used again.
+            shutil.rmtree(args.keep / ".git", ignore_errors=True)
+            if created:
+                shutil.rmtree(args.keep, ignore_errors=True)
+            return 2
     # The language server has exited by the time the directory is deleted,
     # so on Windows nothing in it should still be open.
-    with tempfile.TemporaryDirectory(prefix="exolot-") as tmp:
-        return _analyze_clone(args, Path(tmp).resolve())
-
-
-def _analyze_clone(args: argparse.Namespace, dest: Path) -> int:
-    source = args.source
-    if Path(source).exists():
-        source = str(Path(source).resolve())  # relative to the current directory, not the clone
     try:
-        commit = clone.clone(source, dest, args.ref)
+        with tempfile.TemporaryDirectory(prefix="exolot-") as tmp:
+            return _analyze_clone(args, Path(tmp).resolve())
     except clone.CloneError as e:
         print(f"exolot: {e}", file=sys.stderr)
         return 2
+
+
+def _analyze_clone(args: argparse.Namespace, dest: Path) -> int:
+    """Clone the repository into dest and analyze it. Raises CloneError."""
+    source = args.source
+    if Path(source).exists():
+        source = str(Path(source).resolve())  # relative to the current directory, not the clone
+    commit = clone.clone(source, dest, args.ref)
     print(f"exolot: analyzing {clone.display_source(args.source)} at {commit}", file=sys.stderr)
     if not args.link_template and not args.no_links:
         # Link to the repository's own code; without that, don't link to

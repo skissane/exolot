@@ -20,13 +20,15 @@ def test_clone_fetches_the_checked_out_commit_without_history(repo, tmp_path):
     assert (dest / ".git" / "shallow").exists()
 
 
-@pytest.mark.parametrize("ref", ["master", "v1"])
-def test_clone_fetches_a_branch_or_tag(repo, tmp_path, ref):
+@pytest.mark.parametrize(("ref", "expected"), [(None, "topic\n"), ("master", "master\n"), ("v1", "one\ntwo\nthree\n")])
+def test_clone_fetches_a_branch_or_tag(repo, tmp_path, ref, expected):
     git(repo, "tag", "v1", "master")
-    (repo / "a.py").write_text("changed\n")
-    git(repo, "commit", "-q", "-am", "change")
-    assert clone.clone(str(repo), tmp_path / "clone", ref) == _rev(repo, "master")
-    assert (tmp_path / "clone" / "a.py").read_text() == "one\ntwo\nthree\n"
+    for branch in ("master", "topic"):
+        git(repo, "checkout", "-q", branch)
+        (repo / "a.py").write_text(f"{branch}\n")
+        git(repo, "commit", "-q", "-am", branch)
+    assert clone.clone(str(repo), tmp_path / "clone", ref) == _rev(repo, ref or "HEAD")
+    assert (tmp_path / "clone" / "a.py").read_text() == expected
 
 
 def test_clone_fetches_a_commit(repo, tmp_path):

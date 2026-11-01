@@ -645,6 +645,17 @@ def test_cli_analyze_repo_clone_errors_exit_2_without_downloading(repo, monkeypa
     assert "git fetch failed" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("existing", [False, True])
+def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, monkeypatch, capsys, existing):
+    keep = tmp_path / "kept"
+    if existing:
+        keep.mkdir()
+    assert cli.main(["analyze-repo", str(repo), "--ref", "nope", "--keep", str(keep)]) == 2
+    assert keep.exists() == existing
+    if existing:
+        assert not any(keep.iterdir())
+
+
 def test_cli_analyze_repo_has_no_diff_options(capsys):
     with pytest.raises(SystemExit):
         cli.main(["analyze-repo", "https://example.com/r.git", "--diff-base", "master"])
