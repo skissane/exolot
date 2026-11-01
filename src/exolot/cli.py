@@ -5,12 +5,13 @@ import functools
 import json
 import logging
 import os
+import subprocess
 import sys
 import urllib.parse
 from collections import Counter
 from pathlib import Path
 
-from . import __version__, annotations, gitdiff, markdown, sarif
+from . import __version__, annotations, config, gitdiff, markdown, sarif
 from .analyze import AnalysisSession, Issue, collect_files
 from .server import DEFAULT_SERVER_VERSION, ServerError, cache_dir, detect_platform, ensure_server
 
@@ -41,14 +42,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = sub.add_parser("analyze", parents=[server_opts], help="analyze files (the default command)")
     analyze.add_argument("paths", nargs="*", type=Path, default=[Path(".")], help="files or directories")
-    analyze.add_argument("--format", choices=("text", "json", "markdown", "sarif", "github"), default="text")
+    analyze.add_argument(
+        "--format", choices=("text", "json", "markdown", "github-comment", "github", "sarif"), default="text"
+    )
     analyze.add_argument(
         "--link-template",
         type=_link_template,
         metavar="TEMPLATE",
-        help="with --format markdown, link each location to this URL, filling in {path} (URL-quoted, relative to "
-        "the git repo's root), {line}, "
-        "{column}, {end_line} and {end_column}, e.g. 'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}'",
+        help="with --format markdown or github-comment, link each location to this URL, filling in {path} "
+        "(URL-quoted, relative to the git repo's root), {line}, {column}, {end_line} and {end_column}, e.g. "
+        "'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}' (default in GitHub Actions: the checked-out "
+        "commit in the workflow's repository)",
+    )
+    analyze.add_argument(
+        "--no-links",
+        action="store_true",
+        help="with --format markdown or github-comment, don't link locations, even in GitHub Actions",
     )
     analyze.add_argument(
         "--rules",
@@ -99,9 +108,12 @@ def main(argv: list[str] | None = None) -> int:
         argv.insert(0, "analyze")
     parser = build_parser()
     args = parser.parse_args(argv)
-    if getattr(args, "link_template", None) and (args.format != "markdown" or args.statistics):
-        parser.error("--link-template needs --format markdown, without --statistics")
-    if getattr(args, "statistics", False) and args.format in ("sarif", "github"):
+    linkable = getattr(args, "format", None) in ("markdown", "github-comment") and not args.statistics
+    if getattr(args, "link_template", None) and not linkable:
+        parser.error("--link-template needs --format markdown or github-comment, without --statistics")
+    if getattr(args, "no_links", False) and (not linkable or args.link_template):
+        parser.error("--no-links needs --format markdown or github-comment, without --statistics or --link-template")
+    if getattr(args, "statistics", False) and args.format in ("sarif", "github-comment", "github"):
         parser.error(f"--statistics can't be used with --format {args.format}")
     if getattr(args, "changed_only", False) and args.diff_base is None:
         parser.error("--changed-only needs --diff-base")
@@ -125,7 +137,8 @@ def main(argv: list[str] | None = None) -> int:
             files = collect_files(args.paths)
             rules = json.loads(args.rules.read_text()) if args.rules else None
             changes = gitdiff.changes_since(args.diff_base) if args.diff_base is not None else None
-        except (OSError, ValueError, gitdiff.GitError) as e:
+            settings = config.load(Path.cwd())
+        except (OSError, ValueError, gitdiff.GitError, config.ConfigError) as e:
             print(f"exolot: {e}", file=sys.stderr)
             return 2
         if changes is not None and args.changed_only:
@@ -164,8 +177,10 @@ def main(argv: list[str] | None = None) -> int:
                 _report_statistics(issues, len(files), args.format, session.rule_names() if issues else {})
             elif args.format == "sarif":
                 _report_sarif(issues, len(files), session.rule_names() if issues else {})
+            elif args.format == "github-comment":
+                _report_comment(issues, len(files), args, settings, None if args.changed_only else changes)
             else:
-                _report(issues, len(files), args.format, args.link_template, None if args.changed_only else changes)
+                _report(issues, len(files), args.format, _links(args), None if args.changed_only else changes)
     except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
         print(f"exolot: {e}", file=sys.stderr)
         return 2
@@ -222,6 +237,70 @@ def _print_annotations(issues: list[Issue], findings: list[dict[str, object]]) -
     ordered = sorted(zip(issues, findings), key=lambda pair: not pair[1].get("changed"))
     for issue, finding in ordered:
         print(annotations.annotation({**finding, "path": _repo_path(issue.path)}))
+
+
+def _report_comment(
+    issues: list[Issue],
+    file_count: int,
+    args: argparse.Namespace,
+    settings: config.Config,
+    changes: gitdiff.Changes | None = None,
+) -> None:
+    issues = sorted(issues, key=lambda i: (str(i.path), i.line, i.column, i.rule))
+    findings = [{**_issue_json(i, changes), "path": _repo_path(i.path)} for i in issues]
+    actions = _actions_urls()
+    body = markdown.comment(
+        findings,
+        link_template=_links(args),
+        changed=changes is not None,
+        preamble=settings.preamble,
+        commit=_head_commit(),
+        run_url=actions[1] if actions else None,
+    )
+    sys.stdout.write(body)
+    sys.stdout.flush()
+    summary = f"{len(issues)} issue(s)"
+    if changes is not None:
+        summary += f", {sum(f['changed'] for f in findings)} on changed lines,"
+    print(f"{summary} in {file_count} file(s) analyzed", file=sys.stderr)
+
+
+def _links(args: argparse.Namespace) -> str | None:
+    """The link template for Markdown locations: --link-template's, or in
+    GitHub Actions (unless --no-links), one for the checked-out commit in the
+    workflow's repository."""
+    if args.link_template or args.no_links or args.format not in ("markdown", "github-comment"):
+        return args.link_template
+    actions = _actions_urls()
+    commit = _head_commit()
+    if not actions or not commit:
+        return None
+    # Doubled braces, so a brace in the URL isn't taken for a field.
+    return actions[0].replace("{", "{{").replace("}", "}}") + f"/blob/{commit}/{{path}}#L{{line}}"
+
+
+def _actions_urls() -> tuple[str, str | None] | None:
+    """In GitHub Actions, the URLs of the workflow's repository and of its run
+    (if known)."""
+    server = os.environ.get("GITHUB_SERVER_URL")
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if os.environ.get("GITHUB_ACTIONS") != "true" or not server or not repo:
+        return None
+    repo_url = f"{server.rstrip('/')}/{repo}"
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    return repo_url, f"{repo_url}/actions/runs/{run_id}" if run_id else None
+
+
+def _head_commit() -> str | None:
+    """The commit checked out in the git repository the current directory is
+    in, if it's in one."""
+    try:
+        proc = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "HEAD"], capture_output=True, text=True)
+    except OSError:
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
 
 
 def _report_sarif(issues: list[Issue], file_count: int, names: dict[str, str]) -> None:

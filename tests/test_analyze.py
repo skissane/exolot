@@ -397,3 +397,116 @@ def test_cli_diff_base_counts_secondary_locations_and_whole_ranges(repo, tmp_pat
     # Statistics without --changed-only don't need to know what changed.
     monkeypatch.setattr(AnalysisSession, "add_related_locations", _no_download)
     assert cli.main([*args, "--statistics"]) == 1
+
+
+def _in_actions(monkeypatch, run_id="42"):
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.example/")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+    if run_id:
+        monkeypatch.setenv("GITHUB_RUN_ID", run_id)
+
+
+def _head(repo):
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+
+
+def test_cli_markdown_links_to_the_checked_out_commit_in_github_actions(repo, tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    _in_actions(monkeypatch)
+    monkeypatch.chdir(repo / "sub")
+    assert cli.main(["--format", "markdown", "b.py"]) == 1
+    assert f"| [sub/b.py:1](https://github.example/o/r/blob/{_head(repo)}/sub/b.py#L1) |" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("flags", [["--no-links"], ["--link-template", "u/{path}"]], ids=["no-links", "link-template"])
+def test_cli_markdown_links_in_github_actions_can_be_overridden(repo, tmp_path, monkeypatch, capsys, flags):
+    _fake_server(tmp_path, monkeypatch)
+    _in_actions(monkeypatch)
+    monkeypatch.chdir(repo)
+    cli.main(["--format", "markdown", *flags, "a.py"])
+    assert "github.example" not in capsys.readouterr().out
+
+
+def test_cli_markdown_has_no_links_in_github_actions_outside_a_repo(tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    _in_actions(monkeypatch)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    cli.main(["--format", "markdown", "a.py"])
+    assert capsys.readouterr().out.endswith("| a.py:1 | fake:S1 | python issue |\n")
+
+
+def test_cli_github_comment(repo, tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    _in_actions(monkeypatch)
+    (repo / "pyproject.toml").write_text('[tool.exolot]\npreamble = "Read *this*."\n')
+    (repo / "a.py").write_text("one changed\ntwo\nthree\n")
+    monkeypatch.chdir(repo)
+    assert cli.main(["--format", "github-comment", "--diff-base", "master", "a.py", "sub/b.py"]) == 1
+    captured = capsys.readouterr()
+    head = _head(repo)
+    assert captured.out.startswith(
+        "## exolot's findings\n\nRead *this*.\n\n"
+        f"Analysis of {head}, from [this workflow run](https://github.example/o/r/actions/runs/42).\n\n"
+        "### On changed lines (1)\n"
+    )
+    assert f"[a.py:1](https://github.example/o/r/blob/{head}/a.py#L1)" in captured.out
+    assert "Elsewhere (" in captured.out
+    assert "1 on changed lines, in 2 file(s) analyzed" in captured.err
+
+
+def test_cli_github_comment_outside_github_actions(tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    assert cli.main(["--format", "github-comment", "a.py"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == (
+        "## exolot's findings\n\n### Findings (1)\n\n"
+        "| Location | Rule | Message |\n| --- | --- | --- |\n| a.py:1 | fake:S1 | python issue |\n"
+    )
+    assert "1 issue(s) in 1 file(s) analyzed" in captured.err
+
+
+def test_cli_bad_config_exits_2_without_downloading(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", _no_download)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".exolot.toml").write_text("nope = 1\n")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    assert cli.main(["a.py"]) == 2
+    assert "unknown setting 'nope'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("flags", "error"),
+    [
+        (["--format", "github-comment", "--statistics"], "--statistics can't be used with --format github-comment"),
+        (["--no-links"], "--no-links needs --format markdown or github-comment"),
+        (["--format", "markdown", "--no-links", "--link-template", "{path}"], "--no-links needs"),
+    ],
+)
+def test_cli_rejects_github_comment_and_no_links_misuse(tmp_path, monkeypatch, capsys, flags, error):
+    monkeypatch.setattr(cli, "ensure_server", _no_download)
+    with pytest.raises(SystemExit) as exc:
+        cli.main([*flags, str(tmp_path)])
+    assert exc.value.code == 2
+    assert error in capsys.readouterr().err
+
+
+def test_cli_github_comment_without_git(tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    real_run = subprocess.run
+
+    def run(cmd, *args, **kwargs):
+        if cmd[0] == "git":
+            raise FileNotFoundError("git")
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    cli.main(["--format", "github-comment", "a.py"])
+    assert "Analysis of" not in capsys.readouterr().out
