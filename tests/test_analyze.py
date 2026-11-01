@@ -7,7 +7,7 @@ import pytest
 
 from exolot import cli
 from exolot.analyze import AnalysisSession, collect_files, language_id
-from exolot.server import Server
+from exolot.server import Server, ServerError
 from tests.conftest import git
 
 FAKE_SERVER = Path(__file__).with_name("fake_server.py")
@@ -67,12 +67,31 @@ def test_session_raises_when_a_file_is_never_published(tmp_path):
             session.analyze([a], settle=0.1, stall=0.5, timeout=10)
 
 
+def test_session_raises_when_the_server_exits(tmp_path):
+    a = tmp_path / "a.py"
+    a.write_text("CRASH\n")
+    server = FakeServer(root=tmp_path, java=Path("java"))
+    with AnalysisSession(server, tmp_path) as session:
+        with pytest.raises(RuntimeError, match="exited unexpectedly"):
+            session.analyze([a], settle=0.1, stall=5, timeout=10)
+
+
+def test_session_waits_while_the_server_reports_progress(tmp_path):
+    a = tmp_path / "a.py"
+    a.write_text("BUSY\n")
+    server = FakeServer(root=tmp_path, java=Path("java"))
+    with AnalysisSession(server, tmp_path) as session:
+        with pytest.raises(TimeoutError):
+            session.analyze([a], settle=0.1, stall=0.1, timeout=1)
+
+
 def test_session_closes_server_pipes(tmp_path):
     server = FakeServer(root=tmp_path, java=Path("java"))
     with AnalysisSession(server, tmp_path) as session:
         proc = session._proc
     assert proc.returncode is not None
-    assert proc.stdin.closed and proc.stdout.closed
+    assert proc.stdin.closed
+    assert proc.stdout.closed
 
 
 def test_session_closes_pipes_of_a_server_that_died(tmp_path):
@@ -81,7 +100,8 @@ def test_session_closes_pipes_of_a_server_that_died(tmp_path):
         proc = session._proc
         proc.kill()
         proc.wait()
-    assert proc.stdin.closed and proc.stdout.closed
+    assert proc.stdin.closed
+    assert proc.stdout.closed
 
 
 def test_closing_an_unstarted_session_does_nothing(tmp_path):
@@ -525,3 +545,45 @@ def test_cli_github_comment_without_git(tmp_path, monkeypatch, capsys):
     (tmp_path / "a.py").write_text("x = 1\n")
     cli.main(["--format", "github-comment", "a.py"])
     assert "Analysis of" not in capsys.readouterr().out
+
+
+def test_cli_cache_dir(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "cache_dir", lambda: Path("/cache"))
+    assert cli.main(["cache-dir"]) == 0
+    assert capsys.readouterr().out == f"{Path('/cache')}\n"
+
+
+@pytest.mark.parametrize(
+    ("flags", "platform", "shown"),
+    [
+        ([], None, "linux-x64"),
+        (["--platform", "universal"], "", "universal"),
+        (["--platform", "win32-x64"], "win32-x64", "win32-x64"),
+    ],
+)
+def test_cli_install(tmp_path, monkeypatch, capsys, flags, platform, shown):
+    calls = []
+
+    def ensure(version, plat, java):
+        calls.append(plat)
+        return FakeServer(root=tmp_path, java=Path("java"))
+
+    monkeypatch.setattr(cli, "ensure_server", ensure)
+    monkeypatch.setattr(cli, "detect_platform", lambda: "linux-x64")
+    assert cli.main(["install", *flags]) == 0
+    assert calls == [platform]
+    out = capsys.readouterr().out
+    assert f"({shown})" in out
+    assert str(tmp_path) in out
+
+
+@pytest.mark.parametrize("command", [["install"], []])
+def test_cli_server_errors_exit_2(tmp_path, monkeypatch, capsys, command):
+    def fail(*args):
+        raise ServerError("no download for you")
+
+    monkeypatch.setattr(cli, "ensure_server", fail)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    paths = [] if command else [str(tmp_path)]
+    assert cli.main([*command, *paths]) == 2
+    assert "exolot: no download for you" in capsys.readouterr().err

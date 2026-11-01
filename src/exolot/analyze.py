@@ -307,24 +307,31 @@ class AnalysisSession:
             )
         with self._cond:
             self._touch()
-            while True:
-                if self._client.closed.is_set():
-                    raise RuntimeError("language server exited unexpectedly")
-                now = time.monotonic()
-                quiet = now - self._last_event
-                missing = [u for u in uris if u not in self._published]
-                if not self._active_progress:
-                    if not missing and quiet >= settle:
-                        break
-                    if missing and quiet >= stall:
-                        names = ", ".join(str(uris[u]) for u in missing[:5])
-                        more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
-                        raise RuntimeError(f"the server never reported results for {names}{more}")
-                if deadline is not None and now >= deadline:
+            while not self._finished(uris, settle, stall):
+                if deadline is not None and time.monotonic() >= deadline:
                     raise TimeoutError("analysis did not finish in time")
                 self._cond.wait(timeout=0.2)
             published = {uri: self._published.get(uri, []) for uri in uris}
         return [_to_issue(uris[uri], d) for uri, diags in published.items() for d in diags]
+
+    def _finished(self, uris: dict[str, Path], settle: float, stall: float) -> bool:
+        """Whether the server has finished analyzing the files at uris: every
+        one is published, no progress is active and nothing has arrived for
+        ``settle`` seconds. Raises if the server has exited, or has gone
+        ``stall`` seconds without publishing some of them. Call with
+        ``self._cond`` held."""
+        assert self._client is not None
+        if self._client.closed.is_set():
+            raise RuntimeError("language server exited unexpectedly")
+        if self._active_progress:
+            return False
+        quiet = time.monotonic() - self._last_event
+        missing = [u for u in uris if u not in self._published]
+        if missing and quiet >= stall:
+            names = ", ".join(str(uris[u]) for u in missing[:5])
+            more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
+            raise RuntimeError(f"the server never reported results for {names}{more}")
+        return not missing and quiet >= settle
 
     def rule_names(self, timeout: float = 10) -> dict[str, str]:
         """Map each rule key the server knows, e.g. python:S1764, to its title.

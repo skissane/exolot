@@ -9,11 +9,12 @@ import subprocess
 import sys
 import urllib.parse
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import __version__, annotations, config, gitdiff, markdown, sarif
 from .analyze import AnalysisSession, Issue, collect_files
-from .server import DEFAULT_SERVER_VERSION, ServerError, cache_dir, detect_platform, ensure_server
+from .server import DEFAULT_SERVER_VERSION, Server, ServerError, cache_dir, detect_platform, ensure_server
 
 COMMANDS = ("analyze", "install", "cache-dir")
 
@@ -112,15 +113,8 @@ def main(argv: list[str] | None = None) -> int:
         argv.insert(0, "analyze")
     parser = build_parser()
     args = parser.parse_args(argv)
-    linkable = getattr(args, "format", None) in ("markdown", "github-comment") and not args.statistics
-    if getattr(args, "link_template", None) and not linkable:
-        parser.error("--link-template needs --format markdown or github-comment, without --statistics")
-    if getattr(args, "no_links", False) and (not linkable or args.link_template):
-        parser.error("--no-links needs --format markdown or github-comment, without --statistics or --link-template")
-    if getattr(args, "statistics", False) and args.format in ("sarif", "github-comment"):
-        parser.error(f"--statistics can't be used with --format {args.format}")
-    if getattr(args, "changed_only", False) and args.diff_base is None:
-        parser.error("--changed-only needs --diff-base")
+    if args.command == "analyze":
+        _check_options(parser, args)
 
     logging.basicConfig(
         level=logging.INFO if getattr(args, "verbose", False) else logging.WARNING,
@@ -130,67 +124,132 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "cache-dir":
         print(cache_dir())
         return 0
+    if args.command == "install":
+        return _install(args)
+    return _run_analyze(args)
 
-    plat = args.platform
-    if plat == "universal":
-        plat = ""
 
-    if args.command == "analyze":
-        # Check the inputs before possibly downloading the server.
-        try:
-            files = collect_files(args.paths)
-            rules = json.loads(args.rules.read_text()) if args.rules else None
-            changes = gitdiff.changes_since(args.diff_base) if args.diff_base is not None else None
-            settings = config.load(Path.cwd())
-        except (OSError, ValueError, gitdiff.GitError, config.ConfigError) as e:
-            print(f"exolot: {e}", file=sys.stderr)
-            return 2
-        if changes is not None and args.changed_only:
-            changed_files = changes.files()
-            files = [f for f in files if f in changed_files]
-        if not files:
-            print("exolot: no files to analyze", file=sys.stderr)
-            return 0
+def _platform(args: argparse.Namespace) -> str | None:
+    """The VSIX platform --platform asks for: None to detect it, or "" for
+    the universal VSIX."""
+    return "" if args.platform == "universal" else args.platform
 
+
+def _ensure_server(args: argparse.Namespace) -> Server | None:
+    """The language server, downloaded and unpacked if need be, or None
+    after saying why it couldn't be."""
     try:
-        server = ensure_server(args.server_version, plat, args.java)
+        return ensure_server(args.server_version, _platform(args), args.java)
     except (ServerError, OSError) as e:
         print(f"exolot: {e}", file=sys.stderr)
+        return None
+
+
+def _install(args: argparse.Namespace) -> int:
+    server = _ensure_server(args)
+    if server is None:
         return 2
+    plat = _platform(args)
+    shown = plat if plat is not None else detect_platform()
+    print(f"Language server {args.server_version} ({shown or 'universal'})")
+    print(f"  installed in {server.root}")
+    print(f"  using Java {server.java}")
+    return 0
 
-    if args.command == "install":
-        shown = plat if plat is not None else detect_platform()
-        print(f"Language server {args.server_version} ({shown or 'universal'})")
-        print(f"  installed in {server.root}")
-        print(f"  using Java {server.java}")
-        return 0
 
-    workspace = args.workspace or Path.cwd()
-
+def _run_analyze(args: argparse.Namespace) -> int:
+    # Check the inputs before possibly downloading the server.
     try:
-        with AnalysisSession(server, workspace, rules=rules, node=args.node, verbose=args.verbose) as session:
-            issues = session.analyze(files, timeout=args.timeout)
-            if args.format == "sarif" and issues:
-                session.add_related_locations(issues)
-            elif changes is not None and (args.changed_only or args.annotations or not args.statistics):
-                _add_changed_related_locations(session, issues, changes)
-            if changes is not None and args.changed_only:
-                issues = [i for i in issues if _on_changed_lines(i, changes)]
-            # Report before the server shuts down, which can take a few seconds.
-            if args.statistics:
-                _report_statistics(issues, len(files), args.format, session.rule_names() if issues else {})
-            elif args.format == "sarif":
-                _report_sarif(issues, len(files), session.rule_names() if issues else {})
-            elif args.format == "github-comment":
-                _report_comment(issues, len(files), args, settings, None if args.changed_only else changes)
-            else:
-                _report(issues, len(files), args.format, _links(args), None if args.changed_only else changes)
-            if args.annotations:
-                _print_annotations(issues, None if args.changed_only else changes)
+        inputs = _load_inputs(args)
+    except (OSError, ValueError, gitdiff.GitError, config.ConfigError) as e:
+        print(f"exolot: {e}", file=sys.stderr)
+        return 2
+    if not inputs.files:
+        print("exolot: no files to analyze", file=sys.stderr)
+        return 0
+    server = _ensure_server(args)
+    if server is None:
+        return 2
+    try:
+        issues = _analyze(server, args, inputs)
     except (OSError, RuntimeError) as e:  # TimeoutError is an OSError
         print(f"exolot: {e}", file=sys.stderr)
         return 2
     return 1 if issues and not args.exit_zero else 0
+
+
+def _check_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Exit with a usage error if the analyze command's options don't go
+    together."""
+    linkable = args.format in ("markdown", "github-comment") and not args.statistics
+    if args.link_template and not linkable:
+        parser.error("--link-template needs --format markdown or github-comment, without --statistics")
+    if args.no_links and (not linkable or args.link_template):
+        parser.error("--no-links needs --format markdown or github-comment, without --statistics or --link-template")
+    if args.statistics and args.format in ("sarif", "github-comment"):
+        parser.error(f"--statistics can't be used with --format {args.format}")
+    if args.changed_only and args.diff_base is None:
+        parser.error("--changed-only needs --diff-base")
+
+
+@dataclass
+class _Inputs:
+    """What the analyze command reads before starting the server."""
+
+    files: list[Path]
+    rules: dict | None
+    changes: gitdiff.Changes | None
+    settings: config.Config
+
+
+def _load_inputs(args: argparse.Namespace) -> _Inputs:
+    """The files to analyze (only the changed ones, with --changed-only), the
+    rule settings, the changes since --diff-base and the config file's
+    settings. Raises OSError, ValueError, GitError or ConfigError."""
+    files = collect_files(args.paths)
+    rules = json.loads(args.rules.read_text()) if args.rules else None
+    changes = gitdiff.changes_since(args.diff_base) if args.diff_base is not None else None
+    settings = config.load(Path.cwd())
+    if changes is not None and args.changed_only:
+        changed_files = changes.files()
+        files = [f for f in files if f in changed_files]
+    return _Inputs(files, rules, changes, settings)
+
+
+def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[Issue]:
+    """Analyze the files and print the report, returning the issues it
+    counts (only those on changed lines, with --changed-only)."""
+    changes = inputs.changes
+    workspace = args.workspace or Path.cwd()
+    with AnalysisSession(server, workspace, rules=inputs.rules, node=args.node, verbose=args.verbose) as session:
+        issues = session.analyze(inputs.files, timeout=args.timeout)
+        if args.format == "sarif" and issues:
+            session.add_related_locations(issues)
+        elif changes is not None and (args.changed_only or args.annotations or not args.statistics):
+            _add_changed_related_locations(session, issues, changes)
+        if changes is not None and args.changed_only:
+            issues = [i for i in issues if _on_changed_lines(i, changes)]
+        # Report before the server shuts down, which can take a few seconds.
+        _report_any(session, issues, args, inputs)
+    return issues
+
+
+def _report_any(session: AnalysisSession, issues: list[Issue], args: argparse.Namespace, inputs: _Inputs) -> None:
+    """Print the report --format and --statistics ask for, and with
+    --annotations, the annotations. With --changed-only, every issue is on a
+    changed line, so none are marked as such."""
+    file_count = len(inputs.files)
+    changes = None if args.changed_only else inputs.changes
+    if args.statistics:
+        _report_statistics(issues, file_count, args.format, session.rule_names() if issues else {})
+    elif args.format == "sarif":
+        _report_sarif(issues, file_count, session.rule_names() if issues else {})
+    elif args.format == "github-comment":
+        _report_comment(issues, file_count, args, inputs.settings, changes)
+    else:
+        _report(issues, file_count, args.format, _links(args), changes)
+    if args.annotations:
+        _print_annotations(issues, changes)
 
 
 def _report(
