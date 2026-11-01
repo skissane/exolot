@@ -769,3 +769,32 @@ def test_cli_rejects_unknown_log_level(capsys):
     with pytest.raises(SystemExit):
         cli.main(["--log-level", "trace", "a.py"])
     assert "invalid choice: 'trace'" in capsys.readouterr().err
+
+
+class _StopAfterLogging(Exception):
+    pass
+
+
+@pytest.mark.parametrize(
+    ("args", "level"),
+    [
+        ([], logging.WARNING),
+        (["--log-level", "error"], logging.WARNING),
+        (["--log-level", "warn"], logging.WARNING),
+        (["--log-level", "info"], logging.INFO),
+        (["--log-level", "debug"], logging.INFO),
+        (["-v"], logging.INFO),
+    ],
+)
+def test_cli_log_level_sets_exolots_own_level(monkeypatch, args, level):
+    # exolot's own progress messages show only with --log-level debug or info.
+    seen = []
+
+    def basic_config(**kwargs):
+        seen.append(kwargs["level"])
+        raise _StopAfterLogging
+
+    monkeypatch.setattr(cli.logging, "basicConfig", basic_config)
+    with pytest.raises(_StopAfterLogging):
+        cli.main([*args, "a.py"])
+    assert seen == [level]

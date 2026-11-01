@@ -164,12 +164,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in ("analyze", "analyze-repo"):
         _check_options(parser, args)
 
+    # exolot's own progress messages (e.g. "downloading ...") show with
+    # --log-level debug or info; its warnings and errors always show.
+    log_level = getattr(args, "log_level", None)
     logging.basicConfig(
-        level=logging.INFO if getattr(args, "log_level", None) else logging.WARNING,
+        level=logging.INFO if log_level in ("debug", "info") else logging.WARNING,
         format="exolot: %(message)s",
     )
-    # The session filters the server's messages by --log-level itself.
-    logging.getLogger("exolot.languageserver").setLevel(logging.DEBUG)
 
     if args.command == "cache-dir":
         print(cache_dir())

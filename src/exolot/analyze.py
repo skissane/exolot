@@ -21,7 +21,9 @@ from .server import Server
 
 log = logging.getLogger(__name__)
 # The server's own log messages, at the level the server gave each one.
+# AnalysisSession filters them by its log_level, so this logger passes them all.
 server_log = logging.getLogger("exolot.languageserver")
+server_log.setLevel(logging.DEBUG)
 
 # The levels the server's log messages start with, as in "[Warn - 12:34:56.789] ...".
 SERVER_LOG_LEVELS = {

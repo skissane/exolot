@@ -171,7 +171,8 @@ status 2 if the repository or REF can't be fetched.
   shows none of them). The server only sends `debug` messages when asked for
   them, so the other levels also make it log less. At any level, messages
   without a level show too, and so does anything the server writes to stderr
-  (e.g. the JVM's own errors).
+  (e.g. the JVM's own errors). With `debug` or `info`, exolot also shows its
+  own progress messages, such as when it downloads the server.
 - `-v` / `--verbose` shows all of the server's log messages, the same as
   `--log-level debug`.
 
