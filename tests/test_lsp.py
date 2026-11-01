@@ -34,8 +34,9 @@ def test_unhandled_server_request_gets_null(client):
 
 def test_error_response_raises(client):
     client.start()
+    future = client.request("boom")
     with pytest.raises(LspError, match="boom"):
-        client.request("boom").result(timeout=10)
+        future.result(timeout=10)
 
 
 def test_response_to_cancelled_request_is_dropped(client):

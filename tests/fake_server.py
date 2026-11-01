@@ -50,6 +50,8 @@ while (msg := read()) is not None:
         doc = msg["params"]["textDocument"]
         if "SILENT" in doc["text"]:
             continue
+        if "CRASH" in doc["text"]:
+            sys.exit(1)
         send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": "t", "value": {"kind": "begin"}}})
         send(
             {
