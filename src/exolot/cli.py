@@ -219,11 +219,34 @@ def _run_analyze(args: argparse.Namespace) -> int:
 def _run_analyze_repo(args: argparse.Namespace) -> int:
     """Clone the repository and analyze it from its root, so paths, the
     config file and the commit shown are the clone's."""
+    try:
+        _check_repo_inputs(args)
+        _resolve_local_options(args)
+        if args.keep is not None:
+            return _analyze_kept_clone(args)
+        # The language server has exited by the time the directory is
+        # deleted, so on Windows nothing in it should still be open.
+        with tempfile.TemporaryDirectory(prefix="exolot-") as tmp:
+            return _analyze_clone(args, Path(tmp).resolve())
+    except (ValueError, clone.CloneError) as e:
+        print(f"exolot: {e}", file=sys.stderr)
+        return 2
+
+
+def _check_repo_inputs(args: argparse.Namespace) -> None:
+    """Raise ValueError if a path isn't inside the repository, or --keep
+    isn't a new or empty directory."""
     for path in args.paths:
         if path.anchor or ".." in path.parts:  # anchor: also "/x" and "C:x" on Windows
-            print(f"exolot: {path} isn't a path inside the repository", file=sys.stderr)
-            return 2
-    # Options naming local files are relative to the current directory, not the clone.
+            raise ValueError(f"{path} isn't a path inside the repository")
+    keep = args.keep
+    if keep is not None and keep.exists() and (not keep.is_dir() or any(keep.iterdir())):
+        raise ValueError(f"{keep} isn't an empty directory")
+
+
+def _resolve_local_options(args: argparse.Namespace) -> None:
+    """Make the options naming local files absolute, as they're relative to
+    the current directory, not the clone."""
     if args.rules is not None:
         args.rules = args.rules.resolve()
     for name in ("java", "node"):
@@ -231,28 +254,19 @@ def _run_analyze_repo(args: argparse.Namespace) -> int:
         # A path, such as ./java (or C:java on Windows), rather than a name to look up on PATH.
         if value is not None and os.path.dirname(value):
             setattr(args, name, str(Path(value).resolve()))
-    if args.keep is not None:
-        if args.keep.exists() and (not args.keep.is_dir() or any(args.keep.iterdir())):
-            print(f"exolot: {args.keep} isn't an empty directory", file=sys.stderr)
-            return 2
-        created = not args.keep.exists()
-        try:
-            return _analyze_clone(args, args.keep.resolve())
-        except clone.CloneError as e:
-            print(f"exolot: {e}", file=sys.stderr)
-            # Leave nothing behind that would stop the same --keep DIR being used again.
-            shutil.rmtree(args.keep / ".git", ignore_errors=True)
-            if created:
-                shutil.rmtree(args.keep, ignore_errors=True)
-            return 2
-    # The language server has exited by the time the directory is deleted,
-    # so on Windows nothing in it should still be open.
+
+
+def _analyze_kept_clone(args: argparse.Namespace) -> int:
+    """Clone into --keep DIR and analyze it there. Raises CloneError, after
+    removing what it made, so the same DIR can be used again."""
+    created = not args.keep.exists()
     try:
-        with tempfile.TemporaryDirectory(prefix="exolot-") as tmp:
-            return _analyze_clone(args, Path(tmp).resolve())
-    except clone.CloneError as e:
-        print(f"exolot: {e}", file=sys.stderr)
-        return 2
+        return _analyze_clone(args, args.keep.resolve())
+    except clone.CloneError:
+        shutil.rmtree(args.keep / ".git", ignore_errors=True)
+        if created:
+            shutil.rmtree(args.keep, ignore_errors=True)
+        raise
 
 
 def _analyze_clone(args: argparse.Namespace, dest: Path) -> int:
