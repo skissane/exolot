@@ -608,7 +608,8 @@ def test_cli_analyze_repo_analyzes_a_temporary_clone(repo, tmp_path, monkeypatch
     assert f"analyzing repo at {_head(repo)}" in captured.err
     assert "2 issue(s) in 2 file(s) analyzed" in captured.err
     assert Path.cwd() == tmp_path
-    assert clones and not clones[0].exists()
+    assert len(clones) == 1
+    assert not clones[0].exists()
 
 
 def test_cli_analyze_repo_analyzes_paths_in_the_repo_and_keeps_the_clone(repo, tmp_path, monkeypatch, capsys):
