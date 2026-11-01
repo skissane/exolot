@@ -68,18 +68,24 @@ def load(start: Path) -> Config:
             raise ConfigError(f"{where}: unknown setting {key!r} (known: {', '.join(SETTINGS)})")
         if not isinstance(value, SETTINGS[key]):
             raise ConfigError(f"{where}: {key} should be a {SETTINGS[key].__name__}")
-        if key == "exclude" and any(not isinstance(v, str) for v in value):
-            raise ConfigError(f"{where}: exclude should be a list of str")
-        if key == "exclude" and any(is_empty(v) for v in value):
-            raise ConfigError(f"{where}: exclude has an empty glob, which would match nothing")
     compile_commands = table.get("compile-commands")
-    exclude = tuple(table.get("exclude", []))
+    exclude = _exclude(table.get("exclude", []), where)
     return Config(
         preamble=table.get("preamble"),
         compile_commands=None if compile_commands is None else path.parent.joinpath(compile_commands).resolve(),
         exclude=exclude,
         path=path,
     )
+
+
+def _exclude(value: list, where: str) -> tuple[str, ...]:
+    """The exclude setting's globs. Raises ConfigError if one isn't a string
+    or is empty."""
+    if any(not isinstance(v, str) for v in value):
+        raise ConfigError(f"{where}: exclude should be a list of str")
+    if any(is_empty(v) for v in value):
+        raise ConfigError(f"{where}: exclude has an empty glob, which would match nothing")
+    return tuple(value)
 
 
 def _read(path: Path) -> dict:
