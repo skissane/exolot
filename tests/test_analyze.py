@@ -326,7 +326,15 @@ def test_cli_no_annotations_by_default(tmp_path, monkeypatch, capsys):
 
 
 def _fake_server(tmp_path, monkeypatch):
-    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    """Use the fake server, recording the arguments ensure_server gets."""
+    calls = []
+
+    def ensure(*args):
+        calls.append(args)
+        return FakeServer(root=tmp_path, java=Path("java"))
+
+    monkeypatch.setattr(cli, "ensure_server", ensure)
+    return calls
 
 
 def _no_download(*args, **kwargs):
@@ -587,3 +595,129 @@ def test_cli_server_errors_exit_2(tmp_path, monkeypatch, capsys, command):
     paths = [] if command else [str(tmp_path)]
     assert cli.main([*command, *paths]) == 2
     assert "exolot: no download for you" in capsys.readouterr().err
+
+
+# How text output shows sub/b.py, relative to the current directory.
+B_PY = str(Path("sub", "b.py"))
+
+
+def test_cli_analyze_repo_analyzes_a_temporary_clone(repo, tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    clones = []
+    monkeypatch.setattr(cli.clone, "clone", lambda *args, real=cli.clone.clone: clones.append(args[1]) or real(*args))
+    assert cli.main(["analyze-repo", "repo"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == f"a.py:1:3: warning [fake:S1] python issue\n{B_PY}:1:3: warning [fake:S1] python issue\n"
+    assert f"analyzing repo at {_head(repo)}" in captured.err
+    assert "2 issue(s) in 2 file(s) analyzed" in captured.err
+    assert Path.cwd() == tmp_path
+    assert len(clones) == 1
+    assert not clones[0].exists()
+
+
+def test_cli_analyze_repo_analyzes_paths_in_the_repo_and_keeps_the_clone(repo, tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    keep = tmp_path / "kept"
+    assert cli.main(["analyze-repo", str(repo), "sub", "--ref", "master", "--keep", str(keep)]) == 1
+    assert capsys.readouterr().out == f"{B_PY}:1:3: warning [fake:S1] python issue\n"
+    assert (keep / "a.py").exists()
+
+
+@pytest.mark.parametrize("path", ["/abs", "../x", "sub/../../x"])
+def test_cli_analyze_repo_rejects_paths_outside_the_repo(tmp_path, monkeypatch, capsys, path):
+    monkeypatch.setattr(cli.clone, "clone", lambda *args: pytest.fail("should not clone"))
+    assert cli.main(["analyze-repo", "https://example.com/r.git", path]) == 2
+    assert "isn't a path inside the repository" in capsys.readouterr().err
+
+
+def test_cli_analyze_repo_needs_an_empty_keep_directory(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli.clone, "clone", lambda *args: pytest.fail("should not clone"))
+    (tmp_path / "file").write_text("x")
+    assert cli.main(["analyze-repo", "https://example.com/r.git", "--keep", str(tmp_path)]) == 2
+    assert cli.main(["analyze-repo", "https://example.com/r.git", "--keep", str(tmp_path / "file")]) == 2
+    assert "isn't an empty directory" in capsys.readouterr().err
+
+
+def test_cli_analyze_repo_clone_errors_exit_2_without_downloading(repo, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: pytest.fail("should not download"))
+    assert cli.main(["analyze-repo", str(repo), "--ref", "nope"]) == 2
+    assert "git fetch failed" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("error", [cli.clone.CloneError("git checkout failed"), KeyboardInterrupt()])
+def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, monkeypatch, capsys, existing, error):
+    keep = tmp_path / "kept"
+    if existing:
+        keep.mkdir()
+
+    def fail_after_checking_out_some_files(source, dest, ref=None):
+        (dest / ".git").mkdir(parents=True)
+        (dest / "sub").mkdir()
+        (dest / "a.py").write_text("x\n")
+        raise error
+
+    monkeypatch.setattr(cli.clone, "clone", fail_after_checking_out_some_files)
+    if isinstance(error, KeyboardInterrupt):
+        with pytest.raises(KeyboardInterrupt):
+            cli.main(["analyze-repo", str(repo), "--keep", str(keep)])
+    else:
+        assert cli.main(["analyze-repo", str(repo), "--keep", str(keep)]) == 2
+    assert keep.exists() == existing
+    if existing:
+        assert not any(keep.iterdir())
+
+
+def test_cli_analyze_repo_lists_the_clones_files_when_run_from_a_hook(repo, tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    hook_repo = tmp_path / "hook"
+    git(tmp_path, "init", "-q", str(hook_repo))
+    monkeypatch.setenv("GIT_DIR", str(hook_repo / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(hook_repo))
+    assert cli.main(["analyze-repo", str(repo)]) == 1
+    assert "2 issue(s) in 2 file(s) analyzed" in capsys.readouterr().err
+
+
+def test_cli_analyze_repo_has_no_diff_options(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["analyze-repo", "https://example.com/r.git", "--diff-base", "master"])
+    assert "unrecognized arguments: --diff-base" in capsys.readouterr().err
+
+
+def test_cli_analyze_repo_resolves_local_options_before_changing_directory(repo, tmp_path, monkeypatch, capsys):
+    calls = _fake_server(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "rules.json").write_text('{"fake:S1": {"level": "off"}}')
+    status = cli.main(["analyze-repo", "repo", "--rules", "rules.json", "--java", "./java", "--node", "node"])
+    assert status in (0, 1)
+    capsys.readouterr()
+    assert calls[0][2] == str(tmp_path / "java")
+
+
+def _fake_clone(source, dest, ref=None):
+    dest.mkdir(exist_ok=True)
+    (dest / ".git").mkdir()
+    (dest / "a.py").write_text("x = 1\n")
+    return "abc123"
+
+
+def test_cli_analyze_repo_links_to_github(tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli.clone, "clone", _fake_clone)
+    assert cli.main(["analyze-repo", "https://github.com/o/r", "--format", "markdown"]) == 1
+    assert "| [a.py:1](https://github.com/o/r/blob/abc123/a.py#L1) |" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("flags", "link"),
+    [([], None), (["--link-template", "https://x/{path}"], "https://x/a.py"), (["--no-links"], None)],
+)
+def test_cli_analyze_repo_links_elsewhere_only_when_asked(tmp_path, monkeypatch, capsys, flags, link):
+    _fake_server(tmp_path, monkeypatch)
+    _in_actions(monkeypatch)
+    monkeypatch.setattr(cli.clone, "clone", _fake_clone)
+    assert cli.main(["analyze-repo", "https://gitlab.com/o/r", "--format", "markdown", *flags]) == 1
+    out = capsys.readouterr().out
+    assert "github.example" not in out
+    assert (f"[a.py:1]({link})" in out) if link else ("| a.py:1 |" in out)

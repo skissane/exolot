@@ -41,6 +41,7 @@ uvx exolot --format sarif .    # SARIF 2.1.0, e.g. for GitHub code scanning
 uvx exolot --annotations .     # also show the issues as GitHub Actions annotations
 uvx exolot --statistics .      # count issues per rule, most common first
 uvx exolot --diff-base origin/main --changed-only  # only issues on lines your branch changes
+uvx exolot analyze-repo https://github.com/psf/requests  # analyze someone else's code
 uvx exolot install             # just download and unpack the server
 uvx exolot cache-dir           # show where the server is cached
 ```
@@ -52,6 +53,34 @@ files over 2 MiB are skipped.
 Exit status is 0 when no issues are found, 1 when issues are found, and 2 on
 errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
 2 when the analysis fails, like ruff's option of the same name.
+
+### Analyzing a repository without cloning it yourself
+
+`exolot analyze-repo SOURCE [PATH...]` fetches one commit of the git
+repository at SOURCE (a URL, or a local repository's path) into a temporary
+directory, without its history or submodules, analyzes it as `exolot analyze`
+would from the clone's root, and deletes the directory. PATHs, relative to
+the repository's root, limit the analysis to those files or directories.
+It takes the same options as `analyze` (below), except `--workspace`,
+`--diff-base` and `--changed-only`, plus:
+
+- `--ref REF` analyzes a branch, tag or full commit SHA instead of the
+  repository's default branch.
+- `--keep DIR` clones into DIR (which must not exist or be empty) and leaves
+  it there.
+
+It reads the repository's own `.exolot.toml` or `pyproject.toml` (see
+[Configuration](#configuration)). For a github.com repository,
+`--format markdown` and `github-comment` link each location to that commit
+on GitHub unless you give `--link-template` or `--no-links`; for any other
+repository they link only if you give `--link-template`, even in GitHub
+Actions. GitHub places `--annotations` on files in the workflow's own
+checkout, so in a workflow they're only useful for the workflow's own
+repository: for another one, a file at the same path would get the wrong
+annotations. `--timeout` covers only the analysis, not fetching the
+repository. `git` must be installed,
+and fetching a private repository uses git's usual credentials. It exits with
+status 2 if the repository or REF can't be fetched.
 
 ### Options
 

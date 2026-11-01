@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import functools
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.parse
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import __version__, annotations, config, gitdiff, markdown, sarif
+from . import __version__, annotations, clone, config, gitdiff, markdown, sarif
 from .analyze import AnalysisSession, Issue, collect_files
 from .server import DEFAULT_SERVER_VERSION, Server, ServerError, cache_dir, detect_platform, ensure_server
 
-COMMANDS = ("analyze", "install", "cache-dir")
+COMMANDS = ("analyze", "analyze-repo", "install", "cache-dir")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,10 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
     server_opts.add_argument("--java", help="Java executable to use instead of the bundled one")
     server_opts.add_argument("-v", "--verbose", action="store_true", help="show server logs")
 
-    analyze = sub.add_parser("analyze", parents=[server_opts], help="analyze files (the default command)")
-    analyze.add_argument("paths", nargs="*", type=Path, default=[Path(".")], help="files or directories")
-    analyze.add_argument("--format", choices=("text", "json", "markdown", "github-comment", "sarif"), default="text")
-    analyze.add_argument(
+    # The options of both analyze and analyze-repo.
+    analysis_opts = argparse.ArgumentParser(add_help=False)
+    analysis_opts.add_argument(
+        "--format", choices=("text", "json", "markdown", "github-comment", "sarif"), default="text"
+    )
+    analysis_opts.add_argument(
         "--link-template",
         type=_link_template,
         metavar="TEMPLATE",
@@ -53,24 +58,41 @@ def build_parser() -> argparse.ArgumentParser:
         "'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}' (default in GitHub Actions: the checked-out "
         "commit in the workflow's repository)",
     )
-    analyze.add_argument(
+    analysis_opts.add_argument(
         "--no-links",
         action="store_true",
         help="with --format markdown or github-comment, don't link locations, even in GitHub Actions",
     )
-    analyze.add_argument(
+    analysis_opts.add_argument(
         "--rules",
         type=Path,
         help="JSON file of rule settings, in the same format as VS Code's sonarlint.rules setting",
     )
-    analyze.add_argument("--node", help="Node.js executable for JavaScript/TypeScript analysis")
-    analyze.add_argument("--workspace", type=Path, help="workspace folder (default: current directory)")
-    analyze.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
-    analyze.add_argument(
+    analysis_opts.add_argument("--node", help="Node.js executable for JavaScript/TypeScript analysis")
+    analysis_opts.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
+    analysis_opts.add_argument(
         "--statistics",
         action="store_true",
         help="show the number of issues for each rule, most common first, instead of the issues",
     )
+    analysis_opts.add_argument(
+        "--annotations",
+        action="store_true",
+        help="also print each issue to stderr as a GitHub Actions workflow command, which GitHub shows as an "
+        "annotation on the PR's diff (issues on changed lines first, with --diff-base)",
+    )
+    analysis_opts.add_argument(
+        "-e",
+        "--exit-zero",
+        action="store_true",
+        help="exit with status 0 even when issues are found (still 2 if the analysis fails)",
+    )
+
+    analyze = sub.add_parser(
+        "analyze", parents=[server_opts, analysis_opts], help="analyze files (the default command)"
+    )
+    analyze.add_argument("paths", nargs="*", type=Path, default=[Path(".")], help="files or directories")
+    analyze.add_argument("--workspace", type=Path, help="workspace folder (default: current directory)")
     analyze.add_argument(
         "--diff-base",
         metavar="REF",
@@ -82,18 +104,32 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="with --diff-base, analyze only the changed files, and report and count only the issues on changed lines",
     )
-    analyze.add_argument(
-        "--annotations",
-        action="store_true",
-        help="also print each issue to stderr as a GitHub Actions workflow command, which GitHub shows as an "
-        "annotation on the PR's diff (issues on changed lines first, with --diff-base)",
+
+    analyze_repo = sub.add_parser(
+        "analyze-repo",
+        parents=[server_opts, analysis_opts],
+        help="clone a git repository into a temporary directory and analyze it",
+        description="Fetch the latest commit (or --ref) of a git repository, without its history, into a "
+        "temporary directory, analyze it there as the analyze command would, and delete it.",
     )
-    analyze.add_argument(
-        "-e",
-        "--exit-zero",
-        action="store_true",
-        help="exit with status 0 even when issues are found (still 2 if the analysis fails)",
+    analyze_repo.add_argument("source", help="the repository's URL, or a local repository's path")
+    analyze_repo.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        default=[Path(".")],
+        help="files or directories in the repository, relative to its root (default: all of it)",
     )
+    analyze_repo.add_argument(
+        "--ref", help="the branch, tag or full commit SHA to analyze (default: the repository's default branch)"
+    )
+    analyze_repo.add_argument(
+        "--keep",
+        type=Path,
+        metavar="DIR",
+        help="clone into DIR, which must not exist or be empty, and keep it, instead of a temporary directory",
+    )
+    analyze_repo.set_defaults(workspace=None, diff_base=None, changed_only=False)
 
     sub.add_parser("install", parents=[server_opts], help="download and unpack the language server")
     sub.add_parser("cache-dir", help="print the cache directory")
@@ -113,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
         argv.insert(0, "analyze")
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.command == "analyze":
+    if args.command in ("analyze", "analyze-repo"):
         _check_options(parser, args)
 
     logging.basicConfig(
@@ -126,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "install":
         return _install(args)
+    if args.command == "analyze-repo":
+        return _run_analyze_repo(args)
     return _run_analyze(args)
 
 
@@ -176,6 +214,101 @@ def _run_analyze(args: argparse.Namespace) -> int:
         print(f"exolot: {e}", file=sys.stderr)
         return 2
     return 1 if issues and not args.exit_zero else 0
+
+
+def _run_analyze_repo(args: argparse.Namespace) -> int:
+    """Clone the repository and analyze it from its root, so paths, the
+    config file and the commit shown are the clone's."""
+    problem = _repo_input_problem(args)
+    if problem:
+        print(f"exolot: {problem}", file=sys.stderr)
+        return 2
+    _resolve_local_options(args)
+    try:
+        # From a git hook, git would otherwise look at the hook's repository.
+        with clone.without_repo_env():
+            return _clone_and_analyze(args)
+    except clone.CloneError as e:
+        print(f"exolot: {e}", file=sys.stderr)
+        return 2
+
+
+def _clone_and_analyze(args: argparse.Namespace) -> int:
+    """Clone into --keep DIR or a temporary directory, and analyze it there.
+    Raises CloneError."""
+    if args.keep is not None:
+        dest = args.keep.resolve()
+        commit = _clone_into_keep(args, dest)
+        return _analyze_clone(args, dest, commit)
+    # The language server has exited by the time the directory is deleted,
+    # so on Windows nothing in it should still be open.
+    with tempfile.TemporaryDirectory(prefix="exolot-") as tmp:
+        dest = Path(tmp).resolve()
+        return _analyze_clone(args, dest, _clone(args, dest))
+
+
+def _repo_input_problem(args: argparse.Namespace) -> str | None:
+    """Why the paths or --keep can't be used, if they can't: a path isn't
+    inside the repository, or --keep isn't a new or empty directory."""
+    for path in args.paths:
+        if path.anchor or ".." in path.parts:  # anchor: also "/x" and "C:x" on Windows
+            return f"{path} isn't a path inside the repository"
+    keep = args.keep
+    if keep is not None and keep.exists() and (not keep.is_dir() or any(keep.iterdir())):
+        return f"{keep} isn't an empty directory"
+    return None
+
+
+def _resolve_local_options(args: argparse.Namespace) -> None:
+    """Make the options naming local files absolute, as they're relative to
+    the current directory, not the clone."""
+    if args.rules is not None:
+        args.rules = args.rules.resolve()
+    for name in ("java", "node"):
+        value = getattr(args, name)
+        # A path, such as ./java (or C:java on Windows), rather than a name to look up on PATH.
+        if value is not None and os.path.dirname(value):
+            setattr(args, name, str(Path(value).resolve()))
+
+
+def _clone(args: argparse.Namespace, dest: Path) -> str:
+    """Clone the repository into dest, returning the commit. Raises CloneError."""
+    source = args.source
+    if Path(source).exists():
+        source = str(Path(source).resolve())  # relative to the current directory, not the clone
+    return clone.clone(source, dest, args.ref)
+
+
+def _clone_into_keep(args: argparse.Namespace, dest: Path) -> str:
+    """Clone into --keep DIR, returning the commit. If that fails or is
+    interrupted, remove what it made (DIR was new or empty), so the same DIR
+    can be used again, and re-raise."""
+    created = not dest.exists()
+    try:
+        return _clone(args, dest)
+    except BaseException:  # also Ctrl-C
+        if created:
+            shutil.rmtree(dest, ignore_errors=True)
+        else:
+            # .git, and any files a checkout wrote before it failed.
+            for child in dest.iterdir():
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(child, ignore_errors=True)
+                else:
+                    child.unlink(missing_ok=True)
+        raise
+
+
+def _analyze_clone(args: argparse.Namespace, dest: Path, commit: str) -> int:
+    """Analyze the clone of commit in dest."""
+    print(f"exolot: analyzing {clone.display_source(args.source)} at {commit}", file=sys.stderr)
+    if not args.link_template and not args.no_links:
+        # Link to the repository's own code; without that, don't link to
+        # the workflow's repository in GitHub Actions, which isn't it.
+        args.link_template = clone.github_link_template(args.source, commit)
+        args.no_links = args.link_template is None
+    with contextlib.chdir(dest):
+        return _run_analyze(args)
 
 
 def _check_options(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
