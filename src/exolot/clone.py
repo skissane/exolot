@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import urllib.parse
 from pathlib import Path
 
 # github.com repository URLs, over HTTPS or SSH, with or without ".git".
@@ -50,3 +51,12 @@ def github_link_template(source: str, commit: str) -> str | None:
     if not match:
         return None
     return f"https://github.com/{match['owner']}/{match['repo']}/blob/{commit}/{{path}}#L{{line}}"
+
+
+def display_source(source: str) -> str:
+    """source with any user name and password (such as a token in an HTTPS
+    URL) left out, to show in messages and logs."""
+    parts = urllib.parse.urlsplit(source)
+    if not parts.scheme or "@" not in parts.netloc:
+        return source
+    return parts._replace(netloc=parts.netloc.rpartition("@")[2]).geturl()

@@ -73,7 +73,11 @@ It reads the repository's own `.exolot.toml` or `pyproject.toml` (see
 [Configuration](#configuration)). For a github.com repository,
 `--format markdown` and `github-comment` link each location to that commit
 on GitHub unless you give `--link-template` or `--no-links`; for any other
-repository they don't link, even in GitHub Actions. `git` must be installed,
+repository they link only if you give `--link-template`, even in GitHub
+Actions. GitHub places `--annotations` on files in the workflow's own
+checkout, so in a workflow they're only useful for the workflow's own
+repository: for another one, a file at the same path would get the wrong
+annotations. `git` must be installed,
 and fetching a private repository uses git's usual credentials. It exits with
 status 2 if the repository or REF can't be fetched.
 

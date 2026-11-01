@@ -655,10 +655,10 @@ def test_cli_analyze_repo_resolves_local_options_before_changing_directory(repo,
     calls = _fake_server(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "rules.json").write_text('{"fake:S1": {"level": "off"}}')
-    status = cli.main(["analyze-repo", "repo", "--rules", "rules.json", "--java", "bin/java", "--node", "node"])
+    status = cli.main(["analyze-repo", "repo", "--rules", "rules.json", "--java", "./java", "--node", "node"])
     assert status in (0, 1)
     capsys.readouterr()
-    assert calls[0][2] == str(tmp_path / "bin" / "java")
+    assert calls[0][2] == str(tmp_path / "java")
 
 
 def _fake_clone(source, dest, ref=None):

@@ -71,3 +71,17 @@ def test_github_link_template(source, expected):
         assert template is None
     else:
         assert template == f"https://github.com/{expected}/blob/abc/{{path}}#L{{line}}"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("https://x-access-token:secret@github.com/o/r", "https://github.com/o/r"),
+        ("https://user@example.com:8443/r.git", "https://example.com:8443/r.git"),
+        ("https://github.com/o/r", "https://github.com/o/r"),
+        ("git@github.com:o/r.git", "git@github.com:o/r.git"),
+        ("/home/me/r", "/home/me/r"),
+    ],
+)
+def test_display_source_leaves_out_credentials(source, expected):
+    assert clone.display_source(source) == expected
