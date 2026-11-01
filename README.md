@@ -77,7 +77,8 @@ repository they link only if you give `--link-template`, even in GitHub
 Actions. GitHub places `--annotations` on files in the workflow's own
 checkout, so in a workflow they're only useful for the workflow's own
 repository: for another one, a file at the same path would get the wrong
-annotations. `git` must be installed,
+annotations. `--timeout` covers only the analysis, not fetching the
+repository. `git` must be installed,
 and fetching a private repository uses git's usual credentials. It exits with
 status 2 if the repository or REF can't be fetched.
 

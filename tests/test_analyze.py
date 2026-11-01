@@ -646,7 +646,8 @@ def test_cli_analyze_repo_clone_errors_exit_2_without_downloading(repo, monkeypa
 
 
 @pytest.mark.parametrize("existing", [False, True])
-def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, monkeypatch, capsys, existing):
+@pytest.mark.parametrize("error", [cli.clone.CloneError("git checkout failed"), KeyboardInterrupt()])
+def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, monkeypatch, capsys, existing, error):
     keep = tmp_path / "kept"
     if existing:
         keep.mkdir()
@@ -655,10 +656,14 @@ def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, mo
         (dest / ".git").mkdir(parents=True)
         (dest / "sub").mkdir()
         (dest / "a.py").write_text("x\n")
-        raise cli.clone.CloneError("git checkout failed")
+        raise error
 
     monkeypatch.setattr(cli.clone, "clone", fail_after_checking_out_some_files)
-    assert cli.main(["analyze-repo", str(repo), "--keep", str(keep)]) == 2
+    if isinstance(error, KeyboardInterrupt):
+        with pytest.raises(KeyboardInterrupt):
+            cli.main(["analyze-repo", str(repo), "--keep", str(keep)])
+    else:
+        assert cli.main(["analyze-repo", str(repo), "--keep", str(keep)]) == 2
     assert keep.exists() == existing
     if existing:
         assert not any(keep.iterdir())

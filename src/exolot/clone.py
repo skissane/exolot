@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import urllib.parse
@@ -33,13 +34,22 @@ def clone(source: str, dest: Path, ref: str | None = None) -> str:
     return _git("-C", str(dest), "rev-parse", "HEAD").strip()
 
 
+# Variables that point git at a particular repository, which git sets when
+# running hooks, so exolot run from a hook would otherwise clone into that.
+_REPO_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR")
+
+# The user name and password of a URL in a message.
+_USERINFO = re.compile(r"(?<=://)[^/@\s]+@")
+
+
 def _git(*args: str) -> str:
+    env = {k: v for k, v in os.environ.items() if k not in _REPO_ENV}
     try:
-        proc = subprocess.run(["git", *args], capture_output=True, text=True)
+        proc = subprocess.run(["git", *args], capture_output=True, text=True, env=env)
     except OSError as e:
         raise CloneError(f"can't run git: {e}") from None
     if proc.returncode != 0:
-        detail = proc.stderr.strip() or f"exit status {proc.returncode}"
+        detail = _USERINFO.sub("", proc.stderr.strip()) or f"exit status {proc.returncode}"
         raise CloneError(f"git {args[2] if args[0] == '-C' else args[0]} failed: {detail}")
     return proc.stdout
 

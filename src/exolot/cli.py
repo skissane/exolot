@@ -219,29 +219,36 @@ def _run_analyze(args: argparse.Namespace) -> int:
 def _run_analyze_repo(args: argparse.Namespace) -> int:
     """Clone the repository and analyze it from its root, so paths, the
     config file and the commit shown are the clone's."""
+    problem = _repo_input_problem(args)
+    if problem:
+        print(f"exolot: {problem}", file=sys.stderr)
+        return 2
+    _resolve_local_options(args)
     try:
-        _check_repo_inputs(args)
-        _resolve_local_options(args)
         if args.keep is not None:
-            return _analyze_kept_clone(args)
+            dest = args.keep.resolve()
+            commit = _clone_into_keep(args, dest)
+            return _analyze_clone(args, dest, commit)
         # The language server has exited by the time the directory is
         # deleted, so on Windows nothing in it should still be open.
         with tempfile.TemporaryDirectory(prefix="exolot-") as tmp:
-            return _analyze_clone(args, Path(tmp).resolve())
-    except (ValueError, clone.CloneError) as e:
+            dest = Path(tmp).resolve()
+            return _analyze_clone(args, dest, _clone(args, dest))
+    except clone.CloneError as e:
         print(f"exolot: {e}", file=sys.stderr)
         return 2
 
 
-def _check_repo_inputs(args: argparse.Namespace) -> None:
-    """Raise ValueError if a path isn't inside the repository, or --keep
-    isn't a new or empty directory."""
+def _repo_input_problem(args: argparse.Namespace) -> str | None:
+    """Why the paths or --keep can't be used, if they can't: a path isn't
+    inside the repository, or --keep isn't a new or empty directory."""
     for path in args.paths:
         if path.anchor or ".." in path.parts:  # anchor: also "/x" and "C:x" on Windows
-            raise ValueError(f"{path} isn't a path inside the repository")
+            return f"{path} isn't a path inside the repository"
     keep = args.keep
     if keep is not None and keep.exists() and (not keep.is_dir() or any(keep.iterdir())):
-        raise ValueError(f"{keep} isn't an empty directory")
+        return f"{keep} isn't an empty directory"
+    return None
 
 
 def _resolve_local_options(args: argparse.Namespace) -> None:
@@ -256,19 +263,27 @@ def _resolve_local_options(args: argparse.Namespace) -> None:
             setattr(args, name, str(Path(value).resolve()))
 
 
-def _analyze_kept_clone(args: argparse.Namespace) -> int:
-    """Clone into --keep DIR and analyze it there. Raises CloneError, after
-    removing what it made (DIR was new or empty), so the same DIR can be used
-    again."""
-    created = not args.keep.exists()
+def _clone(args: argparse.Namespace, dest: Path) -> str:
+    """Clone the repository into dest, returning the commit. Raises CloneError."""
+    source = args.source
+    if Path(source).exists():
+        source = str(Path(source).resolve())  # relative to the current directory, not the clone
+    return clone.clone(source, dest, args.ref)
+
+
+def _clone_into_keep(args: argparse.Namespace, dest: Path) -> str:
+    """Clone into --keep DIR, returning the commit. If that fails or is
+    interrupted, remove what it made (DIR was new or empty), so the same DIR
+    can be used again, and re-raise."""
+    created = not dest.exists()
     try:
-        return _analyze_clone(args, args.keep.resolve())
-    except clone.CloneError:
+        return _clone(args, dest)
+    except BaseException:  # also Ctrl-C
         if created:
-            shutil.rmtree(args.keep, ignore_errors=True)
+            shutil.rmtree(dest, ignore_errors=True)
         else:
             # .git, and any files a checkout wrote before it failed.
-            for child in args.keep.iterdir():
+            for child in dest.iterdir():
                 if child.is_dir() and not child.is_symlink():
                     shutil.rmtree(child, ignore_errors=True)
                 else:
@@ -276,12 +291,8 @@ def _analyze_kept_clone(args: argparse.Namespace) -> int:
         raise
 
 
-def _analyze_clone(args: argparse.Namespace, dest: Path) -> int:
-    """Clone the repository into dest and analyze it. Raises CloneError."""
-    source = args.source
-    if Path(source).exists():
-        source = str(Path(source).resolve())  # relative to the current directory, not the clone
-    commit = clone.clone(source, dest, args.ref)
+def _analyze_clone(args: argparse.Namespace, dest: Path, commit: str) -> int:
+    """Analyze the clone of commit in dest."""
     print(f"exolot: analyzing {clone.display_source(args.source)} at {commit}", file=sys.stderr)
     if not args.link_template and not args.no_links:
         # Link to the repository's own code; without that, don't link to

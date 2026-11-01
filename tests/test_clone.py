@@ -87,3 +87,20 @@ def test_github_link_template(source, expected):
 )
 def test_display_source_leaves_out_credentials(source, expected):
     assert clone.display_source(source) == expected
+
+
+def test_clone_errors_leave_out_credentials(repo, tmp_path):
+    with pytest.raises(clone.CloneError) as e:
+        clone.clone("http://user:secret@127.0.0.1:9/r.git", tmp_path / "clone")
+    assert "secret" not in str(e.value)
+
+
+def test_clone_ignores_the_repository_git_points_hooks_at(repo, tmp_path, monkeypatch):
+    other = tmp_path / "other"
+    git(tmp_path, "init", "-q", str(other))
+    head = _rev(repo)
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(other))
+    assert clone.clone(str(repo), tmp_path / "clone") == head
+    assert (tmp_path / "clone" / "a.py").exists()
+    assert not (other / "a.py").exists()
