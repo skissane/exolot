@@ -114,16 +114,18 @@ def find(
     warnings it showed (messages), which may not be about analysis. Each file counts towards the
     first problem that affects it; a problem that turns out to affect none of
     files is left out, unless it's a sensor whose files are unknown."""
-    problems = []
+    # The languages of files each plugin analyzes, so a plugin that also
+    # covers e.g. .jsx and .vue files gets one warning, not one per language.
+    by_plugin: dict[str, list[str]] = {}
     for language in dict.fromkeys(files.values()):
-        plugin = PLUGINS.get(language)
-        state = plugin_states.get(plugin) if plugin else None
+        if language in PLUGINS:
+            by_plugin.setdefault(PLUGINS[language], []).append(language)
+    problems = []
+    for plugin, languages in by_plugin.items():
+        state = plugin_states.get(plugin)
         if state in PLUGIN_STATE_CAUSES:
-            problems.append(
-                Problem(
-                    f"the {plugin} analyzer {PLUGIN_STATE_CAUSES[state]}", "analyzer unavailable", plugin, (language,)
-                )
-            )
+            cause = f"the {plugin} analyzer {PLUGIN_STATE_CAUSES[state]}"
+            problems.append(Problem(cause, "analyzer unavailable", plugin, tuple(languages)))
     if needs_compilation_database:
         label, languages = CFAMILY
         cause = f"the {label} analyzer needs a compilation database (compile_commands.json)"

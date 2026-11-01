@@ -318,7 +318,10 @@ class AnalysisSession:
 
     def _note_sensor_failure(self, message: str) -> None:
         """Note a sensor's failure from the server's log: one message names
-        the sensor and a later one has the stack trace, with the reason."""
+        the sensor and a later one has the stack trace, with the reason.
+        This takes the next stack trace to be that sensor's, as the analysis
+        thread logs the two together; at worst a sensor goes without its
+        reason, or gets another error's."""
         sensor = problems.failed_sensor(message)
         if sensor is not None:
             self._sensor_failures.setdefault(sensor, None)
@@ -416,9 +419,10 @@ class AnalysisSession:
         return problems.find(
             languages,
             self._plugin_states(timeout),
-            self._sensor_failures,
+            # Copies, as the server's reader thread may still add to them.
+            dict(self._sensor_failures),
             self._needs_compilation_database,
-            self._messages,
+            list(self._messages),
         )
 
     def _plugin_states(self, timeout: float) -> dict[str, int]:

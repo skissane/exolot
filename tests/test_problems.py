@@ -69,6 +69,8 @@ def test_find_counts_each_file_towards_the_first_problem():
         Path("e.java"): "java",
         Path("f.txt"): "plaintext",
         Path("g.vue"): "vue",
+        Path("h.js"): "javascript",
+        Path("i.jsx"): "javascriptreact",
     }
     states = {
         "JavaScript": PLUGIN_DOWNLOADING,
@@ -82,7 +84,12 @@ def test_find_counts_each_file_towards_the_first_problem():
     assert [(p.cause, p.reason, p.files) for p in found] == [
         ("the C analyzer couldn't be downloaded", "analyzer unavailable", [Path("a.c")]),
         ("the Java analyzer failed to load", "analyzer unavailable", [Path("e.java")]),
-        ("the JavaScript analyzer couldn't be downloaded", "analyzer unavailable", [Path("g.vue")]),
+        # One warning for all the JavaScript plugin's languages.
+        (
+            "the JavaScript analyzer couldn't be downloaded",
+            "analyzer unavailable",
+            [Path("g.vue"), Path("h.js"), Path("i.jsx")],
+        ),
         (
             "the C/C++/Objective-C analyzer needs a compilation database (compile_commands.json)",
             "no compilation database",
