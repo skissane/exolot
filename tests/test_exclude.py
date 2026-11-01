@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from exolot import exclude
-from exolot.exclude import Exclude, is_excluded
+from exolot.exclude import Exclude, is_empty, is_excluded
 
 BASE = Path("/repo").resolve()
 FILE = BASE / "vendor" / "lib" / "a.py"
@@ -92,3 +92,10 @@ def test_unresolved_base(tmp_path):
 def test_many_double_stars_stay_fast():
     deep = BASE.joinpath(*["d"] * 40, "a.py")
     assert not Exclude("/".join(["**", "d"] * 10) + "/x/**", BASE).matches(deep)
+
+
+@pytest.mark.parametrize(
+    ("pattern", "empty"), [("", True), ("/", True), ("./", True), ("//", True), ("a", False), ("/a/", False)]
+)
+def test_is_empty(pattern, empty):
+    assert is_empty(pattern) is empty

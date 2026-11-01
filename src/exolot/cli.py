@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import __version__, annotations, clone, compiledb, config, gitdiff, markdown, problems, sarif
 from .analyze import SERVER_LOG_LEVELS, AnalysisSession, Issue, collect_files, language_id
-from .exclude import Exclude
+from .exclude import Exclude, is_empty
 from .server import DEFAULT_SERVER_VERSION, Server, ServerError, cache_dir, detect_platform, ensure_server
 
 COMMANDS = ("analyze", "analyze-repo", "install", "cache-dir")
@@ -88,6 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--exclude",
         action="append",
         default=[],
+        type=_exclude_glob,
         metavar="GLOB",
         help="exclude files matching this glob; repeat to exclude more",
     )
@@ -403,6 +404,13 @@ def _load_inputs(args: argparse.Namespace) -> _Inputs:
     inputs = _Inputs(files, rules, changes, settings)
     _find_compilation_database(args, inputs)
     return inputs
+
+
+def _exclude_glob(value: str) -> str:
+    """--exclude's argument, if it isn't empty."""
+    if is_empty(value):
+        raise argparse.ArgumentTypeError(f"empty glob {value!r} would match nothing")
+    return value
 
 
 def _exclude_patterns(args: argparse.Namespace, settings: config.Config) -> list[Exclude]:

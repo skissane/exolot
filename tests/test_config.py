@@ -45,6 +45,7 @@ def test_search_stops_at_the_repo_root(tmp_path):
         (".exolot.toml", "preamble = 1\n", "preamble should be a str"),
         (".exolot.toml", 'exclude = "x"\n', "exclude should be a list"),
         (".exolot.toml", "exclude = [1]\n", "exclude should be a list of str"),
+        (".exolot.toml", 'exclude = ["*.m", "./"]\n', "exclude has an empty glob"),
         (".exolot.toml", "nope = 1\n", "unknown setting 'nope'"),
         (".exolot.toml", "preamble = \n", "Invalid value"),
         ("pyproject.toml", "[tool.exolot]\nnope = 1\n", "[tool.exolot]: unknown setting 'nope'"),

@@ -779,6 +779,14 @@ def test_cli_config_excludes_are_relative_to_the_config_file(tmp_path, monkeypat
     assert patterns == [Exclude("gen/**", config_dir), Exclude("*.m", tmp_path)]
 
 
+@pytest.mark.parametrize("glob", ["", "/"])
+def test_cli_rejects_an_empty_exclude(glob, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--exclude", glob])
+    assert exc.value.code == 2
+    assert "would match nothing" in capsys.readouterr().err
+
+
 def test_cli_excludes_without_a_config_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert cli._exclude_patterns(argparse.Namespace(exclude=["*.m"]), Config()) == [Exclude("*.m", tmp_path)]

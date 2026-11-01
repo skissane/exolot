@@ -144,8 +144,8 @@ status 2 if the repository or REF can't be fetched.
   root), so it only applies to files under that directory. `**` matches any
   number of directories, a trailing `/` matches only directories, and
   excluding a directory skips everything under it. Unlike `.gitignore`,
-  there's no `!` to re-include files. Matching ignores case on macOS and
-  Windows. Excluded files are skipped even when you name them as `PATH`s, so
+  there's no `!` to re-include files. Separate directories with `/`, even on
+  Windows. Matching ignores case on macOS and Windows. Excluded files are skipped even when you name them as `PATH`s, so
   a hook that passes exolot a list of files still honours the excludes.
 - `--rules FILE` reads rule settings from a JSON file, in the same format as
   VS Code's `sonarlint.rules` setting, e.g.

@@ -47,6 +47,12 @@ class Exclude:
         return any(_match_parts(parts[:n], pattern_parts) for n in lengths)
 
 
+def is_empty(pattern: str) -> bool:
+    """Whether pattern matches nothing, such as `""`, `/` or `./`, which is
+    probably a mistake."""
+    return not _normalize(pattern)[0]
+
+
 def is_excluded(path: Path, excludes: list[Exclude] | tuple[Exclude, ...]) -> bool:
     """Whether any of excludes skips path, an absolute file path."""
     return any(exclude.matches(path) for exclude in excludes)

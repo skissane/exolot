@@ -7,6 +7,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from .exclude import is_empty
+
 
 class ConfigError(Exception):
     pass
@@ -68,6 +70,8 @@ def load(start: Path) -> Config:
             raise ConfigError(f"{where}: {key} should be a {SETTINGS[key].__name__}")
         if key == "exclude" and any(not isinstance(v, str) for v in value):
             raise ConfigError(f"{where}: exclude should be a list of str")
+        if key == "exclude" and any(is_empty(v) for v in value):
+            raise ConfigError(f"{where}: exclude has an empty glob, which would match nothing")
     compile_commands = table.get("compile-commands")
     exclude = tuple(table.get("exclude", []))
     return Config(
