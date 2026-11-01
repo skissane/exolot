@@ -73,7 +73,12 @@ errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
 The server's C/C++ analyzer needs a compilation database
 (`compile_commands.json`), which says how each file is compiled. Make one with
 your build, e.g. with [Bear](https://github.com/rizsotto/Bear) (`bear -- make`)
-or CMake (`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`). exolot uses, in this order:
+or CMake (`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`). Bear's database lists only
+the files it saw compiled, not headers
+([Bear#204](https://github.com/rizsotto/Bear/issues/204)); if header files
+get no issues, [compdb](https://github.com/Sarcasm/compdb) can add them, e.g.
+`compdb -p . list > /tmp/with-headers.json`, then pass that file as
+`--compile-commands`. exolot uses, in this order:
 
 1. `--compile-commands PATH`;
 2. the config file's `compile-commands` setting (see [Configuration](#configuration));

@@ -48,6 +48,18 @@ def test_find_stops_at_the_repo_root(tmp_path):
     assert compiledb.find([a]) == {None: [a]}
 
 
+def test_find_takes_symlinks_to_one_database_as_one(tmp_path):
+    database = _database(tmp_path / "build" / "compile_commands.json")
+    try:
+        (tmp_path / "compile_commands.json").symlink_to(database)
+        (tmp_path / "lib").mkdir()
+        (tmp_path / "lib" / "compile_commands.json").symlink_to(database)
+    except OSError:
+        pytest.skip("can't make symlinks here")
+    a, b = _file(tmp_path / "a.c"), _file(tmp_path / "lib" / "b.c")
+    assert compiledb.find([a, b]) == {database.resolve(): [a, b]}
+
+
 def test_find_outside_a_repo_looks_up_to_the_root(tmp_path):
     a = _file(tmp_path / "a" / "b" / "a.c")
     assert compiledb.find([a]) == {None: [a]}  # nothing above tmp_path has one
@@ -170,7 +182,9 @@ def test_cli_skips_only_the_files_without_a_database(c_project, tmp_path, capsys
     (tmp_path / "x" / "e.m").write_text("x\n")
     database = _database(tmp_path / "compile_commands.json")
     cli.main([])
-    assert "1 C/C++/Objective-C file(s) not analyzed (no compilation database)" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "no compilation database (compile_commands.json) was found for some files;" in err
+    assert "1 C/C++/Objective-C file(s) not analyzed (no compilation database)" in err
     assert c_project == [database]
 
 

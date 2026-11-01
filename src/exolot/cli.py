@@ -420,8 +420,10 @@ def _find_compilation_database(args: argparse.Namespace, inputs: _Inputs) -> Non
             "choose one with --compile-commands"
         )
     else:
+        # For these files, if another database is used for the others.
+        where = " for some files" if found else ""
         cause = (
-            f"no compilation database ({compiledb.NAME}) was found; make one, e.g. with bear or CMake, "
+            f"no compilation database ({compiledb.NAME}) was found{where}; make one, e.g. with bear or CMake, "
             "or pass --compile-commands"
         )
         if found:

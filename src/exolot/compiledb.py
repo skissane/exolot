@@ -22,7 +22,9 @@ def find(files: list[Path]) -> dict[Path | None, list[Path]]:
 
     def lookup(directory: Path) -> Path | None:
         if directory not in nearest:
-            here = next((directory / c for c in CANDIDATES if (directory / c).is_file()), None)
+            # Resolved, as e.g. a compile_commands.json symlink to the one in
+            # build/ is the same database.
+            here = next(((directory / c).resolve() for c in CANDIDATES if (directory / c).is_file()), None)
             at_top = (directory / ".git").exists() or directory.parent == directory
             nearest[directory] = here or (None if at_top else lookup(directory.parent))
         return nearest[directory]
