@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import subprocess
 import urllib.parse
+from collections.abc import Iterator
 from pathlib import Path
 
 # github.com repository URLs, over HTTPS or SSH, with or without ".git".
@@ -36,7 +38,26 @@ def clone(source: str, dest: Path, ref: str | None = None) -> str:
 
 # Variables that point git at a particular repository, which git sets when
 # running hooks, so exolot run from a hook would otherwise clone into that.
-_REPO_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR")
+_REPO_ENV = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_COMMON_DIR",
+)
+
+
+@contextlib.contextmanager
+def without_repo_env() -> Iterator[None]:
+    """Unset the variables that point git at a particular repository while
+    in this context, so every git command run in it, such as the one listing
+    a clone's files, uses the repository its directory is in."""
+    saved = {name: os.environ.pop(name) for name in _REPO_ENV if name in os.environ}
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
 
 
 def _git(*args: str) -> str:

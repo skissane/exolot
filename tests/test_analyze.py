@@ -669,6 +669,16 @@ def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, mo
         assert not any(keep.iterdir())
 
 
+def test_cli_analyze_repo_lists_the_clones_files_when_run_from_a_hook(repo, tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    hook_repo = tmp_path / "hook"
+    git(tmp_path, "init", "-q", str(hook_repo))
+    monkeypatch.setenv("GIT_DIR", str(hook_repo / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(hook_repo))
+    assert cli.main(["analyze-repo", str(repo)]) == 1
+    assert "2 issue(s) in 2 file(s) analyzed" in capsys.readouterr().err
+
+
 def test_cli_analyze_repo_has_no_diff_options(capsys):
     with pytest.raises(SystemExit):
         cli.main(["analyze-repo", "https://example.com/r.git", "--diff-base", "master"])

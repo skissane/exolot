@@ -225,18 +225,26 @@ def _run_analyze_repo(args: argparse.Namespace) -> int:
         return 2
     _resolve_local_options(args)
     try:
-        if args.keep is not None:
-            dest = args.keep.resolve()
-            commit = _clone_into_keep(args, dest)
-            return _analyze_clone(args, dest, commit)
-        # The language server has exited by the time the directory is
-        # deleted, so on Windows nothing in it should still be open.
-        with tempfile.TemporaryDirectory(prefix="exolot-") as tmp:
-            dest = Path(tmp).resolve()
-            return _analyze_clone(args, dest, _clone(args, dest))
+        # From a git hook, git would otherwise look at the hook's repository.
+        with clone.without_repo_env():
+            return _clone_and_analyze(args)
     except clone.CloneError as e:
         print(f"exolot: {e}", file=sys.stderr)
         return 2
+
+
+def _clone_and_analyze(args: argparse.Namespace) -> int:
+    """Clone into --keep DIR or a temporary directory, and analyze it there.
+    Raises CloneError."""
+    if args.keep is not None:
+        dest = args.keep.resolve()
+        commit = _clone_into_keep(args, dest)
+        return _analyze_clone(args, dest, commit)
+    # The language server has exited by the time the directory is deleted,
+    # so on Windows nothing in it should still be open.
+    with tempfile.TemporaryDirectory(prefix="exolot-") as tmp:
+        dest = Path(tmp).resolve()
+        return _analyze_clone(args, dest, _clone(args, dest))
 
 
 def _repo_input_problem(args: argparse.Namespace) -> str | None:

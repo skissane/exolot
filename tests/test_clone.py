@@ -1,4 +1,6 @@
+import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -89,10 +91,14 @@ def test_display_source_leaves_out_credentials(source, expected):
     assert clone.display_source(source) == expected
 
 
-def test_clone_errors_leave_out_credentials(repo, tmp_path):
+def test_clone_errors_leave_out_credentials(monkeypatch):
+    def run(*args, **kwargs):
+        return subprocess.CompletedProcess(args[0], 128, "", "fatal: 'http://user:secret@host/r.git' not found")
+
+    monkeypatch.setattr(subprocess, "run", run)
     with pytest.raises(clone.CloneError) as e:
-        clone.clone("http://user:secret@127.0.0.1:9/r.git", tmp_path / "clone")
-    assert "secret" not in str(e.value)
+        clone.clone("http://user:secret@host/r.git", Path("unused"))
+    assert str(e.value) == "git init failed: fatal: 'http://host/r.git' not found"
 
 
 def test_clone_ignores_the_repository_git_points_hooks_at(repo, tmp_path, monkeypatch):
@@ -116,3 +122,12 @@ def test_clone_ignores_the_repository_git_points_hooks_at(repo, tmp_path, monkey
 )
 def test_without_credentials(message, expected):
     assert clone._without_credentials(message) == expected
+
+
+def test_without_repo_env_restores_the_variables(monkeypatch):
+    monkeypatch.setenv("GIT_DIR", "/hook/.git")
+    monkeypatch.delenv("GIT_WORK_TREE", raising=False)
+    with clone.without_repo_env():
+        assert "GIT_DIR" not in os.environ
+    assert os.environ["GIT_DIR"] == "/hook/.git"
+    assert "GIT_WORK_TREE" not in os.environ
