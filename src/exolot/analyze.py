@@ -20,6 +20,19 @@ from .lsp import LspClient
 from .server import Server
 
 log = logging.getLogger(__name__)
+# The server's own log messages, at the level the server gave each one.
+# AnalysisSession filters them by its log_level, so this logger passes them all.
+server_log = logging.getLogger("exolot.languageserver")
+server_log.setLevel(logging.DEBUG)
+
+# The levels the server's log messages start with, as in "[Warn - 12:34:56.789] ...".
+SERVER_LOG_LEVELS = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warn": logging.WARNING,
+    "error": logging.ERROR,
+}
+_SERVER_LOG_PREFIX = re.compile(r"\[(\w+) - ")
 
 # VS Code language ids, which is what the server expects in didOpen.
 LANGUAGE_IDS = {
@@ -152,14 +165,19 @@ class AnalysisSession:
         rules: dict[str, Any] | None = None,
         node: str | None = None,
         jvm_args: list[str] | None = None,
-        verbose: bool = False,
+        log_level: int | None = None,
     ):
+        """``log_level`` is the lowest level of the server's log messages to
+        log to the ``exolot.languageserver`` logger (one of ``SERVER_LOG_LEVELS``'
+        values), or None to log none of them. Messages without a level are
+        always logged, at INFO. With any level, the server's stderr is passed
+        through too."""
         self.server = server
         self.workspace = workspace.resolve()
         self.rules = rules or {}
         self.node = node
         self.jvm_args = jvm_args
-        self.verbose = verbose
+        self.log_level = log_level
         self._cond = threading.Condition()
         self._published: dict[str, list[dict[str, Any]]] = {}
         self._active_progress: set[Any] = set()
@@ -186,7 +204,7 @@ class AnalysisSession:
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=None if self.verbose else subprocess.DEVNULL,
+            stderr=None if self.log_level is not None else subprocess.DEVNULL,
         )
         client = self._client = LspClient(self._proc)
         client.on_notification("textDocument/publishDiagnostics", self._on_diagnostics)
@@ -219,7 +237,7 @@ class AnalysisSession:
                     "productName": "exolot",
                     "productVersion": __version__,
                     "workspaceName": self.workspace.name,
-                    "showVerboseLogs": self.verbose,
+                    "showVerboseLogs": self._verbose_logs,
                     "firstSecretDetected": True,
                     "enableNotebooks": False,
                     "clientNodePath": self.node,
@@ -244,7 +262,7 @@ class AnalysisSession:
             "pathToNodeExecutable": self.node,
             "automaticAnalysis": True,
             "focusOnNewCode": False,
-            "output": {"showVerboseLogs": self.verbose},
+            "output": {"showVerboseLogs": self._verbose_logs},
         }
 
     def _on_configuration(self, params: dict[str, Any]) -> list[Any]:
@@ -270,9 +288,21 @@ class AnalysisSession:
                 self._active_progress.discard(params["token"])
             self._touch()
 
+    @property
+    def _verbose_logs(self) -> bool:
+        # The server only sends Debug messages when asked for verbose logs.
+        return self.log_level is not None and self.log_level <= logging.DEBUG
+
     def _on_log(self, params: dict[str, Any]) -> None:
-        if self.verbose:
-            log.info("server: %s", params.get("message", "").rstrip())
+        if self.log_level is None:
+            return
+        message = params.get("message", "").rstrip()
+        prefix = _SERVER_LOG_PREFIX.match(message)
+        level = SERVER_LOG_LEVELS.get(prefix.group(1).lower()) if prefix else None
+        if level is None:
+            server_log.info("server: %s", message)
+        elif level >= self.log_level:
+            server_log.log(level, "server: %s", message)
 
     def analyze(
         self,

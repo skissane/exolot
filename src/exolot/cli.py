@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import __version__, annotations, clone, config, gitdiff, markdown, sarif
-from .analyze import AnalysisSession, Issue, collect_files
+from .analyze import SERVER_LOG_LEVELS, AnalysisSession, Issue, collect_files
 from .server import DEFAULT_SERVER_VERSION, Server, ServerError, cache_dir, detect_platform, ensure_server
 
 COMMANDS = ("analyze", "analyze-repo", "install", "cache-dir")
@@ -42,7 +42,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="VSIX platform, e.g. linux-x64, or 'universal' (default: detected)",
     )
     server_opts.add_argument("--java", help="Java executable to use instead of the bundled one")
-    server_opts.add_argument("-v", "--verbose", action="store_true", help="show server logs")
+    server_opts.add_argument(
+        "--log-level",
+        choices=tuple(SERVER_LOG_LEVELS),
+        help="show the server's log messages at this level and above (default: none)",
+    )
+    server_opts.add_argument(
+        "-v",
+        "--verbose",
+        action="store_const",
+        const="debug",
+        dest="log_level",
+        help="show all of the server's log messages (same as --log-level debug)",
+    )
 
     # The options of both analyze and analyze-repo.
     analysis_opts = argparse.ArgumentParser(add_help=False)
@@ -152,8 +164,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command in ("analyze", "analyze-repo"):
         _check_options(parser, args)
 
+    # exolot's own progress messages (e.g. "downloading ...") show with
+    # --log-level debug or info; its warnings and errors always show.
+    log_level = getattr(args, "log_level", None)
     logging.basicConfig(
-        level=logging.INFO if getattr(args, "verbose", False) else logging.WARNING,
+        level=logging.INFO if log_level in ("debug", "info") else logging.WARNING,
         format="exolot: %(message)s",
     )
 
@@ -354,7 +369,8 @@ def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[
     counts (only those on changed lines, with --changed-only)."""
     changes = inputs.changes
     workspace = args.workspace or Path.cwd()
-    with AnalysisSession(server, workspace, rules=inputs.rules, node=args.node, verbose=args.verbose) as session:
+    log_level = SERVER_LOG_LEVELS[args.log_level] if args.log_level else None
+    with AnalysisSession(server, workspace, rules=inputs.rules, node=args.node, log_level=log_level) as session:
         issues = session.analyze(inputs.files, timeout=args.timeout)
         if args.format == "sarif" and issues:
             session.add_related_locations(issues)
