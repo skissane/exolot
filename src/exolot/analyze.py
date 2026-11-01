@@ -63,6 +63,8 @@ LANGUAGE_IDS = {
     ".cc": "cpp",
     ".cxx": "cpp",
     ".hpp": "cpp",
+    ".m": "objective-c",
+    ".mm": "objective-cpp",
     ".yaml": "yaml",
     ".yml": "yaml",
     ".json": "json",
@@ -166,18 +168,21 @@ class AnalysisSession:
         node: str | None = None,
         jvm_args: list[str] | None = None,
         log_level: int | None = None,
+        compile_commands: Path | None = None,
     ):
         """``log_level`` is the lowest level of the server's log messages to
         log to the ``exolot.languageserver`` logger (one of ``SERVER_LOG_LEVELS``'
         values), or None to log none of them. Messages without a level are
         always logged, at INFO. With any level, the server's stderr is passed
-        through too."""
+        through too. ``compile_commands`` is the compilation database
+        (compile_commands.json) for C, C++ and Objective-C files."""
         self.server = server
         self.workspace = workspace.resolve()
         self.rules = rules or {}
         self.node = node
         self.jvm_args = jvm_args
         self.log_level = log_level
+        self.compile_commands = compile_commands
         self._cond = threading.Condition()
         self._published: dict[str, list[dict[str, Any]]] = {}
         self._active_progress: set[Any] = set()
@@ -265,7 +270,7 @@ class AnalysisSession:
             log.warning("server did not ask for folder settings; continuing anyway")
 
     def _settings(self) -> dict[str, Any]:
-        return {
+        settings: dict[str, Any] = {
             "rules": self.rules,
             "disableTelemetry": True,
             "pathToNodeExecutable": self.node,
@@ -273,6 +278,11 @@ class AnalysisSession:
             "focusOnNewCode": False,
             "output": {"showVerboseLogs": self._verbose_logs},
         }
+        if self.compile_commands is not None:
+            # VS Code's sonarlint.pathToCompileCommands, which the server
+            # passes to the analyzer as sonar.cfamily.compile-commands.
+            settings["pathToCompileCommands"] = str(self.compile_commands)
+        return settings
 
     def _on_configuration(self, params: dict[str, Any]) -> list[Any]:
         if any(item.get("scopeUri") for item in params["items"]):

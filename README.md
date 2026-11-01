@@ -54,8 +54,9 @@ When the server can't analyze some language, exolot prints a warning for each
 cause and says in the summary line how many files weren't analyzed, e.g.
 `0 issue(s) in 12 file(s) analyzed; 30 C# file(s) not analyzed (analyzer failed)`.
 The causes it spots are an analyzer the server couldn't download or load, an
-analyzer that failed (e.g. C# analysis needs `dotnet` installed), and C/C++
-files without a compilation database; it also warns about the errors and
+analyzer that failed (e.g. C# analysis needs `dotnet` installed), and C, C++
+and Objective-C files without a compilation database (see [C, C++ and Objective-C](#c-c-and-objective-c));
+it also warns about the errors and
 warnings the server shows, such as not finding the Node.js it needs. The
 `markdown` and `github-comment` formats show these warnings above the
 findings, `--annotations` before the issues' annotations, and `sarif` as the
@@ -67,6 +68,32 @@ Exit status is 0 when no issues are found, 1 when issues are found, and 2 on
 errors. With `-e` / `--exit-zero` it is 0 even when issues are found, but still
 2 when the analysis fails, like ruff's option of the same name.
 
+### C, C++ and Objective-C
+
+The server's C/C++ analyzer needs a compilation database
+(`compile_commands.json`), which says how each file is compiled. Make one with
+your build, e.g. with [Bear](https://github.com/rizsotto/Bear) (`bear -- make`)
+or CMake (`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`). Bear's database lists only
+the files it saw compiled, not headers
+([Bear#204](https://github.com/rizsotto/Bear/issues/204)); if header files
+get no issues, [compdb](https://github.com/Sarcasm/compdb) can add them, e.g.
+`compdb -p . list > /tmp/with-headers.json`, then pass that file as
+`--compile-commands`. exolot uses, in this order:
+
+1. `--compile-commands PATH`;
+2. the config file's `compile-commands` setting (see [Configuration](#configuration));
+3. the `compile_commands.json` or `build/compile_commands.json` nearest each
+   C, C++ or Objective-C file, in its directory or the directories above it,
+   up to the root of the git repository it's in (or the filesystem's root,
+   outside one, as clangd does). `--log-level info` shows which one it found.
+
+The server takes one database for all the files, so if different files find
+different ones, exolot doesn't send any C, C++ or Objective-C files to the
+server; it also doesn't send the files that find none. It warns that those
+files weren't analyzed. It doesn't check that the database has an entry for
+each file; what the analyzer does with a file that has none is up to it. A path given with `--compile-commands` or the config file that
+doesn't exist is an error (exit status 2).
+
 ### Analyzing a repository without cloning it yourself
 
 `exolot analyze-repo SOURCE [PATH...]` fetches one commit of the git
@@ -74,6 +101,8 @@ repository at SOURCE (a URL, or a local repository's path) into a temporary
 directory, without its history or submodules, analyzes it as `exolot analyze`
 would from the clone's root, and deletes the directory. PATHs, relative to
 the repository's root, limit the analysis to those files or directories.
+Files named by its options, such as `--rules` and `--compile-commands`, are
+relative to the current directory, not the clone.
 It takes the same options as `analyze` (below), except `--workspace`,
 `--diff-base` and `--changed-only`, plus:
 
@@ -105,6 +134,8 @@ status 2 if the repository or REF can't be fetched.
 - `--java PATH` uses a different Java executable.
 - `--node PATH` sets the Node.js used for JavaScript/TypeScript analysis
   (otherwise the server looks for `node` on the `PATH`).
+- `--compile-commands PATH` gives the compilation database for C, C++ and
+  Objective-C files (see [C, C++ and Objective-C](#c-c-and-objective-c)).
 - `--rules FILE` reads rule settings from a JSON file, in the same format as
   VS Code's `sonarlint.rules` setting, e.g.
   `{"python:S1764": {"level": "off"}}`.
@@ -207,6 +238,10 @@ status 2). The settings are:
   [tool.exolot]
   preamble = "Fix the issues on lines you changed; the rest can wait."
   ```
+
+- `compile-commands`: the C/C++ compilation database, relative to the config
+  file's directory, e.g. `compile-commands = "build/compile_commands.json"`.
+  `--compile-commands` overrides it.
 
 ## Workflow annotations
 

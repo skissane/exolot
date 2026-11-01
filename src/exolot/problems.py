@@ -30,6 +30,7 @@ PLUGINS = {
     "cpp": "C++",
     "csharp": "C#",
     "objective-c": "Objective-C",
+    "objective-cpp": "Objective-C",
     "css": "CSS",
     "scss": "CSS",
     "less": "CSS",
@@ -56,7 +57,7 @@ PLUGINS = {
 # sensor's name alone, as there's no telling which files they affect.
 SENSORS = {
     "OmniSharp": ("C#", ("csharp",)),
-    "CFamily": ("C/C++/Objective-C", ("c", "cpp", "objective-c")),
+    "CFamily": ("C/C++/Objective-C", ("c", "cpp", "objective-c", "objective-cpp")),
 }
 CFAMILY = SENSORS["CFamily"]
 
@@ -78,6 +79,9 @@ class Problem:
     files: list[Path] = field(default_factory=list)
     # False for a message the server showed, which may not be about analysis.
     may_affect_files: bool = True
+    # False if the server's log has nothing more to say about it, e.g. when
+    # exolot didn't send the files at all.
+    in_server_log: bool = True
 
     def message(self, *, hint: bool = True) -> str:
         """A warning about it, with the hint to see the server's log if hint."""
@@ -87,7 +91,7 @@ class Problem:
             text = f"{self.cause}, so {len(self.files)} {self.label} file(s) were not analyzed"
         else:
             text = f"{self.cause}, so some files may not have been analyzed"
-        return f"{text}; use --log-level error for details" if hint else text
+        return f"{text}; use --log-level error for details" if hint and self.in_server_log else text
 
     def sentence(self) -> str:
         """The warning as a sentence, without the hint, for a report."""

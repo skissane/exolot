@@ -16,11 +16,14 @@ class ConfigError(Exception):
 class Config:
     # Markdown that --format github-comment puts after its heading.
     preamble: str | None = None
+    # The C/C++ compilation database, made absolute against the config file's directory.
+    compile_commands: Path | None = None
     # The file the settings came from, if any.
     path: Path | None = None
 
 
-SETTINGS = {"preamble": str}
+# Each setting's name in the file, with its type there.
+SETTINGS = {"preamble": str, "compile-commands": str}
 PYPROJECT = "pyproject.toml"
 
 
@@ -61,7 +64,12 @@ def load(start: Path) -> Config:
             raise ConfigError(f"{where}: unknown setting {key!r} (known: {', '.join(SETTINGS)})")
         if not isinstance(value, SETTINGS[key]):
             raise ConfigError(f"{where}: {key} should be a {SETTINGS[key].__name__}")
-    return Config(path=path, **table)
+    compile_commands = table.get("compile-commands")
+    return Config(
+        preamble=table.get("preamble"),
+        compile_commands=None if compile_commands is None else path.parent.joinpath(compile_commands).resolve(),
+        path=path,
+    )
 
 
 def _read(path: Path) -> dict:

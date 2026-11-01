@@ -15,11 +15,13 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import __version__, annotations, clone, config, gitdiff, markdown, problems, sarif
-from .analyze import SERVER_LOG_LEVELS, AnalysisSession, Issue, collect_files
+from . import __version__, annotations, clone, compiledb, config, gitdiff, markdown, problems, sarif
+from .analyze import SERVER_LOG_LEVELS, AnalysisSession, Issue, collect_files, language_id
 from .server import DEFAULT_SERVER_VERSION, Server, ServerError, cache_dir, detect_platform, ensure_server
 
 COMMANDS = ("analyze", "analyze-repo", "install", "cache-dir")
+
+log = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -81,6 +83,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON file of rule settings, in the same format as VS Code's sonarlint.rules setting",
     )
     analysis_opts.add_argument("--node", help="Node.js executable for JavaScript/TypeScript analysis")
+    analysis_opts.add_argument(
+        "--compile-commands",
+        type=Path,
+        metavar="PATH",
+        help="compilation database (compile_commands.json) for C, C++ and Objective-C files (default: the "
+        "config file's compile-commands, else the nearest compile_commands.json or build/compile_commands.json "
+        "in or above each path, up to the git repository's root)",
+    )
     analysis_opts.add_argument("--timeout", type=float, default=None, help="give up after this many seconds")
     analysis_opts.add_argument(
         "--statistics",
@@ -220,6 +230,12 @@ def _run_analyze(args: argparse.Namespace) -> int:
     if not inputs.files:
         print("exolot: no files to analyze", file=sys.stderr)
         return 0
+    if not inputs.to_analyze():
+        # Don't start the server for nothing.
+        assert inputs.skipped is not None
+        print(f"exolot: warning: {inputs.skipped.message()}", file=sys.stderr)
+        print(problems.summary(0, len(inputs.files), [inputs.skipped]), file=sys.stderr)
+        return 0
     server = _ensure_server(args)
     if server is None:
         return 2
@@ -277,8 +293,10 @@ def _repo_input_problem(args: argparse.Namespace) -> str | None:
 def _resolve_local_options(args: argparse.Namespace) -> None:
     """Make the options naming local files absolute, as they're relative to
     the current directory, not the clone."""
-    if args.rules is not None:
-        args.rules = args.rules.resolve()
+    for name in ("rules", "compile_commands"):
+        value = getattr(args, name)
+        if value is not None:
+            setattr(args, name, value.resolve())
     for name in ("java", "node"):
         value = getattr(args, name)
         # A path, such as ./java (or C:java on Windows), rather than a name to look up on PATH.
@@ -348,12 +366,21 @@ class _Inputs:
     rules: dict | None
     changes: gitdiff.Changes | None
     settings: config.Config
+    compile_commands: Path | None = None
+    # Why the C/C++ files in files won't be sent to the server, if they won't.
+    skipped: problems.Problem | None = None
+
+    def to_analyze(self) -> list[Path]:
+        """The files to send to the server."""
+        skipped = set(self.skipped.files) if self.skipped else set()
+        return [f for f in self.files if f not in skipped]
 
 
 def _load_inputs(args: argparse.Namespace) -> _Inputs:
     """The files to analyze (only the changed ones, with --changed-only), the
-    rule settings, the changes since --diff-base and the config file's
-    settings. Raises OSError, ValueError, GitError or ConfigError."""
+    rule settings, the changes since --diff-base, the config file's settings
+    and the compilation database. Raises OSError, ValueError, GitError or
+    ConfigError."""
     files = collect_files(args.paths)
     rules = json.loads(args.rules.read_text()) if args.rules else None
     changes = gitdiff.changes_since(args.diff_base) if args.diff_base is not None else None
@@ -361,7 +388,51 @@ def _load_inputs(args: argparse.Namespace) -> _Inputs:
     if changes is not None and args.changed_only:
         changed_files = changes.files()
         files = [f for f in files if f in changed_files]
-    return _Inputs(files, rules, changes, settings)
+    inputs = _Inputs(files, rules, changes, settings)
+    _find_compilation_database(args, inputs)
+    return inputs
+
+
+def _find_compilation_database(args: argparse.Namespace, inputs: _Inputs) -> None:
+    """Set inputs' compilation database: --compile-commands, else the config
+    file's, else the one found for the paths. Without one, the C/C++
+    analyzer would fail, so if there are C/C++ files, skip them instead.
+    Raises FileNotFoundError if the one given doesn't exist."""
+    given = args.compile_commands or inputs.settings.compile_commands
+    if given is not None:
+        given = given.resolve()
+        if not given.is_file():
+            source = "--compile-commands" if args.compile_commands else str(inputs.settings.path)
+            raise FileNotFoundError(f"no such compilation database: {given} (from {source})")
+        inputs.compile_commands = given
+        return
+    label, languages = problems.CFAMILY
+    cfamily = [f for f in inputs.files if language_id(f) in languages]
+    if not cfamily:
+        return
+    found = compiledb.find(cfamily)
+    skipped = found.pop(None, [])
+    if len(found) > 1:
+        # The server takes one database for the workspace.
+        skipped = cfamily
+        cause = (
+            f"there's more than one compilation database ({', '.join(map(str, found))}); "
+            "choose one with --compile-commands"
+        )
+    else:
+        # For these files, if another database is used for the others.
+        where = " for some files" if found else ""
+        cause = (
+            f"no compilation database ({compiledb.NAME}) was found{where}; make one, e.g. with bear or CMake, "
+            "or pass --compile-commands"
+        )
+        if found:
+            (inputs.compile_commands,) = found
+            log.info("using the compilation database %s", inputs.compile_commands)
+    if skipped:
+        inputs.skipped = problems.Problem(
+            cause, "no compilation database", label, languages, files=skipped, in_server_log=False
+        )
 
 
 def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[Issue]:
@@ -370,9 +441,17 @@ def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[
     changes = inputs.changes
     workspace = args.workspace or Path.cwd()
     log_level = SERVER_LOG_LEVELS[args.log_level] if args.log_level else None
-    with AnalysisSession(server, workspace, rules=inputs.rules, node=args.node, log_level=log_level) as session:
+    session = AnalysisSession(
+        server,
+        workspace,
+        rules=inputs.rules,
+        node=args.node,
+        log_level=log_level,
+        compile_commands=inputs.compile_commands,
+    )
+    with session:
         try:
-            issues = session.analyze(inputs.files, timeout=args.timeout)
+            issues = session.analyze(inputs.to_analyze(), timeout=args.timeout)
         except (OSError, RuntimeError):
             # What the server showed may say why, e.g. a missing runtime.
             for message in session.messages:
@@ -384,7 +463,9 @@ def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[
             _add_changed_related_locations(session, issues, changes)
         if changes is not None and args.changed_only:
             issues = [i for i in issues if _on_changed_lines(i, changes)]
-        unanalyzed = session.unanalyzed(inputs.files)
+        unanalyzed = session.unanalyzed(inputs.to_analyze())
+        if inputs.skipped:
+            unanalyzed.insert(0, inputs.skipped)
         for problem in unanalyzed:
             # With --log-level, the server's log already shows the details.
             print(f"exolot: warning: {problem.message(hint=args.log_level is None)}", file=sys.stderr)
