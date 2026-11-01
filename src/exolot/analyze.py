@@ -332,6 +332,8 @@ class AnalysisSession:
         """The server shows errors and warnings to the user this way, e.g.
         when it can't find the Node.js it needs to analyze JavaScript."""
         message = str(params.get("message", "")).strip()
+        if not message:
+            return
         if params.get("type") in (1, 2):  # Error, Warning
             self._messages.append(message)
         else:
@@ -398,6 +400,11 @@ class AnalysisSession:
             more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
             raise RuntimeError(f"the server never reported results for {names}{more}")
         return not missing and quiet >= settle
+
+    @property
+    def messages(self) -> list[str]:
+        """The errors and warnings the server has shown the user so far."""
+        return list(self._messages)
 
     def unanalyzed(self, files: list[Path], timeout: float = 10) -> list[problems.Problem]:
         """Why the server couldn't analyze some of files, which it has

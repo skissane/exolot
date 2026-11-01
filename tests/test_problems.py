@@ -201,6 +201,14 @@ def test_cli_warns_about_files_not_analyzed(cli_files, capsys):
     assert f"3 issue(s) {SUMMARY}" in err
 
 
+def test_cli_shows_server_messages_when_analysis_fails(cli_files, capsys, tmp_path):
+    (tmp_path / "busy.py").write_text("SHOWMSG BUSY\n")
+    assert cli.main(["--timeout", "2", "busy.py"]) == 2
+    err = capsys.readouterr().err
+    assert "exolot: warning: message of type 1\n" in err
+    assert "did not finish in time" in err
+
+
 def test_cli_warns_without_the_hint_when_showing_the_servers_log(cli_files, capsys):
     cli.main(["--log-level", "error", *cli_files])
     err = capsys.readouterr().err

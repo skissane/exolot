@@ -371,7 +371,13 @@ def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[
     workspace = args.workspace or Path.cwd()
     log_level = SERVER_LOG_LEVELS[args.log_level] if args.log_level else None
     with AnalysisSession(server, workspace, rules=inputs.rules, node=args.node, log_level=log_level) as session:
-        issues = session.analyze(inputs.files, timeout=args.timeout)
+        try:
+            issues = session.analyze(inputs.files, timeout=args.timeout)
+        except (OSError, RuntimeError):
+            # What the server showed may say why, e.g. a missing runtime.
+            for message in session.messages:
+                print(f"exolot: warning: {message}", file=sys.stderr)
+            raise
         if args.format == "sarif" and issues:
             session.add_related_locations(issues)
         elif changes is not None and (args.changed_only or args.annotations or not args.statistics):
