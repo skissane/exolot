@@ -33,9 +33,23 @@ def send(msg):
     sys.stdout.buffer.flush()
 
 
+def log(message):
+    send({"jsonrpc": "2.0", "method": "window/logMessage", "params": {"type": 4, "message": message}})
+
+
 while (msg := read()) is not None:
     method = msg.get("method")
     if method == "initialize":
+        # Like the real server: every message has type Log, with its level in
+        # the text, and Debug messages only with verbose logs.
+        if msg["params"].get("initializationOptions", {}).get("showVerboseLogs"):
+            log("[Debug - 01:02:03.004] a debug message")
+        log("[Info - 01:02:03.004] an info message")
+        log("[Warn - 01:02:03.004] a warning message")
+        log("[Error - 01:02:03.004] an error message\n\tat its.stack.Trace")
+        log("[Fancy - 01:02:03.004] a message at an unknown level")
+        log("a message with no level")
+        print("fake server stderr", file=sys.stderr, flush=True)
         send(
             {
                 "jsonrpc": "2.0",

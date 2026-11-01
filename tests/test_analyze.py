@@ -721,3 +721,44 @@ def test_cli_analyze_repo_links_elsewhere_only_when_asked(tmp_path, monkeypatch,
     out = capsys.readouterr().out
     assert "github.example" not in out
     assert (f"[a.py:1]({link})" in out) if link else ("| a.py:1 |" in out)
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ([], []),
+        (["--log-level", "error"], ["Error"]),
+        (["--log-level", "warn"], ["Warn", "Error"]),
+        (["--log-level", "info"], ["Info", "Warn", "Error"]),
+        (["--log-level", "debug"], ["Debug", "Info", "Warn", "Error"]),
+        (["-v"], ["Debug", "Info", "Warn", "Error"]),
+        (["--verbose"], ["Debug", "Info", "Warn", "Error"]),
+    ],
+)
+def test_cli_log_level(tmp_path, monkeypatch, capfd, caplog, args, expected):
+    monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
+    (tmp_path / "a.py").write_text("x = 1\n")
+    monkeypatch.chdir(tmp_path)
+    cli.main([*args, "a.py"])
+    err = capfd.readouterr().err
+    logs = {r.getMessage().removeprefix("server: "): r.levelname for r in caplog.records if r.name == "exolot.server"}
+    known = {"Debug": "DEBUG", "Info": "INFO", "Warn": "WARNING", "Error": "ERROR"}
+    assert [(m[1 : m.index(" ")], level) for m, level in logs.items() if m.split()[0][1:] in known] == [
+        (name, known[name]) for name in expected
+    ]
+    if expected:
+        # A message with a level exolot doesn't know, or none, always shows,
+        # at INFO, and so does the server's stderr.
+        assert logs["[Fancy - 01:02:03.004] a message at an unknown level"] == "INFO"
+        assert logs["a message with no level"] == "INFO"
+        assert "[Error - 01:02:03.004] an error message\n\tat its.stack.Trace" in logs
+        assert "fake server stderr" in err
+    else:
+        assert not logs
+        assert "fake server stderr" not in err
+
+
+def test_cli_rejects_unknown_log_level(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["--log-level", "trace", "a.py"])
+    assert "invalid choice: 'trace'" in capsys.readouterr().err
