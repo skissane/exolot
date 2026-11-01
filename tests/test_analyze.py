@@ -1,4 +1,5 @@
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -741,7 +742,11 @@ def test_cli_log_level(tmp_path, monkeypatch, capfd, caplog, args, expected):
     monkeypatch.chdir(tmp_path)
     cli.main([*args, "a.py"])
     err = capfd.readouterr().err
-    logs = {r.getMessage().removeprefix("server: "): r.levelname for r in caplog.records if r.name == "exolot.server"}
+    logs = {
+        r.getMessage().removeprefix("server: "): r.levelname
+        for r in caplog.records
+        if r.name == "exolot.languageserver"
+    }
     known = {"Debug": "DEBUG", "Info": "INFO", "Warn": "WARNING", "Error": "ERROR"}
     assert [(m[1 : m.index(" ")], level) for m, level in logs.items() if m.split()[0][1:] in known] == [
         (name, known[name]) for name in expected
@@ -756,6 +761,8 @@ def test_cli_log_level(tmp_path, monkeypatch, capfd, caplog, args, expected):
     else:
         assert not logs
         assert "fake server stderr" not in err
+    # The server module's own logger isn't the server's log, so --log-level doesn't change it.
+    assert not logging.getLogger("exolot.server").isEnabledFor(logging.DEBUG)
 
 
 def test_cli_rejects_unknown_log_level(capsys):

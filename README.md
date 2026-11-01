@@ -169,9 +169,9 @@ status 2 if the repository or REF can't be fetched.
 - `--log-level LEVEL` shows the server's log messages at `LEVEL` and above,
   where `LEVEL` is `debug`, `info`, `warn` or `error` (by default exolot
   shows none of them). The server only sends `debug` messages when asked for
-  them, so the other levels also make it log less. Messages without a level
-  always show, and so does anything the server writes to stderr (e.g. the
-  JVM's own errors).
+  them, so the other levels also make it log less. At any level, messages
+  without a level show too, and so does anything the server writes to stderr
+  (e.g. the JVM's own errors).
 - `-v` / `--verbose` shows all of the server's log messages, the same as
   `--log-level debug`.
 

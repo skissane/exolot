@@ -169,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         format="exolot: %(message)s",
     )
     # The session filters the server's messages by --log-level itself.
-    logging.getLogger("exolot.server").setLevel(logging.DEBUG)
+    logging.getLogger("exolot.languageserver").setLevel(logging.DEBUG)
 
     if args.command == "cache-dir":
         print(cache_dir())

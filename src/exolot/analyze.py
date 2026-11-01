@@ -21,7 +21,7 @@ from .server import Server
 
 log = logging.getLogger(__name__)
 # The server's own log messages, at the level the server gave each one.
-server_log = logging.getLogger("exolot.server")
+server_log = logging.getLogger("exolot.languageserver")
 
 # The levels the server's log messages start with, as in "[Warn - 12:34:56.789] ...".
 SERVER_LOG_LEVELS = {
@@ -166,7 +166,7 @@ class AnalysisSession:
         log_level: int | None = None,
     ):
         """``log_level`` is the lowest level of the server's log messages to
-        log to the ``exolot.server`` logger (one of ``SERVER_LOG_LEVELS``'
+        log to the ``exolot.languageserver`` logger (one of ``SERVER_LOG_LEVELS``'
         values), or None to log none of them. Messages without a level are
         always logged, at INFO. With any level, the server's stderr is passed
         through too."""
