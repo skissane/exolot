@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import subprocess
@@ -8,6 +9,8 @@ import pytest
 
 from exolot import cli
 from exolot.analyze import AnalysisSession, collect_files, language_id
+from exolot.config import Config
+from exolot.exclude import Exclude
 from exolot.server import Server, ServerError
 from tests.conftest import git
 
@@ -42,6 +45,26 @@ def test_collect_files_respects_gitignore(tmp_path):
     (tmp_path / "kept.py").write_text("x = 1\n")
     names = {f.name for f in collect_files([tmp_path])}
     assert names == {".gitignore", "kept.py"}
+
+
+def test_collect_files_excludes_by_filename_glob(tmp_path):
+    (tmp_path / "a.m").write_text("x = 1\n")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.m").write_text("x = 1\n")
+    (tmp_path / "sub" / "kept.py").write_text("x = 1\n")
+    files = collect_files([tmp_path], exclude=[Exclude("*.m", tmp_path)])
+    assert files == [(tmp_path / "sub" / "kept.py").resolve()]
+
+
+def test_collect_files_excludes_by_relative_path_glob(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "gen").mkdir()
+    (tmp_path / "gen" / "skip.py").write_text("x = 1\n")
+    (tmp_path / "sub" / "gen").mkdir(parents=True)
+    (tmp_path / "sub" / "gen" / "keep.py").write_text("x = 1\n")
+    monkeypatch.chdir(tmp_path)
+    files = collect_files([tmp_path], exclude=[Exclude("gen/**", tmp_path)])
+    assert files == [(tmp_path / "sub" / "gen" / "keep.py").resolve()]
 
 
 def test_session_collects_final_diagnostics(tmp_path):
@@ -724,6 +747,59 @@ def test_cli_analyze_repo_resolves_local_options_before_changing_directory(repo,
     assert status in (0, 1)
     capsys.readouterr()
     assert calls[0][2] == str(tmp_path / "java")
+
+
+def test_cli_analyze_repo_excludes_relative_to_the_clone(repo, tmp_path, monkeypatch, capsys):
+    _fake_server(tmp_path, monkeypatch)
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["analyze-repo", "repo", "--exclude", "sub/*"]) == 1
+    assert capsys.readouterr().out == "a.py:1:3: warning [fake:S1] python issue\n"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+def test_collect_files_excludes_symlinks_by_their_listed_path(tmp_path, monkeypatch):
+    outside = tmp_path / "outside.py"
+    outside.write_text("x = 1\n")
+    (tmp_path / "proj" / "vendor").mkdir(parents=True)
+    (tmp_path / "proj" / "vendor" / "link.py").symlink_to(outside)
+    (tmp_path / "proj" / "kept.py").write_text("x = 1\n")
+    monkeypatch.chdir(tmp_path / "proj")
+    files = collect_files([Path()], [Exclude("vendor/**", tmp_path / "proj")])
+    assert files == [(tmp_path / "proj" / "kept.py").resolve()]
+
+
+def test_cli_config_excludes_are_relative_to_the_config_file(tmp_path, monkeypatch):
+    config_dir = tmp_path / "sub"
+    config_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+    patterns = cli._exclude_patterns(
+        argparse.Namespace(exclude=["*.m"]),
+        Config(exclude=("gen/**",), path=config_dir / ".exolot.toml"),
+    )
+    assert patterns == [Exclude("gen/**", config_dir), Exclude("*.m", tmp_path)]
+
+
+@pytest.mark.parametrize("glob", ["", "/"])
+def test_cli_rejects_an_empty_exclude(glob, capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--exclude", glob])
+    assert exc.value.code == 2
+    assert "would match nothing" in capsys.readouterr().err
+
+
+def test_cli_excludes_without_a_config_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert cli._exclude_patterns(argparse.Namespace(exclude=["*.m"]), Config()) == [Exclude("*.m", tmp_path)]
+
+
+def test_cli_exclude_is_relative_to_the_current_directory(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "src" / "gen").mkdir(parents=True)
+    (tmp_path / "src" / "gen" / "a.py").write_text("x = 1\n")
+    (tmp_path / "src" / "b.py").write_text("x = 1\n")
+    monkeypatch.chdir(tmp_path / "src")
+    files = collect_files([Path()], cli._exclude_patterns(argparse.Namespace(exclude=["gen/*"]), Config()))
+    assert files == [(tmp_path / "src" / "b.py").resolve()]
 
 
 def _fake_clone(source, dest, ref=None):
