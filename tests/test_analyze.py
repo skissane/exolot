@@ -270,7 +270,8 @@ def test_cli_markdown_paths_are_relative_to_the_repo_root(tmp_path, monkeypatch,
     cli.main(["--format", "markdown", "--link-template", "u/{path}", "--workspace", str(repo), "a.py", str(outside)])
     out = capsys.readouterr().out
     assert "| [sub/a.py:1](u/sub/a.py) |" in out
-    assert "| [../../b.py:1](u/../../b.py) |" in out
+    assert f"[{str(outside).replace('_', '\\_')}:1]" in out
+    assert f"(u/{outside})" in out
 
 
 def _annotations(err):
@@ -349,7 +350,7 @@ def test_cli_diff_base_marks_issues_on_changed_lines(repo, tmp_path, monkeypatch
     monkeypatch.chdir(repo / "sub")
     assert cli.main(["--diff-base", "master", "--format", "json", "--workspace", str(repo), str(repo)]) == 1
     assert [(f["path"], f["changed"]) for f in json.loads(capsys.readouterr().out)] == [
-        (str(Path("../a.py")), True),
+        (str(repo / "a.py"), True),
         ("b.py", False),
     ]
 

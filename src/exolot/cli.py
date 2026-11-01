@@ -691,7 +691,10 @@ def _report_statistics(issues: list[Issue], report: _Report, fmt: str, names: di
 
 def _display_path(path: Path) -> str:
     try:
-        return os.path.relpath(path)
+        relpath = os.path.relpath(path)
+        if Path(relpath).parts[:1] == ("..",):
+            return str(path if path.is_absolute() else path.absolute())
+        return relpath
     except ValueError:  # different drive on Windows
         return str(path)
 
