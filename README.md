@@ -55,7 +55,8 @@ cause and says in the summary line how many files weren't analyzed, e.g.
 `0 issue(s) in 12 file(s) analyzed; 30 C# file(s) not analyzed (analyzer failed)`.
 The causes it spots are an analyzer the server couldn't download or load, an
 analyzer that failed (e.g. C# analysis needs `dotnet` installed), and C/C++
-files without a compilation database. The `markdown` and `github-comment`
+files without a compilation database; it also warns about the errors and
+warnings the server shows, such as not finding the Node.js it needs. The `markdown` and `github-comment`
 formats show these warnings above the findings, and `sarif` as the run's tool
 execution notifications. `--log-level error` shows the server's own account
 of what went wrong. They're warnings, not errors, so they don't change the

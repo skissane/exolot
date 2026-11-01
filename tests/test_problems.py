@@ -68,13 +68,21 @@ def test_find_counts_each_file_towards_the_first_problem():
         Path("d.py"): "python",
         Path("e.java"): "java",
         Path("f.txt"): "plaintext",
+        Path("g.vue"): "vue",
     }
-    states = {"C": PLUGIN_DOWNLOADING, "C#": PLUGIN_ACTIVE, "Python": PLUGIN_SYNCED, "Java": PLUGIN_FAILED}
+    states = {
+        "JavaScript": PLUGIN_DOWNLOADING,
+        "C": PLUGIN_DOWNLOADING,
+        "C#": PLUGIN_ACTIVE,
+        "Python": PLUGIN_SYNCED,
+        "Java": PLUGIN_FAILED,
+    }
     sensors = {"CFamily": "no database", "OmniSharp": None, "Mystery": "oops"}
-    found = problems.find(files, states, sensors, needs_compilation_database=True)
+    found = problems.find(files, states, sensors, needs_compilation_database=True, messages=["shown"])
     assert [(p.cause, p.reason, p.files) for p in found] == [
         ("the C analyzer couldn't be downloaded", "analyzer unavailable", [Path("a.c")]),
         ("the Java analyzer failed to load", "analyzer unavailable", [Path("e.java")]),
+        ("the JavaScript analyzer couldn't be downloaded", "analyzer unavailable", [Path("g.vue")]),
         (
             "the C/C++/Objective-C analyzer needs a compilation database (compile_commands.json)",
             "no compilation database",
@@ -83,6 +91,7 @@ def test_find_counts_each_file_towards_the_first_problem():
         # CFamily's files are all counted already, so it's left out.
         ("the OmniSharp analyzer failed", "analyzer failed", [Path("c.cs")]),
         ("the Mystery analyzer failed (oops)", "analyzer failed", []),
+        ("shown", "server message", []),
     ]
 
 
@@ -97,10 +106,11 @@ def test_problem_messages():
     assert problem.message() == (
         "the C# analyzer failed, so 2 C# file(s) were not analyzed; use --log-level error for details"
     )
-    assert problem.message(hint=False) == "The C# analyzer failed, so 2 C# file(s) were not analyzed."
+    assert problem.message(hint=False) == "the C# analyzer failed, so 2 C# file(s) were not analyzed"
+    assert problem.sentence() == "The C# analyzer failed, so 2 C# file(s) were not analyzed."
     assert problem.summary() == "2 C# file(s) not analyzed (analyzer failed)"
     unknown = Problem("the X analyzer failed", "analyzer failed")
-    assert unknown.message(hint=False) == "The X analyzer failed, so some files may not have been analyzed."
+    assert unknown.sentence() == "The X analyzer failed, so some files may not have been analyzed."
 
 
 def test_summary():
@@ -110,8 +120,14 @@ def test_summary():
     assert problems.summary(0, 10, []) == "0 issue(s) in 10 file(s) analyzed"
     assert problems.summary(2, 10, [cs, c, unknown], changed=1) == (
         "2 issue(s), 1 on changed lines, in 6 file(s) analyzed; "
-        "3 C# file(s) not analyzed (analyzer failed), 1 C file(s) not analyzed (analyzer unavailable)"
+        "3 C# file(s) not analyzed (analyzer failed), 1 C file(s) not analyzed (analyzer unavailable), "
+        "some files may not have been analyzed (the X analyzer failed)"
     )
+    # A message the server showed is a warning, but not in the summary.
+    shown = Problem("Node.js not found", "server message", may_affect_files=False)
+    assert shown.message() == "Node.js not found"
+    assert Problem("Done.", "server message", may_affect_files=False).sentence() == "Done."
+    assert problems.summary(0, 10, [shown]) == "0 issue(s) in 10 file(s) analyzed"
 
 
 def _session_files(tmp_path):
@@ -133,10 +149,10 @@ def test_session_finds_what_the_server_couldnt_analyze(tmp_path, monkeypatch, ca
         ("the JavaScript analyzer couldn't be downloaded", ["d.js"]),
         ("the C/C++/Objective-C analyzer needs a compilation database (compile_commands.json)", ["c.c"]),
         ('the OmniSharp analyzer failed (Cannot run program "dotnet": Exec failed, error: 2)', ["b.cs"]),
+        # Errors and warnings the server shows the user are warnings too; other messages are info.
+        ("message of type 1", []),
     ]
-    # Errors and warnings the server shows the user are warnings; other messages are info.
     shown = [(r.levelname, r.getMessage()) for r in caplog.records if r.name == "exolot.analyze"]
-    assert ("WARNING", "warning: message of type 1") in shown
     assert ("INFO", "message of type 3") in shown
 
 
@@ -181,7 +197,14 @@ SUMMARY = "in 1 file(s) analyzed; 2 C# file(s) not analyzed (analyzer unavailabl
 def test_cli_warns_about_files_not_analyzed(cli_files, capsys):
     cli.main(cli_files)
     err = capsys.readouterr().err
-    assert f"exolot: warning: {WARNING}; use --log-level error for details" in err
+    assert f"exolot: warning: {WARNING}; use --log-level error for details\n" in err
+    assert f"3 issue(s) {SUMMARY}" in err
+
+
+def test_cli_warns_without_the_hint_when_showing_the_servers_log(cli_files, capsys):
+    cli.main(["--log-level", "error", *cli_files])
+    err = capsys.readouterr().err
+    assert f"exolot: warning: {WARNING}\n" in err
     assert f"3 issue(s) {SUMMARY}" in err
 
 

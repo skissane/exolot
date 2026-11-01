@@ -37,6 +37,7 @@ PLUGINS = {
     "java": "Java",
     "javascript": "JavaScript",
     "javascriptreact": "JavaScript",
+    "vue": "JavaScript",
     "typescript": "TypeScript",
     "typescriptreact": "TypeScript",
     "php": "PHP",
@@ -75,16 +76,27 @@ class Problem:
     label: str | None = None  # the languages, e.g. "C#", or None if unknown
     languages: tuple[str, ...] = ()  # the VS Code language ids of the files it affects
     files: list[Path] = field(default_factory=list)
+    # False for a message the server showed, which may not be about analysis.
+    may_affect_files: bool = True
 
     def message(self, *, hint: bool = True) -> str:
-        """A sentence about it, with the hint to see the server's log if hint."""
+        """A warning about it, with the hint to see the server's log if hint."""
+        if not self.may_affect_files:
+            return self.cause
         if self.files:
             text = f"{self.cause}, so {len(self.files)} {self.label} file(s) were not analyzed"
         else:
             text = f"{self.cause}, so some files may not have been analyzed"
-        return f"{text}; use --log-level error for details" if hint else f"{text[0].upper()}{text[1:]}."
+        return f"{text}; use --log-level error for details" if hint else text
+
+    def sentence(self) -> str:
+        """The warning as a sentence, without the hint, for a report."""
+        text = self.message(hint=False)
+        return f"{text[0].upper()}{text[1:]}" + ("" if text.endswith(".") else ".")
 
     def summary(self) -> str:
+        if not self.files:
+            return f"some files may not have been analyzed ({self.cause})"
         return f"{len(self.files)} {self.label} file(s) not analyzed ({self.reason})"
 
 
@@ -93,11 +105,13 @@ def find(
     plugin_states: Mapping[str, int],
     sensor_failures: Mapping[str, str | None],
     needs_compilation_database: bool,
+    messages: Iterable[str] = (),
 ) -> list[Problem]:
     """The problems that kept the server from analyzing some of files (each
     one's path and VS Code language id), from the states of its plugins (by
     name), the sensors that failed (by name, with the reason if known) and
-    whether it asked for a compilation database. Each file counts towards the
+    whether it asked for a compilation database, followed by the errors and
+    warnings it showed (messages), which may not be about analysis. Each file counts towards the
     first problem that affects it; a problem that turns out to affect none of
     files is left out, unless it's a sensor whose files are unknown."""
     problems = []
@@ -122,7 +136,8 @@ def find(
         problem = next((p for p in problems if language in p.languages), None)
         if problem is not None:
             problem.files.append(path)
-    return [p for p in problems if p.files or not p.languages]
+    found = [p for p in problems if p.files or not p.languages]
+    return found + [Problem(message, "server message", may_affect_files=False) for message in messages]
 
 
 def failed_sensor(message: str) -> str | None:
@@ -164,7 +179,7 @@ def summary(issue_count: int, file_count: int, problems: Iterable[Problem], chan
     """The summary line: how many issues were found (and how many of them on
     changed lines, if changed isn't None) in how many of file_count files,
     and how many files weren't analyzed because of problems."""
-    problems = [p for p in problems if p.files]
+    problems = [p for p in problems if p.may_affect_files]
     text = f"{issue_count} issue(s)"
     if changed is not None:
         text += f", {changed} on changed lines,"

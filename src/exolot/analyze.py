@@ -190,6 +190,7 @@ class AnalysisSession:
         self._sensor_failures: dict[str, str | None] = {}
         self._failed_sensor: str | None = None  # awaiting its stack trace
         self._needs_compilation_database = False
+        self._messages: list[str] = []  # the errors and warnings it showed
         self._shutting_down = False
 
     def __enter__(self) -> AnalysisSession:
@@ -332,7 +333,7 @@ class AnalysisSession:
         when it can't find the Node.js it needs to analyze JavaScript."""
         message = str(params.get("message", "")).strip()
         if params.get("type") in (1, 2):  # Error, Warning
-            log.warning("warning: %s", message)
+            self._messages.append(message)
         else:
             log.info("%s", message)
 
@@ -404,7 +405,11 @@ class AnalysisSession:
         the files it would have analyzed."""
         languages = {path: language_id(path) for path in files}
         return problems.find(
-            languages, self._plugin_states(timeout), self._sensor_failures, self._needs_compilation_database
+            languages,
+            self._plugin_states(timeout),
+            self._sensor_failures,
+            self._needs_compilation_database,
+            self._messages,
         )
 
     def _plugin_states(self, timeout: float) -> dict[str, int]:

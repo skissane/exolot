@@ -380,7 +380,8 @@ def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[
             issues = [i for i in issues if _on_changed_lines(i, changes)]
         unanalyzed = session.unanalyzed(inputs.files)
         for problem in unanalyzed:
-            print(f"exolot: warning: {problem.message()}", file=sys.stderr)
+            # With --log-level, the server's log already shows the details.
+            print(f"exolot: warning: {problem.message(hint=args.log_level is None)}", file=sys.stderr)
         # Report before the server shuts down, which can take a few seconds.
         _report_any(session, issues, args, inputs, unanalyzed)
     return issues
@@ -425,7 +426,7 @@ class _Report:
     def markdown_warnings(self) -> list[str]:
         """Markdown saying why files weren't analyzed, if any weren't,
         followed by a blank line."""
-        return markdown.warnings_alert([p.message(hint=False) for p in self.unanalyzed])
+        return markdown.warnings_alert([p.sentence() for p in self.unanalyzed])
 
 
 def _report(
@@ -495,7 +496,7 @@ def _report_comment(
         preamble=settings.preamble,
         commit=_head_commit(),
         run_url=actions[1] if actions else None,
-        warnings=[p.message(hint=False) for p in report.unanalyzed],
+        warnings=[p.sentence() for p in report.unanalyzed],
     )
     sys.stdout.write(body)
     sys.stdout.flush()
@@ -548,7 +549,7 @@ def _report_sarif(issues: list[Issue], report: _Report, names: dict[str, str]) -
     # %SRCROOT% can only stand for one directory. GitHub code scanning doesn't
     # need it defined, as it takes paths to be relative to the checkout.
     src_root = roots.pop().as_uri() + "/" if len(roots) == 1 else None
-    warnings = [p.message(hint=False) for p in report.unanalyzed]
+    warnings = [p.sentence() for p in report.unanalyzed]
     log = sarif.log(issues, __version__, names, _artifact_location, src_root, warnings)
     json.dump(log, sys.stdout, indent=2)
     print()
