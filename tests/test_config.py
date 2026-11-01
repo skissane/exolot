@@ -57,3 +57,15 @@ def test_directories_named_like_config_files_are_skipped(tmp_path):
     (tmp_path / ".exolot.toml").mkdir()
     (tmp_path / "pyproject.toml").mkdir()
     assert config.load(tmp_path) == Config()
+
+
+def test_unreadable_config(tmp_path, monkeypatch):
+    (tmp_path / ".exolot.toml").write_text("")
+
+    def fail(self, *args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    # Rather than chmod, which doesn't stop root or work on Windows.
+    monkeypatch.setattr(config.Path, "open", fail)
+    with pytest.raises(ConfigError, match="can't read .*Permission denied"):
+        config.load(tmp_path)
