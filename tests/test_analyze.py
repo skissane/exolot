@@ -597,6 +597,10 @@ def test_cli_server_errors_exit_2(tmp_path, monkeypatch, capsys, command):
     assert "exolot: no download for you" in capsys.readouterr().err
 
 
+# How text output shows sub/b.py, relative to the current directory.
+B_PY = str(Path("sub", "b.py"))
+
+
 def test_cli_analyze_repo_analyzes_a_temporary_clone(repo, tmp_path, monkeypatch, capsys):
     _fake_server(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
@@ -604,7 +608,7 @@ def test_cli_analyze_repo_analyzes_a_temporary_clone(repo, tmp_path, monkeypatch
     monkeypatch.setattr(cli.clone, "clone", lambda *args, real=cli.clone.clone: clones.append(args[1]) or real(*args))
     assert cli.main(["analyze-repo", "repo"]) == 1
     captured = capsys.readouterr()
-    assert captured.out == "a.py:1:3: warning [fake:S1] python issue\nsub/b.py:1:3: warning [fake:S1] python issue\n"
+    assert captured.out == f"a.py:1:3: warning [fake:S1] python issue\n{B_PY}:1:3: warning [fake:S1] python issue\n"
     assert f"analyzing repo at {_head(repo)}" in captured.err
     assert "2 issue(s) in 2 file(s) analyzed" in captured.err
     assert Path.cwd() == tmp_path
@@ -616,7 +620,7 @@ def test_cli_analyze_repo_analyzes_paths_in_the_repo_and_keeps_the_clone(repo, t
     _fake_server(tmp_path, monkeypatch)
     keep = tmp_path / "kept"
     assert cli.main(["analyze-repo", str(repo), "sub", "--ref", "master", "--keep", str(keep)]) == 1
-    assert capsys.readouterr().out == "sub/b.py:1:3: warning [fake:S1] python issue\n"
+    assert capsys.readouterr().out == f"{B_PY}:1:3: warning [fake:S1] python issue\n"
     assert (keep / "a.py").exists()
 
 

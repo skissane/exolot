@@ -219,7 +219,7 @@ def _run_analyze_repo(args: argparse.Namespace) -> int:
     """Clone the repository and analyze it from its root, so paths, the
     config file and the commit shown are the clone's."""
     for path in args.paths:
-        if path.is_absolute() or ".." in path.parts:
+        if path.anchor or ".." in path.parts:  # anchor: also "/x" and "C:x" on Windows
             print(f"exolot: {path} isn't a path inside the repository", file=sys.stderr)
             return 2
     # Options naming local files are relative to the current directory, not the clone.
