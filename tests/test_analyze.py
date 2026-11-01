@@ -762,7 +762,7 @@ def test_cli_log_level(tmp_path, monkeypatch, capfd, caplog, args, expected):
         assert not logs
         assert "fake server stderr" not in err
     # The server module's own logger isn't the server's log, so --log-level doesn't change it.
-    assert not logging.getLogger("exolot.server").isEnabledFor(logging.DEBUG)
+    assert logging.getLogger("exolot.server").level == logging.NOTSET
 
 
 def test_cli_rejects_unknown_log_level(capsys):
