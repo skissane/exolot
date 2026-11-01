@@ -1,4 +1,5 @@
 import logging
+import json
 from pathlib import Path
 
 import pytest
@@ -196,6 +197,38 @@ def test_cli_doesnt_start_the_server_when_every_file_is_skipped(c_project, monke
     assert err.endswith(
         "0 issue(s) in 0 file(s) analyzed; 2 C/C++/Objective-C file(s) not analyzed (no compilation database)\n"
     )
+
+
+@pytest.mark.parametrize(
+    ("flags", "report_kind"),
+    [
+        (["--format", "json"], "json"),
+        (["--format", "sarif"], "sarif"),
+        (["--format", "markdown"], "markdown"),
+        (["--format", "github-comment"], "github-comment"),
+        (["--statistics", "--format", "json"], "json"),
+        (["--statistics", "--format", "markdown"], "markdown"),
+    ],
+)
+def test_cli_prints_an_empty_report_when_every_file_is_skipped(c_project, capsys, flags, report_kind):
+    assert cli.main([*flags, "b.c", "d.cpp"]) == 0
+    captured = capsys.readouterr()
+    assert "warning: no compilation database" in captured.err
+    if report_kind == "json":
+        assert json.loads(captured.out) == []
+    elif report_kind == "sarif":
+        log = json.loads(captured.out)
+        assert log["version"] == "2.1.0"
+        assert len(log["runs"]) == 1
+        assert log["runs"][0]["results"] == []
+        notifications = log["runs"][0]["invocations"][0]["toolExecutionNotifications"]
+        assert notifications[0]["level"] == "warning"
+    elif report_kind == "markdown":
+        assert "No issues found.\n" in captured.out
+        assert "> [!WARNING]" in captured.out
+    else:
+        assert "No issues found.\n" in captured.out
+        assert "> [!WARNING]" in captured.out
 
 
 def test_empty_config_compile_commands_is_an_error(tmp_path):
