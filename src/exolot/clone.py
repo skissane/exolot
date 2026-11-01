@@ -38,9 +38,6 @@ def clone(source: str, dest: Path, ref: str | None = None) -> str:
 # running hooks, so exolot run from a hook would otherwise clone into that.
 _REPO_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR")
 
-# The user name and password of a URL in a message.
-_USERINFO = re.compile(r"(?<=://)[^/@\s]+@")
-
 
 def _git(*args: str) -> str:
     env = {k: v for k, v in os.environ.items() if k not in _REPO_ENV}
@@ -49,9 +46,25 @@ def _git(*args: str) -> str:
     except OSError as e:
         raise CloneError(f"can't run git: {e}") from None
     if proc.returncode != 0:
-        detail = _USERINFO.sub("", proc.stderr.strip()) or f"exit status {proc.returncode}"
+        detail = _without_credentials(proc.stderr.strip()) or f"exit status {proc.returncode}"
         raise CloneError(f"git {args[2] if args[0] == '-C' else args[0]} failed: {detail}")
     return proc.stdout
+
+
+def _without_credentials(message: str) -> str:
+    """message with the user name and password left out of any URL in it,
+    even one in quotes."""
+    return "".join(_word_without_credentials(word) for word in re.split(r"(\s+)", message))
+
+
+def _word_without_credentials(word: str) -> str:
+    start = word.find("://")
+    if start < 0:
+        return word
+    start += 3
+    end = word.find("/", start)
+    at = word.rfind("@", start, len(word) if end < 0 else end)
+    return word if at < 0 else word[:start] + word[at + 1 :]
 
 
 def github_link_template(source: str, commit: str) -> str | None:

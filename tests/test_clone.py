@@ -104,3 +104,15 @@ def test_clone_ignores_the_repository_git_points_hooks_at(repo, tmp_path, monkey
     assert clone.clone(str(repo), tmp_path / "clone") == head
     assert (tmp_path / "clone" / "a.py").exists()
     assert not (other / "a.py").exists()
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("fatal: 'https://u:p@ss@host/r' not found", "fatal: 'https://host/r' not found"),
+        ("see https://host/a@b and ssh://git@host", "see https://host/a@b and ssh://host"),
+        ("no urls here", "no urls here"),
+    ],
+)
+def test_without_credentials(message, expected):
+    assert clone._without_credentials(message) == expected
