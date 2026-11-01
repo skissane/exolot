@@ -228,8 +228,8 @@ def _run_analyze_repo(args: argparse.Namespace) -> int:
         args.rules = args.rules.resolve()
     for name in ("java", "node"):
         value = getattr(args, name)
-        # A path, such as ./java, rather than a name to look up on PATH.
-        if value is not None and any(sep and sep in value for sep in (os.sep, os.altsep)):
+        # A path, such as ./java (or C:java on Windows), rather than a name to look up on PATH.
+        if value is not None and os.path.dirname(value):
             setattr(args, name, str(Path(value).resolve()))
     if args.keep is not None:
         if args.keep.exists() and (not args.keep.is_dir() or any(args.keep.iterdir())):
