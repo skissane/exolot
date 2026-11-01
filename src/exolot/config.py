@@ -67,7 +67,7 @@ def load(start: Path) -> Config:
     compile_commands = table.get("compile-commands")
     return Config(
         preamble=table.get("preamble"),
-        compile_commands=path.parent.joinpath(compile_commands).resolve() if compile_commands else None,
+        compile_commands=None if compile_commands is None else path.parent.joinpath(compile_commands).resolve(),
         path=path,
     )
 

@@ -230,6 +230,12 @@ def _run_analyze(args: argparse.Namespace) -> int:
     if not inputs.files:
         print("exolot: no files to analyze", file=sys.stderr)
         return 0
+    if not inputs.to_analyze():
+        # Don't start the server for nothing.
+        assert inputs.skipped is not None
+        print(f"exolot: warning: {inputs.skipped.message()}", file=sys.stderr)
+        print(problems.summary(0, len(inputs.files), [inputs.skipped]), file=sys.stderr)
+        return 0
     server = _ensure_server(args)
     if server is None:
         return 2
@@ -404,12 +410,11 @@ def _find_compilation_database(args: argparse.Namespace, inputs: _Inputs) -> Non
     cfamily = [f for f in inputs.files if language_id(f) in languages]
     if not cfamily:
         return
-    found = compiledb.find(args.paths)
-    if len(found) == 1:
-        log.info("using the compilation database %s", found[0])
-        inputs.compile_commands = found[0]
-        return
-    if found:
+    found = compiledb.find(cfamily)
+    skipped = found.pop(None, [])
+    if len(found) > 1:
+        # The server takes one database for the workspace.
+        skipped = cfamily
         cause = (
             f"there's more than one compilation database ({', '.join(map(str, found))}); "
             "choose one with --compile-commands"
@@ -419,9 +424,13 @@ def _find_compilation_database(args: argparse.Namespace, inputs: _Inputs) -> Non
             f"no compilation database ({compiledb.NAME}) was found; make one, e.g. with bear or CMake, "
             "or pass --compile-commands"
         )
-    inputs.skipped = problems.Problem(
-        cause, "no compilation database", label, languages, files=cfamily, in_server_log=False
-    )
+        if found:
+            (inputs.compile_commands,) = found
+            log.info("using the compilation database %s", inputs.compile_commands)
+    if skipped:
+        inputs.skipped = problems.Problem(
+            cause, "no compilation database", label, languages, files=skipped, in_server_log=False
+        )
 
 
 def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[Issue]:

@@ -12,25 +12,22 @@ NAME = "compile_commands.json"
 CANDIDATES = (Path(NAME), Path("build") / NAME)
 
 
-def find(paths: list[Path]) -> list[Path]:
-    """The compilation databases for paths (files or directories to
-    analyze): for each one, the nearest in it or its parents (see CANDIDATES),
-    but no higher than the git repository it's in. Each database once, in
-    the order found."""
-    found: dict[Path, None] = {}
-    for path in paths:
-        path = path.resolve()
-        database = _nearest(path if path.is_dir() else path.parent)
-        if database is not None:
-            found[database] = None
-    return list(found)
+def find(files: list[Path]) -> dict[Path | None, list[Path]]:
+    """The compilation database for each of files, with the files it's for:
+    the nearest one in the file's directory or the directories above it (see
+    CANDIDATES), but no higher than the git repository it's in. None maps to
+    the files without one."""
+    # Many files share directories, so look in each directory only once.
+    nearest: dict[Path, Path | None] = {}
 
+    def lookup(directory: Path) -> Path | None:
+        if directory not in nearest:
+            here = next((directory / c for c in CANDIDATES if (directory / c).is_file()), None)
+            at_top = (directory / ".git").exists() or directory.parent == directory
+            nearest[directory] = here or (None if at_top else lookup(directory.parent))
+        return nearest[directory]
 
-def _nearest(start: Path) -> Path | None:
-    for d in (start, *start.parents):
-        for candidate in CANDIDATES:
-            if (d / candidate).is_file():
-                return d / candidate
-        if (d / ".git").exists():
-            return None
-    return None
+    found: dict[Path | None, list[Path]] = {}
+    for path in files:
+        found.setdefault(lookup(path.resolve().parent), []).append(path)
+    return found

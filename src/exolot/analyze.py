@@ -63,6 +63,8 @@ LANGUAGE_IDS = {
     ".cc": "cpp",
     ".cxx": "cpp",
     ".hpp": "cpp",
+    ".m": "objective-c",
+    ".mm": "objective-cpp",
     ".yaml": "yaml",
     ".yml": "yaml",
     ".json": "json",

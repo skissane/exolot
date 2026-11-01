@@ -30,6 +30,7 @@ PLUGINS = {
     "cpp": "C++",
     "csharp": "C#",
     "objective-c": "Objective-C",
+    "objective-cpp": "Objective-C",
     "css": "CSS",
     "scss": "CSS",
     "less": "CSS",
@@ -56,7 +57,7 @@ PLUGINS = {
 # sensor's name alone, as there's no telling which files they affect.
 SENSORS = {
     "OmniSharp": ("C#", ("csharp",)),
-    "CFamily": ("C/C++/Objective-C", ("c", "cpp", "objective-c")),
+    "CFamily": ("C/C++/Objective-C", ("c", "cpp", "objective-c", "objective-cpp")),
 }
 CFAMILY = SENSORS["CFamily"]
 

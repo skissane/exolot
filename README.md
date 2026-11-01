@@ -78,12 +78,14 @@ or CMake (`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`). exolot uses, in this order:
 1. `--compile-commands PATH`;
 2. the config file's `compile-commands` setting (see [Configuration](#configuration));
 3. the `compile_commands.json` or `build/compile_commands.json` nearest each
-   path being analyzed, in it or the directories above it, up to the root of
-   the git repository it's in. `--log-level info` shows which one it found.
+   C, C++ or Objective-C file, in its directory or the directories above it,
+   up to the root of the git repository it's in (or the filesystem's root,
+   outside one, as clangd does). `--log-level info` shows which one it found.
 
-If it finds none, or a different one for different paths, exolot doesn't send
-the C, C++ and Objective-C files to the server, and warns that they weren't
-analyzed. A path given with `--compile-commands` or the config file that
+The server takes one database for all the files, so if different files find
+different ones, exolot doesn't send any C, C++ or Objective-C files to the
+server; it also doesn't send the files that find none. It warns that those
+files weren't analyzed. A path given with `--compile-commands` or the config file that
 doesn't exist is an error (exit status 2).
 
 ### Analyzing a repository without cloning it yourself
