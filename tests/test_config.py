@@ -10,9 +10,13 @@ def test_no_config(tmp_path):
 
 
 def test_exolot_toml_comes_before_pyproject(tmp_path):
-    (tmp_path / ".exolot.toml").write_text('preamble = "from exolot.toml"\n')
+    (tmp_path / ".exolot.toml").write_text('preamble = "from exolot.toml"\nexclude = ["*.m"]\n')
     (tmp_path / "pyproject.toml").write_text('[tool.exolot]\npreamble = "from pyproject"\n')
-    assert config.load(tmp_path) == Config(preamble="from exolot.toml", path=tmp_path / ".exolot.toml")
+    assert config.load(tmp_path) == Config(
+        preamble="from exolot.toml",
+        exclude=("*.m",),
+        path=tmp_path / ".exolot.toml",
+    )
 
 
 def test_pyproject_without_a_table_is_skipped(tmp_path):
@@ -39,6 +43,8 @@ def test_search_stops_at_the_repo_root(tmp_path):
     ("name", "text", "error"),
     [
         (".exolot.toml", "preamble = 1\n", "preamble should be a str"),
+        (".exolot.toml", 'exclude = "x"\n', "exclude should be a list"),
+        (".exolot.toml", "exclude = [1]\n", "exclude should be a list of str"),
         (".exolot.toml", "nope = 1\n", "unknown setting 'nope'"),
         (".exolot.toml", "preamble = \n", "Invalid value"),
         ("pyproject.toml", "[tool.exolot]\nnope = 1\n", "[tool.exolot]: unknown setting 'nope'"),

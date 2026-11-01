@@ -136,6 +136,11 @@ status 2 if the repository or REF can't be fetched.
   (otherwise the server looks for `node` on the `PATH`).
 - `--compile-commands PATH` gives the compilation database for C, C++ and
   Objective-C files (see [C, C++ and Objective-C](#c-c-and-objective-c)).
+- `--exclude GLOB` skips files matching `GLOB`; repeat it to skip more.
+  Patterns match paths relative to the current git repository's root (or the
+  current directory outside a repository), `**` matches across directories, and
+  a pattern without `/` matches file names in any directory (for example
+  `--exclude '*.m'`).
 - `--rules FILE` reads rule settings from a JSON file, in the same format as
   VS Code's `sonarlint.rules` setting, e.g.
   `{"python:S1764": {"level": "off"}}`.
@@ -242,6 +247,9 @@ status 2). The settings are:
 - `compile-commands`: the C/C++ compilation database, relative to the config
   file's directory, e.g. `compile-commands = "build/compile_commands.json"`.
   `--compile-commands` overrides it.
+
+- `exclude`: a list of file globs to skip, relative to the config file's
+  directory. `--exclude` adds to it.
 
 ## Workflow annotations
 

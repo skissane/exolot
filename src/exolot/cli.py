@@ -84,6 +84,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analysis_opts.add_argument("--node", help="Node.js executable for JavaScript/TypeScript analysis")
     analysis_opts.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="exclude files matching this glob; repeat to exclude more",
+    )
+    analysis_opts.add_argument(
         "--compile-commands",
         type=Path,
         metavar="PATH",
@@ -381,16 +388,32 @@ def _load_inputs(args: argparse.Namespace) -> _Inputs:
     rule settings, the changes since --diff-base, the config file's settings
     and the compilation database. Raises OSError, ValueError, GitError or
     ConfigError."""
-    files = collect_files(args.paths)
+    settings = config.load(Path.cwd())
+    files = collect_files(args.paths, exclude=_exclude_patterns(args, settings))
     rules = json.loads(args.rules.read_text()) if args.rules else None
     changes = gitdiff.changes_since(args.diff_base) if args.diff_base is not None else None
-    settings = config.load(Path.cwd())
     if changes is not None and args.changed_only:
         changed_files = changes.files()
         files = [f for f in files if f in changed_files]
     inputs = _Inputs(files, rules, changes, settings)
     _find_compilation_database(args, inputs)
     return inputs
+
+
+def _exclude_patterns(args: argparse.Namespace, settings: config.Config) -> list[str]:
+    root = _repo_root(Path.cwd()) or Path.cwd().resolve()
+    configured = [_prefix_glob(pattern, root, settings.path.parent) for pattern in settings.exclude]
+    return configured + args.exclude
+
+
+def _prefix_glob(pattern: str, root: Path, base: Path) -> str:
+    if pattern.startswith("/"):
+        return pattern.removeprefix("/")
+    try:
+        prefix = base.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return pattern
+    return f"{prefix}/{pattern}" if prefix not in ("", ".") else pattern
 
 
 def _find_compilation_database(args: argparse.Namespace, inputs: _Inputs) -> None:

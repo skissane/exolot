@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import threading
 import time
+from fnmatch import fnmatchcase
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -114,8 +115,9 @@ def language_id(path: Path) -> str:
     return LANGUAGE_IDS.get(path.suffix.lower(), "plaintext")
 
 
-def collect_files(paths: list[Path]) -> list[Path]:
+def collect_files(paths: list[Path], exclude: list[str] | tuple[str, ...] = ()) -> list[Path]:
     """Expand directories into the files under them, skipping ignored and binary files."""
+    root = _repo_root(Path.cwd()) or Path.cwd().resolve()
     result: list[Path] = []
     seen: set[Path] = set()
     for path in paths:
@@ -124,7 +126,9 @@ def collect_files(paths: list[Path]) -> list[Path]:
         candidates = [path] if path.is_file() else _list_dir(path)
         for f in candidates:
             f = f.resolve()
-            if f not in seen and _is_analyzable(f):
+            if f in seen or _is_excluded(f, root, exclude):
+                continue
+            if _is_analyzable(f):
                 seen.add(f)
                 result.append(f)
     return result
@@ -155,6 +159,45 @@ def _is_analyzable(path: Path) -> bool:
             return b"\0" not in f.read(8192)
     except OSError:
         return False
+
+
+def _is_excluded(path: Path, root: Path, patterns: list[str] | tuple[str, ...]) -> bool:
+    if not patterns:
+        return False
+    rel = _relative_path(path, root)
+    name = path.name
+    return any(_match_pattern(rel, name, pattern) for pattern in patterns)
+
+
+def _relative_path(path: Path, root: Path) -> str:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _match_pattern(path: str, name: str, pattern: str) -> bool:
+    if "/" not in pattern:
+        return fnmatchcase(name, pattern)
+    return _match_parts(path.split("/"), pattern.split("/"))
+
+
+def _match_parts(path_parts: list[str], pattern_parts: list[str]) -> bool:
+    if not pattern_parts:
+        return not path_parts
+    pattern = pattern_parts[0]
+    if pattern == "**":
+        return any(_match_parts(path_parts[i:], pattern_parts[1:]) for i in range(len(path_parts) + 1))
+    if not path_parts or not fnmatchcase(path_parts[0], pattern):
+        return False
+    return _match_parts(path_parts[1:], pattern_parts[1:])
+
+
+def _repo_root(directory: Path) -> Path | None:
+    for d in (directory.resolve(), *directory.resolve().parents):
+        if (d / ".git").exists():
+            return d
+    return None
 
 
 class AnalysisSession:

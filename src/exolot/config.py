@@ -18,12 +18,14 @@ class Config:
     preamble: str | None = None
     # The C/C++ compilation database, made absolute against the config file's directory.
     compile_commands: Path | None = None
+    # Glob patterns of files to skip.
+    exclude: tuple[str, ...] = ()
     # The file the settings came from, if any.
     path: Path | None = None
 
 
 # Each setting's name in the file, with its type there.
-SETTINGS = {"preamble": str, "compile-commands": str}
+SETTINGS = {"preamble": str, "compile-commands": str, "exclude": list}
 PYPROJECT = "pyproject.toml"
 
 
@@ -64,10 +66,14 @@ def load(start: Path) -> Config:
             raise ConfigError(f"{where}: unknown setting {key!r} (known: {', '.join(SETTINGS)})")
         if not isinstance(value, SETTINGS[key]):
             raise ConfigError(f"{where}: {key} should be a {SETTINGS[key].__name__}")
+        if key == "exclude" and any(not isinstance(v, str) for v in value):
+            raise ConfigError(f"{where}: exclude should be a list of str")
     compile_commands = table.get("compile-commands")
+    exclude = tuple(table.get("exclude", []))
     return Config(
         preamble=table.get("preamble"),
         compile_commands=None if compile_commands is None else path.parent.joinpath(compile_commands).resolve(),
+        exclude=exclude,
         path=path,
     )
 

@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 import subprocess
@@ -8,6 +9,7 @@ import pytest
 
 from exolot import cli
 from exolot.analyze import AnalysisSession, collect_files, language_id
+from exolot.config import Config
 from exolot.server import Server, ServerError
 from tests.conftest import git
 
@@ -42,6 +44,26 @@ def test_collect_files_respects_gitignore(tmp_path):
     (tmp_path / "kept.py").write_text("x = 1\n")
     names = {f.name for f in collect_files([tmp_path])}
     assert names == {".gitignore", "kept.py"}
+
+
+def test_collect_files_excludes_by_filename_glob(tmp_path):
+    (tmp_path / "a.m").write_text("x = 1\n")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.m").write_text("x = 1\n")
+    (tmp_path / "sub" / "kept.py").write_text("x = 1\n")
+    files = collect_files([tmp_path], exclude=["*.m"])
+    assert files == [(tmp_path / "sub" / "kept.py").resolve()]
+
+
+def test_collect_files_excludes_by_relative_path_glob(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "gen").mkdir()
+    (tmp_path / "gen" / "skip.py").write_text("x = 1\n")
+    (tmp_path / "sub" / "gen").mkdir(parents=True)
+    (tmp_path / "sub" / "gen" / "keep.py").write_text("x = 1\n")
+    monkeypatch.chdir(tmp_path)
+    files = collect_files([tmp_path], exclude=["gen/**"])
+    assert files == [(tmp_path / "sub" / "gen" / "keep.py").resolve()]
 
 
 def test_session_collects_final_diagnostics(tmp_path):
@@ -694,6 +716,26 @@ def test_cli_analyze_repo_resolves_local_options_before_changing_directory(repo,
     assert status in (0, 1)
     capsys.readouterr()
     assert calls[0][2] == str(tmp_path / "java")
+
+
+def test_cli_analyze_repo_resolves_excludes_before_changing_directory(repo, tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(cli, "_clone_and_analyze", lambda args: seen.setdefault("exclude", args.exclude) and 0)
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["analyze-repo", "repo", "--exclude", "*.m"]) == 0
+    assert seen["exclude"] == ["*.m"]
+
+
+def test_cli_config_excludes_are_relative_to_the_config_file(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    config_dir = tmp_path / "sub"
+    config_dir.mkdir()
+    monkeypatch.chdir(tmp_path)
+    patterns = cli._exclude_patterns(
+        argparse.Namespace(exclude=["*.m"]),
+        Config(exclude=("gen/**",), path=config_dir / ".exolot.toml"),
+    )
+    assert patterns == ["sub/gen/**", "*.m"]
 
 
 def _fake_clone(source, dest, ref=None):
