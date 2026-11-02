@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from exolot import cli
+from exolot import report as report_module
 from exolot.analyze import AnalysisSession, collect_files, language_id
 from exolot.config import Config
 from exolot.exclude import Exclude
@@ -606,7 +607,7 @@ def test_cli_github_comment_without_git(tmp_path, monkeypatch, capsys):
             raise FileNotFoundError("git")
         return real_run(cmd, *args, **kwargs)
 
-    monkeypatch.setattr(cli.subprocess, "run", run)
+    monkeypatch.setattr(report_module.subprocess, "run", run)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "a.py").write_text("x = 1\n")
     cli.main(["--format", "github-comment", "a.py"])
