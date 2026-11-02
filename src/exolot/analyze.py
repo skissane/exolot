@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from urllib.request import url2pathname
 
 from . import __version__, problems
+from .exclude import Exclude, is_excluded
 from .lsp import LspClient
 from .server import Server
 
@@ -114,8 +115,9 @@ def language_id(path: Path) -> str:
     return LANGUAGE_IDS.get(path.suffix.lower(), "plaintext")
 
 
-def collect_files(paths: list[Path]) -> list[Path]:
-    """Expand directories into the files under them, skipping ignored and binary files."""
+def collect_files(paths: list[Path], exclude: list[Exclude] | tuple[Exclude, ...] = ()) -> list[Path]:
+    """Expand directories into the files under them, skipping ignored and
+    binary files and those that exclude skips, including ones named in paths."""
     result: list[Path] = []
     seen: set[Path] = set()
     for path in paths:
@@ -123,8 +125,13 @@ def collect_files(paths: list[Path]) -> list[Path]:
             raise FileNotFoundError(f"no such file or directory: {path}")
         candidates = [path] if path.is_file() else _list_dir(path)
         for f in candidates:
+            # Match both the path as listed and its target, so that neither
+            # a symlink nor a symlinked directory slips past a glob.
+            listed = f.absolute()
             f = f.resolve()
-            if f not in seen and _is_analyzable(f):
+            if f in seen or is_excluded(listed, exclude) or is_excluded(f, exclude):
+                continue
+            if _is_analyzable(f):
                 seen.add(f)
                 result.append(f)
     return result

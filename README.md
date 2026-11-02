@@ -136,6 +136,17 @@ status 2 if the repository or REF can't be fetched.
   (otherwise the server looks for `node` on the `PATH`).
 - `--compile-commands PATH` gives the compilation database for C, C++ and
   Objective-C files (see [C, C++ and Objective-C](#c-c-and-objective-c)).
+- `--exclude GLOB` skips files matching `GLOB`; repeat it to skip more. As in
+  `.gitignore`, a glob with no `/` except perhaps a trailing one matches a
+  file or directory name at any depth (`--exclude '*.m'`, `--exclude vendor`),
+  and any other glob matches the path relative to the current directory
+  (`--exclude src/generated`; for `analyze-repo`, relative to the repository's
+  root), so it only applies to files under that directory. `**` matches any
+  number of directories, a trailing `/` matches only directories, and
+  excluding a directory skips everything under it. Unlike `.gitignore`,
+  there's no `!` to re-include files. Separate directories with `/`, even on
+  Windows. Matching ignores case on macOS and Windows. Excluded files are skipped even when you name them as `PATH`s, so
+  a hook that passes exolot a list of files still honours the excludes.
 - `--rules FILE` reads rule settings from a JSON file, in the same format as
   VS Code's `sonarlint.rules` setting, e.g.
   `{"python:S1764": {"level": "off"}}`.
@@ -242,6 +253,10 @@ status 2). The settings are:
 - `compile-commands`: the C/C++ compilation database, relative to the config
   file's directory, e.g. `compile-commands = "build/compile_commands.json"`.
   `--compile-commands` overrides it.
+
+- `exclude`: a list of file globs to skip, matched like `--exclude`'s but
+  relative to the config file's directory, e.g.
+  `exclude = ["vendor", "*.m", "generated/**/*.py"]`. `--exclude` adds to it.
 
 ## Workflow annotations
 

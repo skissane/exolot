@@ -143,6 +143,16 @@ def test_cli_doesnt_look_without_c_files(c_project, tmp_path, monkeypatch):
     assert c_project == [None]
 
 
+def test_cli_excludes_cfamily_before_checking_for_a_database(c_project, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(compiledb, "find", lambda paths: pytest.fail("looked for a database"))
+    (tmp_path / ".exolot.toml").write_text('exclude = ["*.c", "*.h"]\n')
+    assert cli.main(["--exclude", "*.cpp", "--exit-zero"]) == 0
+    err = capsys.readouterr().err
+    assert "compilation database" not in err
+    assert "2 issue(s) in 2 file(s) analyzed" in err
+    assert c_project == [None]
+
+
 def test_cli_uses_the_given_database_before_the_configs(c_project, tmp_path):
     given = _database(tmp_path / "given.json")
     configured = _database(tmp_path / "configured.json")
