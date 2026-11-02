@@ -7,6 +7,7 @@ See `README.md` for what exolot does, how it works, and how to run the tests.
 
 CI (`.github/workflows/build.yml`) calls the `justfile`'s recipes rather than running commands inline, so run `just ci` before opening a PR to run everything CI runs.
 `just check` runs every check without fixing anything or running tests, `just fix` applies every autofix, and `just --list` shows the individual recipes.
+`just mypy` (part of `just check`) type-checks `src` with `mypy --strict` (`pyproject.toml`'s `[tool.mypy]` names the files), so new code in `src` needs full type annotations.
 `just lint-workflows` (part of `just check`) runs `jactionlint` over the workflows and `.github/dependabot.yml`, with the rules `.github/jactionlint.yaml` turns on; it shellchecks their `run:` steps only if `shellcheck` is on your `PATH` (it is on GitHub's Ubuntu runners), and otherwise prints a note and skips them.
 Before opening a PR, also run `just patch-coverage`, which runs `just coverage` (tests with a coverage report and `coverage.xml`) and then reports which changed lines since `origin/master` the tests miss; pass another base as its first argument, e.g. `just patch-coverage origin/some-branch`.
 Cover the changed lines it reports where a test is worth it; CI's coverage job shows total coverage in its summary on every push and PR, and the patch coverage report too on PRs, which its `post-patch-coverage` job also posts as a PR comment (`just patch-coverage-post`) on PRs from this repository other than Dependabot's.

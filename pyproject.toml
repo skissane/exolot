@@ -30,6 +30,7 @@ dev = [
     "diff-cover>=11.0.0",
     "jactionlint>=2.4.0",
     "jsonschema>=4.23",
+    "mypy>=2.4.1",
     "pytest>=8",
     "pytest-cov>=7.1.0",
     "ruff>=0.14",
@@ -56,6 +57,9 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "UP", "PLC0415", "RUF100"]
 
 # The repo root, so tests can import the stdlib-only CI scripts in scripts/.
+[tool.mypy]
+files = ["src"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 filterwarnings = ["error"]
