@@ -24,7 +24,7 @@ SENSOR_FAILURE = [
 
 
 def read():
-    length = None
+    length = -1  # read everything if there's no Content-Length
     while True:
         line = sys.stdin.buffer.readline()
         if not line:

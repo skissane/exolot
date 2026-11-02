@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import urllib.error
+from email.message import Message
 from io import BytesIO
 from pathlib import Path
 
@@ -31,7 +32,7 @@ def run(tmp_path, monkeypatch, capsys):
             if fail and method == fail[0] and url.startswith(fail[1]):
                 if len(fail) > 2:
                     raise fail[2]
-                raise urllib.error.HTTPError(url, 403, "Forbidden", {}, BytesIO(b"nope"))
+                raise urllib.error.HTTPError(url, 403, "Forbidden", Message(), BytesIO(b"nope"))
             if url == "https://api.github.com/user":
                 return {"login": "me"}
             if url == "https://api.github.com/repos/o/r/pulls/7":

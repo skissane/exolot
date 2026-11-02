@@ -33,6 +33,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 
 from scripts.github_comments import _opener as github_opener
 
@@ -42,7 +43,9 @@ GITHUB_API = "https://api.github.com"
 _REQUEST_ERRORS = (urllib.error.URLError, OSError, http.client.HTTPException)
 
 
-def _get_json(url: str, headers: dict[str, str], timeout: float, opener=None) -> tuple[int, object]:
+def _get_json(
+    url: str, headers: dict[str, str], timeout: float, opener: urllib.request.OpenerDirector | None = None
+) -> tuple[int, object]:
     """GET ``url`` (with ``opener``, default urlopen's), returning its status and JSON body (``None`` if not JSON)."""
     request = urllib.request.Request(url, headers={"Accept": "application/json", **headers})
     open_ = opener.open if opener else urllib.request.urlopen
@@ -107,7 +110,12 @@ def base_ci_state(repo: str, sha: str, check_name: str, token: str | None, timeo
     return ("succeeded" if conclusion == "success" else "failed"), f"{check_name} {conclusion}"
 
 
-def main(argv=None, *, clock=time.monotonic, sleep=time.sleep) -> None:
+def main(
+    argv: list[str] | None = None,
+    *,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("repo", help="the repository, as owner/name")
     parser.add_argument("sha", help="the PR's base commit")

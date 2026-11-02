@@ -1,9 +1,11 @@
 import io
 import urllib.error
+from email.message import Message
 from unittest import mock
 
 import pytest
 
+from scripts import github_comments
 from scripts import wait_for_base_coverage as w
 
 
@@ -15,7 +17,7 @@ def response(status: int, payload: bytes):
 
 
 def http_error(code: int, payload: bytes = b""):
-    return urllib.error.HTTPError("https://x", code, "err", {}, io.BytesIO(payload))
+    return urllib.error.HTTPError("https://x", code, "err", Message(), io.BytesIO(payload))
 
 
 # _get_json
@@ -115,7 +117,7 @@ def test_base_ci_state(result, expected):
     assert url == "https://api.github.com/repos/o/r/commits/abc/check-runs?check_name=coverage&filter=latest"
     assert headers["Authorization"] == "Bearer tok"
     # GitHub requests carry the token, so mustn't follow redirects.
-    assert opener is w.github_opener
+    assert opener is github_comments._opener
 
 
 def test_base_ci_state_without_token():

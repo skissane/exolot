@@ -40,7 +40,7 @@ def test_error_response_raises(client):
 
 
 def test_response_to_cancelled_request_is_dropped(client):
-    notes = []
+    notes: list[object] = []
     client.on_notification("$/progress", notes.append)
     future = client.request("slow")
     assert future.cancel()

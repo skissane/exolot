@@ -1,6 +1,7 @@
 import io
 import subprocess
 import urllib.error
+from email.message import Message
 
 import pytest
 
@@ -102,7 +103,7 @@ def test_post_reports_graphql_errors(report, monkeypatch, capsys):
 
 def test_post_reports_http_errors(report, monkeypatch, capsys):
     def request(method, url, token, **kwargs):
-        raise urllib.error.HTTPError(url, 403, "Forbidden", {}, io.BytesIO(b"no access"))
+        raise urllib.error.HTTPError(url, 403, "Forbidden", Message(), io.BytesIO(b"no access"))
 
     monkeypatch.setattr(github_comments, "request", request)
     assert main(["--repo", "o/r", "7", str(report)]) == 1

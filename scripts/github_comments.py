@@ -7,6 +7,8 @@ import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
+from email.message import Message
+from typing import IO, Any
 
 API_URL = "https://api.github.com"
 
@@ -15,7 +17,9 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
     """Leaves every redirect to request(), which urlopen's default handler
     would follow for a GET with the token still attached, even to another host."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self, req: urllib.request.Request, fp: IO[bytes], code: int, msg: str, headers: Message, newurl: str
+    ) -> urllib.request.Request | None:
         return None
 
 
@@ -30,7 +34,7 @@ def request(
     json_body: object = None,
     data: bytes | None = None,
     content_type: str | None = None,
-):
+) -> Any:
     """Send an API request and return its decoded JSON response (None if empty).
     A 301/302/307/308 redirect (GitHub's for a renamed repo) is followed with
     the same method and body, keeping the token only if the host is unchanged
@@ -66,10 +70,11 @@ def gh_output(*args: str) -> str:
 
 def pr_head(repo: str, pr: int, token: str) -> str:
     """The PR's current head commit."""
-    return request("GET", f"{API_URL}/repos/{repo}/pulls/{pr}", token)["head"]["sha"]
+    sha: str = request("GET", f"{API_URL}/repos/{repo}/pulls/{pr}", token)["head"]["sha"]
+    return sha
 
 
-def marked_comments(repo: str, pr: int, author: str, marker: str, token: str) -> list[dict]:
+def marked_comments(repo: str, pr: int, author: str, marker: str, token: str) -> list[dict[str, Any]]:
     """The comments author has posted on pr whose body starts with marker, oldest first."""
     comments = []
     page = 1
@@ -100,13 +105,14 @@ def upsert_comment(repo: str, pr: int, author: str, marker: str, body: str, toke
         request("POST", f"{API_URL}/repos/{repo}/issues/{pr}/comments", token, json_body={"body": body})
 
 
-def graphql(query: str, variables: dict, token: str) -> dict:
+def graphql(query: str, variables: dict[str, Any], token: str) -> dict[str, Any]:
     """Run a GraphQL query or mutation and return its data, raising
     RuntimeError if GitHub reports errors (which it does with HTTP 200)."""
     result = request("POST", f"{API_URL}/graphql", token, json_body={"query": query, "variables": variables})
     if result.get("errors"):
         raise RuntimeError(f"GraphQL errors: {json.dumps(result['errors'])}")
-    return result["data"]
+    data: dict[str, Any] = result["data"]
+    return data
 
 
 _MY_COMMENTS = """

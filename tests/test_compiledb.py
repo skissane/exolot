@@ -181,7 +181,7 @@ def test_cli_rejects_a_missing_database(c_project, tmp_path, capsys, args, confi
 
 
 def test_analyze_repo_takes_the_database_from_the_current_directory(tmp_path, monkeypatch):
-    seen = {}
+    seen: dict[str, object] = {}
     monkeypatch.setattr(cli, "_clone_and_analyze", lambda args: seen.setdefault("path", args.compile_commands) and 0)
     monkeypatch.chdir(tmp_path)
     cli.main(["analyze-repo", "https://example.com/repo", "--compile-commands", "db.json"])

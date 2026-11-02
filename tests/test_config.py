@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from exolot import config
@@ -73,6 +75,6 @@ def test_unreadable_config(tmp_path, monkeypatch):
         raise PermissionError(13, "Permission denied")
 
     # Rather than chmod, which doesn't stop root or work on Windows.
-    monkeypatch.setattr(config.Path, "open", fail)
+    monkeypatch.setattr(Path, "open", fail)
     with pytest.raises(ConfigError, match="can't read .*Permission denied"):
         config.load(tmp_path)

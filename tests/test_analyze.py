@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from exolot import cli
-from exolot import report as report_module
+from exolot import cli, clone
 from exolot.analyze import AnalysisSession, collect_files, language_id
 from exolot.config import Config
 from exolot.exclude import Exclude
@@ -116,6 +115,7 @@ def test_session_closes_server_pipes(tmp_path):
     server = FakeServer(root=tmp_path, java=Path("java"))
     with AnalysisSession(server, tmp_path) as session:
         proc = session._proc
+    assert proc is not None and proc.stdin is not None and proc.stdout is not None
     assert proc.returncode is not None
     assert proc.stdin.closed
     assert proc.stdout.closed
@@ -125,6 +125,7 @@ def test_session_closes_pipes_of_a_server_that_died(tmp_path):
     server = FakeServer(root=tmp_path, java=Path("java"))
     with AnalysisSession(server, tmp_path) as session:
         proc = session._proc
+        assert proc is not None and proc.stdin is not None and proc.stdout is not None
         proc.kill()
         proc.wait()
     assert proc.stdin.closed
@@ -607,7 +608,7 @@ def test_cli_github_comment_without_git(tmp_path, monkeypatch, capsys):
             raise FileNotFoundError("git")
         return real_run(cmd, *args, **kwargs)
 
-    monkeypatch.setattr(report_module.subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "run", run)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "a.py").write_text("x = 1\n")
     cli.main(["--format", "github-comment", "a.py"])
@@ -664,7 +665,13 @@ def test_cli_analyze_repo_analyzes_a_temporary_clone(repo, tmp_path, monkeypatch
     _fake_server(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     clones = []
-    monkeypatch.setattr(cli.clone, "clone", lambda *args, real=cli.clone.clone: clones.append(args[1]) or real(*args))
+    real_clone = clone.clone
+
+    def recording_clone(*args):
+        clones.append(args[1])
+        return real_clone(*args)
+
+    monkeypatch.setattr(clone, "clone", recording_clone)
     assert cli.main(["analyze-repo", "repo"]) == 1
     captured = capsys.readouterr()
     assert captured.out == f"a.py:1:3: warning [fake:S1] python issue\n{B_PY}:1:3: warning [fake:S1] python issue\n"
@@ -685,13 +692,13 @@ def test_cli_analyze_repo_analyzes_paths_in_the_repo_and_keeps_the_clone(repo, t
 
 @pytest.mark.parametrize("path", ["/abs", "../x", "sub/../../x"])
 def test_cli_analyze_repo_rejects_paths_outside_the_repo(tmp_path, monkeypatch, capsys, path):
-    monkeypatch.setattr(cli.clone, "clone", lambda *args: pytest.fail("should not clone"))
+    monkeypatch.setattr(clone, "clone", lambda *args: pytest.fail("should not clone"))
     assert cli.main(["analyze-repo", "https://example.com/r.git", path]) == 2
     assert "isn't a path inside the repository" in capsys.readouterr().err
 
 
 def test_cli_analyze_repo_needs_an_empty_keep_directory(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(cli.clone, "clone", lambda *args: pytest.fail("should not clone"))
+    monkeypatch.setattr(clone, "clone", lambda *args: pytest.fail("should not clone"))
     (tmp_path / "file").write_text("x")
     assert cli.main(["analyze-repo", "https://example.com/r.git", "--keep", str(tmp_path)]) == 2
     assert cli.main(["analyze-repo", "https://example.com/r.git", "--keep", str(tmp_path / "file")]) == 2
@@ -705,7 +712,7 @@ def test_cli_analyze_repo_clone_errors_exit_2_without_downloading(repo, monkeypa
 
 
 @pytest.mark.parametrize("existing", [False, True])
-@pytest.mark.parametrize("error", [cli.clone.CloneError("git checkout failed"), KeyboardInterrupt()])
+@pytest.mark.parametrize("error", [clone.CloneError("git checkout failed"), KeyboardInterrupt()])
 def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, monkeypatch, capsys, existing, error):
     keep = tmp_path / "kept"
     if existing:
@@ -717,7 +724,7 @@ def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, mo
         (dest / "a.py").write_text("x\n")
         raise error
 
-    monkeypatch.setattr(cli.clone, "clone", fail_after_checking_out_some_files)
+    monkeypatch.setattr(clone, "clone", fail_after_checking_out_some_files)
     if isinstance(error, KeyboardInterrupt):
         with pytest.raises(KeyboardInterrupt):
             cli.main(["analyze-repo", str(repo), "--keep", str(keep)])
@@ -816,7 +823,7 @@ def _fake_clone(source, dest, ref=None):
 
 def test_cli_analyze_repo_links_to_github(tmp_path, monkeypatch, capsys):
     _fake_server(tmp_path, monkeypatch)
-    monkeypatch.setattr(cli.clone, "clone", _fake_clone)
+    monkeypatch.setattr(clone, "clone", _fake_clone)
     assert cli.main(["analyze-repo", "https://github.com/o/r", "--format", "markdown"]) == 1
     assert "| [a.py:1](https://github.com/o/r/blob/abc123/a.py#L1) |" in capsys.readouterr().out
 
@@ -828,7 +835,7 @@ def test_cli_analyze_repo_links_to_github(tmp_path, monkeypatch, capsys):
 def test_cli_analyze_repo_links_elsewhere_only_when_asked(tmp_path, monkeypatch, capsys, flags, link):
     _fake_server(tmp_path, monkeypatch)
     _in_actions(monkeypatch)
-    monkeypatch.setattr(cli.clone, "clone", _fake_clone)
+    monkeypatch.setattr(clone, "clone", _fake_clone)
     assert cli.main(["analyze-repo", "https://gitlab.com/o/r", "--format", "markdown", *flags]) == 1
     out = capsys.readouterr().out
     assert "github.example" not in out
@@ -908,7 +915,7 @@ def test_cli_log_level_sets_exolots_own_level(monkeypatch, args, level):
         seen.append(kwargs["level"])
         raise _StopAfterLogging
 
-    monkeypatch.setattr(cli.logging, "basicConfig", basic_config)
+    monkeypatch.setattr(logging, "basicConfig", basic_config)
     with pytest.raises(_StopAfterLogging):
         cli.main([*args, "a.py"])
     assert seen == [level]

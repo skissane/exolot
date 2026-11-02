@@ -1,6 +1,10 @@
 import os
+import platform
+import shutil
 import stat
+import sys
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -55,8 +59,8 @@ def test_extract_rejects_path_traversal(tmp_path):
     ],
 )
 def test_detect_platform(monkeypatch, plat, machine, expected):
-    monkeypatch.setattr(server.sys, "platform", plat)
-    monkeypatch.setattr(server.platform, "machine", lambda: machine)
+    monkeypatch.setattr(sys, "platform", plat)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
     assert server.detect_platform() == expected
 
 
@@ -132,11 +136,11 @@ def test_ensure_server_warns_about_an_unknown_version(tmp_path, monkeypatch, cap
 
 
 def _java_exe():
-    return "java.exe" if server.sys.platform == "win32" else "java"
+    return "java.exe" if sys.platform == "win32" else "java"
 
 
 def test_find_java_prefers_the_override(tmp_path):
-    assert server._find_java(tmp_path, "/my/java") == server.Path("/my/java")
+    assert server._find_java(tmp_path, "/my/java") == Path("/my/java")
 
 
 def test_find_java_uses_the_bundled_jre(tmp_path, monkeypatch):
@@ -156,13 +160,13 @@ def test_find_java_falls_back_to_java_home_then_path(tmp_path, monkeypatch):
     assert server._find_java(tmp_path, None) == java
 
     monkeypatch.setenv("JAVA_HOME", str(tmp_path / "missing"))
-    monkeypatch.setattr(server.shutil, "which", lambda name: "/usr/bin/java")
-    assert server._find_java(tmp_path, None) == server.Path("/usr/bin/java")
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/java")
+    assert server._find_java(tmp_path, None) == Path("/usr/bin/java")
 
 
 def test_find_java_fails_without_any_java(tmp_path, monkeypatch):
     monkeypatch.delenv("JAVA_HOME", raising=False)
-    monkeypatch.setattr(server.shutil, "which", lambda name: None)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
     with pytest.raises(ServerError, match="no Java was found"):
         server._find_java(tmp_path, None)
 
@@ -183,5 +187,5 @@ def test_cache_dir(monkeypatch, plat, env, expected):
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():
         monkeypatch.setenv(name, value)
-    monkeypatch.setattr(server.sys, "platform", plat)
-    assert server.cache_dir() == server.Path(expected).expanduser()
+    monkeypatch.setattr(sys, "platform", plat)
+    assert server.cache_dir() == Path(expected).expanduser()
