@@ -219,8 +219,9 @@ status 2 if the repository or REF can't be fetched.
   `warning` or `notice` (for the server's info and hint severities), and paths
   are relative to the root of the git repository each file is in (files
   outside one get paths relative to the current directory, or absolute if
-  they're outside it too, which GitHub can't place on a diff, so their annotations show only in the run). Warnings about
-  files that weren't analyzed come first, as `::warning` annotations with no
+  they're outside that too; GitHub can't place either on a diff, so their
+  annotations show only in the run). Warnings about files that weren't
+  analyzed come first, as `::warning` annotations with no
   file, then with `--diff-base` the issues on changed lines.
 - `--log-level LEVEL` shows the server's log messages at `LEVEL` and above,
   where `LEVEL` is `debug`, `info`, `warn` or `error` (by default exolot
