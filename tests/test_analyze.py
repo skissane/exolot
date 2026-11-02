@@ -115,7 +115,9 @@ def test_session_closes_server_pipes(tmp_path):
     server = FakeServer(root=tmp_path, java=Path("java"))
     with AnalysisSession(server, tmp_path) as session:
         proc = session._proc
-    assert proc is not None and proc.stdin is not None and proc.stdout is not None
+    assert proc is not None
+    assert proc.stdin is not None
+    assert proc.stdout is not None
     assert proc.returncode is not None
     assert proc.stdin.closed
     assert proc.stdout.closed
@@ -125,7 +127,9 @@ def test_session_closes_pipes_of_a_server_that_died(tmp_path):
     server = FakeServer(root=tmp_path, java=Path("java"))
     with AnalysisSession(server, tmp_path) as session:
         proc = session._proc
-        assert proc is not None and proc.stdin is not None and proc.stdout is not None
+        assert proc is not None
+        assert proc.stdin is not None
+        assert proc.stdout is not None
         proc.kill()
         proc.wait()
     assert proc.stdin.closed
