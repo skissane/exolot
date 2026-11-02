@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 import urllib.parse
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 
 # The fields a --link-template can use, with example values to check it with.
 LINK_FIELDS = {"path": "src/a.py", "line": 1, "column": 1, "end_line": 1, "end_column": 1}
@@ -99,7 +99,7 @@ def warnings_alert(messages: Iterable[str]) -> list[str]:
 
 
 def comment(
-    findings: list[Mapping],
+    findings: Sequence[Mapping],
     *,
     link_template: str | None = None,
     changed: bool = False,
