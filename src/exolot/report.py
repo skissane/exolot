@@ -35,7 +35,7 @@ class Report:
 
 def print_findings(
     issues: list[Issue],
-    report: Report,
+    totals: Report,
     fmt: str,
     link_template: str | None = None,
     changes: gitdiff.Changes | None = None,
@@ -44,7 +44,7 @@ def print_findings(
     --diff-base without --changed-only), saying which are on changed lines."""
     issues = _sorted(issues)
     findings = [issue_json(i, changes) for i in issues]
-    summary = report.summary(len(issues), sum(f["changed"] for f in findings) if changes is not None else None)
+    summary = totals.summary(len(issues), sum(f["changed"] for f in findings) if changes is not None else None)
     if fmt == "json":
         json.dump(findings, sys.stdout, indent=2)
         print()
@@ -52,7 +52,7 @@ def print_findings(
         # Relative to the repo root rather than the current directory, so
         # links to the repo's code work from any subdirectory.
         findings = [{**f, "path": repo_path(i.path)} for i, f in zip(issues, findings)]
-        lines = report.markdown_warnings()
+        lines = totals.markdown_warnings()
         if not issues:
             lines.append("No issues found.")
         elif changes is not None:
@@ -92,7 +92,7 @@ def print_annotations(
 
 def print_comment(
     issues: list[Issue],
-    report: Report,
+    totals: Report,
     link_template: str | None,
     preamble: str | None,
     changes: gitdiff.Changes | None = None,
@@ -108,30 +108,31 @@ def print_comment(
         preamble=preamble,
         commit=_head_commit(),
         run_url=actions[1] if actions else None,
-        warnings=[p.sentence() for p in report.unanalyzed],
+        warnings=[p.sentence() for p in totals.unanalyzed],
     )
     sys.stdout.write(body)
     sys.stdout.flush()
     changed = sum(f["changed"] for f in findings) if changes is not None else None
-    print(report.summary(len(issues), changed), file=sys.stderr)
+    print(totals.summary(len(issues), changed), file=sys.stderr)
 
 
-def print_sarif(issues: list[Issue], report: Report, names: dict[str, str]) -> None:
+def print_sarif(issues: list[Issue], totals: Report, names: dict[str, str]) -> None:
+    """Print the issues as a SARIF log, with names giving each rule's name."""
     issues = _sorted(issues)
     paths = {i.path for i in issues} | {loc.path for i in issues for loc in i.related}
     roots = {_repo_root(path.parent) for path in paths} - {None}
     # %SRCROOT% can only stand for one directory. GitHub code scanning doesn't
     # need it defined, as it takes paths to be relative to the checkout.
     src_root = roots.pop().as_uri() + "/" if len(roots) == 1 else None
-    warnings = [p.sentence() for p in report.unanalyzed]
+    warnings = [p.sentence() for p in totals.unanalyzed]
     log = sarif.log(issues, __version__, names, _artifact_location, src_root, warnings)
     json.dump(log, sys.stdout, indent=2)
     print()
-    print(report.summary(len(issues)), file=sys.stderr)
+    print(totals.summary(len(issues)), file=sys.stderr)
     sys.stdout.flush()
 
 
-def print_statistics(issues: list[Issue], report: Report, fmt: str, names: dict[str, str]) -> None:
+def print_statistics(issues: list[Issue], totals: Report, fmt: str, names: dict[str, str]) -> None:
     """Print one line per rule, most issues first, like ``ruff check --statistics``."""
     counts = Counter(issue.rule for issue in issues)
     rows = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
@@ -141,14 +142,14 @@ def print_statistics(issues: list[Issue], report: Report, fmt: str, names: dict[
         print()
     elif fmt == "markdown":
         table = markdown.statistics_table(rows, names) if rows else ["No issues found."]
-        print("\n".join(report.markdown_warnings() + table))
-        print(report.summary(len(issues)), file=sys.stderr)
+        print("\n".join(totals.markdown_warnings() + table))
+        print(totals.summary(len(issues)), file=sys.stderr)
     else:
         count_width = max((len(str(count)) for _, count in rows), default=0)
         rule_width = max((len(rule) for rule, _ in rows), default=0)
         for rule, count in rows:
             print(f"{count:>{count_width}}\t{rule:<{rule_width}}\t{names.get(rule, '')}".rstrip())
-        print(report.summary(len(issues)), file=sys.stderr)
+        print(totals.summary(len(issues)), file=sys.stderr)
     sys.stdout.flush()
 
 
