@@ -56,10 +56,10 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "PLC0415", "RUF100"]
 
-# The repo root, so tests can import the stdlib-only CI scripts in scripts/.
 [tool.mypy]
 files = ["src"]
 
+# The repo root, so tests can import the stdlib-only CI scripts in scripts/.
 [tool.pytest.ini_options]
 pythonpath = ["."]
 filterwarnings = ["error"]
