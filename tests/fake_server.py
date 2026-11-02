@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
@@ -23,7 +24,7 @@ SENSOR_FAILURE = [
 ]
 
 
-def read():
+def read() -> Any:
     length = -1  # read everything if there's no Content-Length
     while True:
         line = sys.stdin.buffer.readline()
@@ -38,13 +39,13 @@ def read():
     return json.loads(sys.stdin.buffer.read(length))
 
 
-def send(msg):
+def send(msg: object) -> None:
     body = json.dumps(msg).encode()
     sys.stdout.buffer.write(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
     sys.stdout.buffer.flush()
 
 
-def log(message):
+def log(message: str) -> None:
     send({"jsonrpc": "2.0", "method": "window/logMessage", "params": {"type": 4, "message": message}})
 
 

@@ -1,6 +1,7 @@
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
@@ -41,11 +42,11 @@ diff --git a/new.py b/new.py
 """
 
 
-def test_parse_diff():
+def test_parse_diff() -> None:
     assert parse_diff(DIFF) == {"src/a.py": {3, 4, 21}, "has space.py": {1}, "new.py": {1, 2}}
 
 
-def test_changes_since_the_merge_base(repo, monkeypatch):
+def test_changes_since_the_merge_base(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (repo / "a.py").write_text("one\nTWO\nthree\nfour\n")
     git(repo, "commit", "-q", "-am", "change a")
     # Changes on master since the branch point aren't the branch's.
@@ -68,13 +69,13 @@ def test_changes_since_the_merge_base(repo, monkeypatch):
     assert not changes.touches(repo / "sub" / "b.py", 1)
 
 
-def test_changes_ignore_the_users_diff_prefix_settings(repo):
+def test_changes_ignore_the_users_diff_prefix_settings(repo: Path) -> None:
     git(repo, "config", "diff.noprefix", "true")
     (repo / "a.py").write_text("ONE\ntwo\nthree\n")
     assert changes_since("master", repo).lines == {repo / "a.py": {1}}
 
 
-def test_changes_ignore_the_users_context_and_textconv_settings(repo):
+def test_changes_ignore_the_users_context_and_textconv_settings(repo: Path) -> None:
     git(repo, "config", "diff.interHunkContext", "10")
     git(repo, "config", "diff.upper.textconv", "tr a-z A-Z <")
     (repo / ".gitattributes").write_text("*.py diff=upper\n")
@@ -85,7 +86,7 @@ def test_changes_ignore_the_users_context_and_textconv_settings(repo):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows file names can't have tabs or quotes")
-def test_changes_to_files_git_quotes_the_names_of(repo):
+def test_changes_to_files_git_quotes_the_names_of(repo: Path) -> None:
     name = 'tab\t"quote"\\ é.py'
     (repo / name).write_text("x\n")
     git(repo, "add", name)
@@ -93,37 +94,37 @@ def test_changes_to_files_git_quotes_the_names_of(repo):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Windows drops trailing spaces from file names")
-def test_changes_in_a_repo_whose_path_ends_in_a_space(repo):
+def test_changes_in_a_repo_whose_path_ends_in_a_space(repo: Path) -> None:
     spaced = repo.rename(repo.with_name("repo "))
     (spaced / "a.py").write_text("ONE\ntwo\nthree\n")
     assert changes_since("master", spaced).lines == {spaced / "a.py": {1}}
 
 
-def test_parse_diff_unquotes_paths():
+def test_parse_diff_unquotes_paths() -> None:
     diff = '+++ "b/a\\tb\\001\\"\\\\\\q.py"\n@@ -0,0 +1 @@\n+x\n'
     assert parse_diff(diff) == {'a\tb\x01"\\q.py': {1}}
 
 
-def test_changes_since_an_unknown_ref(repo):
+def test_changes_since_an_unknown_ref(repo: Path) -> None:
     with pytest.raises(GitError, match="can't find commit 'nope'"):
         changes_since("nope", repo)
 
 
-def test_changes_without_a_merge_base(repo):
+def test_changes_without_a_merge_base(repo: Path) -> None:
     git(repo, "checkout", "-q", "--orphan", "other")
     git(repo, "commit", "-q", "-m", "unrelated")
     with pytest.raises(GitError, match="can't find the merge base of 'master' and HEAD"):
         changes_since("master", repo)
 
 
-def test_changes_outside_a_repo(tmp_path, monkeypatch):
+def test_changes_outside_a_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     with pytest.raises(GitError, match="not in a git repository: fatal"):
         changes_since("master", tmp_path)
 
 
-def test_changes_without_git(monkeypatch):
-    def run(*args, **kwargs):
+def test_changes_without_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    def run(*args: object, **kwargs: object) -> NoReturn:
         raise FileNotFoundError("git")
 
     monkeypatch.setattr(subprocess, "run", run)
@@ -131,17 +132,17 @@ def test_changes_without_git(monkeypatch):
         changes_since("master")
 
 
-def test_git_failure_without_a_message(monkeypatch):
+def test_git_failure_without_a_message(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 1, "", ""))
     with pytest.raises(GitError, match="^not in a git repository$"):
         changes_since("master")
 
 
-def test_empty_changes():
+def test_empty_changes() -> None:
     assert Changes().files() == set()
 
 
-def test_changes_touch_any_line_of_a_range():
+def test_changes_touch_any_line_of_a_range() -> None:
     changes = Changes(lines={Path("/a.py"): {5}})
     assert changes.touches(Path("/a.py"), 3, 6)
     assert not changes.touches(Path("/a.py"), 3, 4)

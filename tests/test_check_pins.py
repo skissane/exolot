@@ -43,7 +43,7 @@ jobs:
 """
 
 
-def test_steps_splits_outermost_items_only():
+def test_steps_splits_outermost_items_only() -> None:
     found = steps(WORKFLOW)
     assert [s[0].strip() for s in found] == [
         "- uses: actions/checkout@v4",
@@ -58,7 +58,7 @@ def test_steps_splits_outermost_items_only():
     assert found[3][-1].strip() == "- --y"
 
 
-def test_pins_reads_each_steps_own_input():
+def test_pins_reads_each_steps_own_input() -> None:
     # The unpinned setup-uv in `other` isn't masked by `Other`'s version, and
     # an unexpected value is read as written.
     assert pins(WORKFLOW, "astral-sh/setup-uv", "version") == [
@@ -78,13 +78,13 @@ def repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_main_passes_when_all_pinned(repo, capsys):
+def test_main_passes_when_all_pinned(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (repo / ".github/workflows/a.yml").write_text(WORKFLOW.split("  other:")[0])
     assert main(repo) == 0
     assert capsys.readouterr().out == "workflows pin uv 0.13.6 in 1 steps and just 1.58.0 in 1 steps\n"
 
 
-def test_main_reports_unpinned_and_mismatched_in_yaml_files(repo, capsys):
+def test_main_reports_unpinned_and_mismatched_in_yaml_files(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (repo / ".github/workflows/a.yaml").write_text(WORKFLOW.replace("'1.58.0'", "1.57.0"))
     assert main(repo) == 1
     assert capsys.readouterr().err.splitlines() == [
@@ -95,7 +95,7 @@ def test_main_reports_unpinned_and_mismatched_in_yaml_files(repo, capsys):
     ]
 
 
-def test_main_fails_when_no_step_is_recognized(repo, capsys):
+def test_main_fails_when_no_step_is_recognized(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (repo / ".github/workflows/a.yml").write_text("jobs:\n  a:\n    steps:\n      - run: echo\n")
     assert main(repo) == 1
     assert capsys.readouterr().err.splitlines() == [
@@ -104,7 +104,7 @@ def test_main_fails_when_no_step_is_recognized(repo, capsys):
     ]
 
 
-def test_main_rejects_unexpected_minimums(repo):
+def test_main_rejects_unexpected_minimums(repo: Path) -> None:
     (repo / "pyproject.toml").write_text('[tool.uv]\nrequired-version = "==0.13.6"\n')
     with pytest.raises(ValueError, match="isn't of the form"):
         main(repo)

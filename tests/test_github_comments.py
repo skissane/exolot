@@ -2,6 +2,7 @@ import io
 import urllib.error
 import urllib.request
 from email.message import Message
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -10,19 +11,19 @@ from scripts import github_comments
 from scripts.github_comments import request
 
 
-def response(payload: bytes):
+def response(payload: bytes) -> mock.MagicMock:
     r = mock.MagicMock()
     r.__enter__.return_value.read.return_value = payload
     return r
 
 
-def redirect(url, location):
+def redirect(url: str, location: str, code: int = 307) -> urllib.error.HTTPError:
     headers = Message()
     headers["Location"] = location
-    return urllib.error.HTTPError(url, 307, "Redirect", headers, None)
+    return urllib.error.HTTPError(url, code, "Redirect", headers, None)
 
 
-def test_sends_json_with_token():
+def test_sends_json_with_token() -> None:
     with mock.patch("scripts.github_comments._opener.open", return_value=response(b'{"a": 1}')) as urlopen:
         result = request("POST", "https://api.github.com/x", "tok", json_body={"b": 2})
     assert result == {"a": 1}
@@ -34,12 +35,12 @@ def test_sends_json_with_token():
     assert req.get_header("Authorization") == "Bearer tok"
 
 
-def test_empty_response_is_none():
+def test_empty_response_is_none() -> None:
     with mock.patch("scripts.github_comments._opener.open", return_value=response(b"")):
         assert request("DELETE", "https://api.github.com/x", "tok") is None
 
 
-def test_follows_redirects_dropping_token_off_host():
+def test_follows_redirects_dropping_token_off_host() -> None:
     responses = [
         redirect("https://uploads.github.com/a", "/b"),
         redirect("https://uploads.github.com/b", "https://elsewhere.example/c"),
@@ -58,29 +59,28 @@ def test_follows_redirects_dropping_token_off_host():
     assert [r.get_header("Authorization") for r in sent] == ["Bearer tok", "Bearer tok", None]
 
 
-def test_follows_get_redirects_itself():
+def test_follows_get_redirects_itself() -> None:
     # As urlopen's default handler would, with the token, to any host.
-    responses = [redirect("https://api.github.com/a", "https://elsewhere.example/b"), response(b"{}")]
-    responses[0].code = 301
+    responses = [redirect("https://api.github.com/a", "https://elsewhere.example/b", 301), response(b"{}")]
     with mock.patch("scripts.github_comments._opener.open", side_effect=responses) as urlopen:
         request("GET", "https://api.github.com/a", "tok")
     assert [c.args[0].get_header("Authorization") for c in urlopen.call_args_list] == ["Bearer tok", None]
 
 
-def test_opener_does_not_follow_redirects():
+def test_opener_does_not_follow_redirects() -> None:
     req = urllib.request.Request("https://api.github.com/a")
     handler = github_comments._NoRedirects()
     assert handler.redirect_request(req, io.BytesIO(), 302, "Found", Message(), "https://x.example/") is None
 
 
-def test_drops_token_on_redirect_to_http():
+def test_drops_token_on_redirect_to_http() -> None:
     responses = [redirect("https://api.github.com/a", "http://api.github.com/b"), response(b"{}")]
     with mock.patch("scripts.github_comments._opener.open", side_effect=responses) as urlopen:
         request("POST", "https://api.github.com/a", "tok")
     assert [c.args[0].get_header("Authorization") for c in urlopen.call_args_list] == ["Bearer tok", None]
 
 
-def test_too_many_redirects():
+def test_too_many_redirects() -> None:
     with (
         mock.patch(
             "scripts.github_comments._opener.open", side_effect=[redirect("https://api.github.com/x", "/x")] * 5
@@ -90,7 +90,7 @@ def test_too_many_redirects():
         request("GET", "https://api.github.com/x", "tok")
 
 
-def test_other_errors_raised():
+def test_other_errors_raised() -> None:
     error = urllib.error.HTTPError("https://api.github.com/x", 404, "Not Found", Message(), None)
     with (
         error,
@@ -100,12 +100,12 @@ def test_other_errors_raised():
         request("GET", "https://api.github.com/x", "tok")
 
 
-def test_upsert_reads_every_page_of_comments(monkeypatch):
+def test_upsert_reads_every_page_of_comments(monkeypatch: pytest.MonkeyPatch) -> None:
     other = {"id": 1, "user": {"login": "someone"}, "body": "hi"}
     pages = {1: [other] * 100, 2: [{"id": 2, "user": {"login": "me"}, "body": "<!-- m -->\nold"}]}
-    requests = []
+    requests: list[tuple[str, str, object]] = []
 
-    def fake_request(method, url, token, *, json_body=None, **kw):
+    def fake_request(method: str, url: str, token: str, *, json_body: object = None, **kw: object) -> Any:
         requests.append((method, url, json_body))
         return pages[int(url.rsplit("page=", 1)[1])] if method == "GET" else None
 

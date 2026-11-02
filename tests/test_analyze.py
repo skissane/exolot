@@ -5,8 +5,10 @@ import subprocess
 import sys
 import urllib.parse
 from pathlib import Path
+from typing import Any, NoReturn
 
 import pytest
+from _pytest.capture import CaptureResult  # not exported as pytest.CaptureResult
 
 from exolot import cli, clone
 from exolot.analyze import AnalysisSession, collect_files, language_id
@@ -20,18 +22,18 @@ FAKE_SERVER = Path(__file__).with_name("fake_server.py")
 
 
 class FakeServer(Server):
-    def command(self, jvm_args=None):
+    def command(self, jvm_args: list[str] | None = None) -> list[str]:
         return [sys.executable, str(FAKE_SERVER)]
 
 
-def test_language_id():
+def test_language_id() -> None:
     assert language_id(Path("a.py")) == "python"
     assert language_id(Path("A.TSX")) == "typescriptreact"
     assert language_id(Path("Dockerfile")) == "dockerfile"
     assert language_id(Path("notes.txt")) == "plaintext"
 
 
-def test_collect_files_skips_binary_and_ignored(tmp_path):
+def test_collect_files_skips_binary_and_ignored(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("x = 1\n")
     (tmp_path / "blob.bin").write_bytes(b"\0\1\2")
     (tmp_path / "node_modules").mkdir()
@@ -40,7 +42,7 @@ def test_collect_files_skips_binary_and_ignored(tmp_path):
     assert files == [(tmp_path / "a.py").resolve()]
 
 
-def test_collect_files_respects_gitignore(tmp_path):
+def test_collect_files_respects_gitignore(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     (tmp_path / ".gitignore").write_text("ignored.py\n")
     (tmp_path / "ignored.py").write_text("x = 1\n")
@@ -49,7 +51,7 @@ def test_collect_files_respects_gitignore(tmp_path):
     assert names == {".gitignore", "kept.py"}
 
 
-def test_collect_files_excludes_by_filename_glob(tmp_path):
+def test_collect_files_excludes_by_filename_glob(tmp_path: Path) -> None:
     (tmp_path / "a.m").write_text("x = 1\n")
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "b.m").write_text("x = 1\n")
@@ -58,7 +60,7 @@ def test_collect_files_excludes_by_filename_glob(tmp_path):
     assert files == [(tmp_path / "sub" / "kept.py").resolve()]
 
 
-def test_collect_files_excludes_by_relative_path_glob(tmp_path, monkeypatch):
+def test_collect_files_excludes_by_relative_path_glob(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / ".git").mkdir()
     (tmp_path / "gen").mkdir()
     (tmp_path / "gen" / "skip.py").write_text("x = 1\n")
@@ -69,7 +71,7 @@ def test_collect_files_excludes_by_relative_path_glob(tmp_path, monkeypatch):
     assert files == [(tmp_path / "sub" / "gen" / "keep.py").resolve()]
 
 
-def test_session_collects_final_diagnostics(tmp_path):
+def test_session_collects_final_diagnostics(tmp_path: Path) -> None:
     a = tmp_path / "a.py"
     a.write_text("x = 1\n")
     b = tmp_path / "b.js"
@@ -84,7 +86,7 @@ def test_session_collects_final_diagnostics(tmp_path):
     ]
 
 
-def test_session_raises_when_a_file_is_never_published(tmp_path):
+def test_session_raises_when_a_file_is_never_published(tmp_path: Path) -> None:
     a = tmp_path / "a.py"
     a.write_text("SILENT\n")
     server = FakeServer(root=tmp_path, java=Path("java"))
@@ -93,7 +95,7 @@ def test_session_raises_when_a_file_is_never_published(tmp_path):
             session.analyze([a], settle=0.1, stall=0.5, timeout=10)
 
 
-def test_session_raises_when_the_server_exits(tmp_path):
+def test_session_raises_when_the_server_exits(tmp_path: Path) -> None:
     a = tmp_path / "a.py"
     a.write_text("CRASH\n")
     server = FakeServer(root=tmp_path, java=Path("java"))
@@ -102,7 +104,7 @@ def test_session_raises_when_the_server_exits(tmp_path):
             session.analyze([a], settle=0.1, stall=5, timeout=10)
 
 
-def test_session_waits_while_the_server_reports_progress(tmp_path):
+def test_session_waits_while_the_server_reports_progress(tmp_path: Path) -> None:
     a = tmp_path / "a.py"
     a.write_text("BUSY\n")
     server = FakeServer(root=tmp_path, java=Path("java"))
@@ -111,7 +113,7 @@ def test_session_waits_while_the_server_reports_progress(tmp_path):
             session.analyze([a], settle=0.1, stall=0.1, timeout=1)
 
 
-def test_session_closes_server_pipes(tmp_path):
+def test_session_closes_server_pipes(tmp_path: Path) -> None:
     server = FakeServer(root=tmp_path, java=Path("java"))
     with AnalysisSession(server, tmp_path) as session:
         proc = session._proc
@@ -123,7 +125,7 @@ def test_session_closes_server_pipes(tmp_path):
     assert proc.stdout.closed
 
 
-def test_session_closes_pipes_of_a_server_that_died(tmp_path):
+def test_session_closes_pipes_of_a_server_that_died(tmp_path: Path) -> None:
     server = FakeServer(root=tmp_path, java=Path("java"))
     with AnalysisSession(server, tmp_path) as session:
         proc = session._proc
@@ -136,17 +138,19 @@ def test_session_closes_pipes_of_a_server_that_died(tmp_path):
     assert proc.stdout.closed
 
 
-def test_closing_an_unstarted_session_does_nothing(tmp_path):
+def test_closing_an_unstarted_session_does_nothing(tmp_path: Path) -> None:
     AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path).close()
 
 
-def test_collect_files_rejects_missing_path(tmp_path):
+def test_collect_files_rejects_missing_path(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         collect_files([tmp_path / "nope"])
 
 
-def test_cli_input_errors_exit_2_without_downloading(tmp_path, monkeypatch, capsys):
-    def fail(*args, **kwargs):
+def test_cli_input_errors_exit_2_without_downloading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fail(*args: object, **kwargs: object) -> NoReturn:
         raise AssertionError("should not download")
 
     monkeypatch.setattr(cli, "ensure_server", fail)
@@ -162,21 +166,31 @@ def test_cli_input_errors_exit_2_without_downloading(tmp_path, monkeypatch, caps
 
 
 @pytest.mark.parametrize(("flags", "expected"), [([], 1), (["--exit-zero"], 0), (["-e"], 0)])
-def test_cli_exit_status_with_issues(tmp_path, monkeypatch, capsys, flags, expected):
+def test_cli_exit_status_with_issues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flags: list[str], expected: int
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     (tmp_path / "a.py").write_text("x = 1\n")
     assert cli.main([*flags, "--workspace", str(tmp_path), str(tmp_path / "a.py")]) == expected
     assert "fake:S1" in capsys.readouterr().out
 
 
-def test_cli_exit_zero_still_reports_a_failed_analysis(tmp_path, monkeypatch, capsys):
+def test_cli_exit_zero_still_reports_a_failed_analysis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     (tmp_path / "a.py").write_text("SILENT\n")
     assert cli.main(["--exit-zero", "--timeout", "1", "--workspace", str(tmp_path), str(tmp_path / "a.py")]) == 2
     assert "did not finish in time" in capsys.readouterr().err
 
 
-def _run_statistics(tmp_path, monkeypatch, capsys, *flags, texts=("TWO TWO", "TWO TWO TWO", "x = 1")):
+def _run_statistics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *flags: str,
+    texts: tuple[str, ...] = ("TWO TWO", "TWO TWO TWO", "x = 1"),
+) -> tuple[int, CaptureResult[str]]:
     """Analyze one file per text: each has one fake:S1 issue, plus a fake:S2 issue per "TWO"."""
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     for name, text in zip("abc", texts):
@@ -185,19 +199,25 @@ def _run_statistics(tmp_path, monkeypatch, capsys, *flags, texts=("TWO TWO", "TW
     return status, capsys.readouterr()
 
 
-def test_cli_statistics_counts_issues_per_rule_most_common_first(tmp_path, monkeypatch, capsys):
+def test_cli_statistics_counts_issues_per_rule_most_common_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     status, captured = _run_statistics(tmp_path, monkeypatch, capsys)
     assert status == 1
     assert captured.out == "5\tfake:S2\n3\tfake:S1\tFake rule one\n"
     assert "8 issue(s) in 3 file(s) analyzed" in captured.err
 
 
-def test_cli_statistics_orders_ties_by_rule_key(tmp_path, monkeypatch, capsys):
+def test_cli_statistics_orders_ties_by_rule_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _, captured = _run_statistics(tmp_path, monkeypatch, capsys, texts=("TWO", "TWO TWO", "x = 1"))
     assert captured.out == "3\tfake:S1\tFake rule one\n3\tfake:S2\n"
 
 
-def test_cli_statistics_json(tmp_path, monkeypatch, capsys):
+def test_cli_statistics_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     status, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--format", "json", "--exit-zero")
     assert status == 0
     assert json.loads(captured.out) == [
@@ -206,17 +226,21 @@ def test_cli_statistics_json(tmp_path, monkeypatch, capsys):
     ]
 
 
-def test_cli_statistics_without_rule_names(tmp_path, monkeypatch, capsys):
+def test_cli_statistics_without_rule_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setenv("FAKE_SERVER_RULES_FAIL", "1")
     _, captured = _run_statistics(tmp_path, monkeypatch, capsys)
     assert captured.out == "5\tfake:S2\n3\tfake:S1\n"
 
 
-def test_cli_statistics_with_no_issues(tmp_path, monkeypatch, capsys):
+def test_cli_statistics_with_no_issues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     monkeypatch.setattr(AnalysisSession, "analyze", lambda self, files, timeout=None: [])
 
-    def no_rule_names(self):
+    def no_rule_names(self: AnalysisSession) -> NoReturn:
         raise AssertionError("rule names aren't needed when there are no issues")
 
     monkeypatch.setattr(AnalysisSession, "rule_names", no_rule_names)
@@ -227,7 +251,9 @@ def test_cli_statistics_with_no_issues(tmp_path, monkeypatch, capsys):
     assert "0 issue(s) in 1 file(s) analyzed" in captured.err
 
 
-def test_cli_markdown_with_links(tmp_path, monkeypatch, capsys):
+def test_cli_markdown_with_links(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     monkeypatch.chdir(tmp_path)
     (tmp_path / "b.py").write_text("x = 1\n")
@@ -244,7 +270,9 @@ def test_cli_markdown_with_links(tmp_path, monkeypatch, capsys):
     assert "2 issue(s) in 2 file(s) analyzed" in captured.err
 
 
-def test_cli_markdown_with_no_issues(tmp_path, monkeypatch, capsys):
+def test_cli_markdown_with_no_issues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     monkeypatch.setattr(AnalysisSession, "analyze", lambda self, files, timeout=None: [])
     (tmp_path / "a.py").write_text("x = 1\n")
@@ -252,7 +280,9 @@ def test_cli_markdown_with_no_issues(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out == "No issues found.\n"
 
 
-def test_cli_statistics_markdown(tmp_path, monkeypatch, capsys):
+def test_cli_statistics_markdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     status, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--format", "markdown")
     assert status == 1
     assert captured.out == (
@@ -261,7 +291,9 @@ def test_cli_statistics_markdown(tmp_path, monkeypatch, capsys):
     assert "8 issue(s) in 3 file(s) analyzed" in captured.err
 
 
-def test_cli_statistics_markdown_with_no_issues(tmp_path, monkeypatch, capsys):
+def test_cli_statistics_markdown_with_no_issues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(AnalysisSession, "analyze", lambda self, files, timeout=None: [])
     status, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--format", "markdown")
     assert status == 0
@@ -277,8 +309,10 @@ def test_cli_statistics_markdown_with_no_issues(tmp_path, monkeypatch, capsys):
         (["--format", "markdown", "--statistics", "--link-template", "{path}"], "needs --format markdown"),
     ],
 )
-def test_cli_rejects_bad_link_templates_without_downloading(tmp_path, monkeypatch, capsys, flags, error):
-    def fail(*args, **kwargs):
+def test_cli_rejects_bad_link_templates_without_downloading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flags: list[str], error: str
+) -> None:
+    def fail(*args: object, **kwargs: object) -> NoReturn:
         raise AssertionError("should not download")
 
     monkeypatch.setattr(cli, "ensure_server", fail)
@@ -288,7 +322,9 @@ def test_cli_rejects_bad_link_templates_without_downloading(tmp_path, monkeypatc
     assert error in capsys.readouterr().err
 
 
-def test_cli_markdown_paths_are_relative_to_the_repo_root(tmp_path, monkeypatch, capsys):
+def test_cli_markdown_paths_are_relative_to_the_repo_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     repo = tmp_path / "repo"
     sub = repo / "sub"
@@ -306,11 +342,13 @@ def test_cli_markdown_paths_are_relative_to_the_repo_root(tmp_path, monkeypatch,
     assert f"| [{expected}](u/{urllib.parse.quote(outside.as_posix())}) |" in out
 
 
-def _annotations(err):
+def _annotations(err: str) -> list[str]:
     return [line for line in err.splitlines() if line.startswith("::")]
 
 
-def test_cli_annotations_go_to_stderr(tmp_path, monkeypatch, capsys):
+def test_cli_annotations_go_to_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     repo = tmp_path / "repo"
     sub = repo / "sub"
@@ -328,7 +366,9 @@ def test_cli_annotations_go_to_stderr(tmp_path, monkeypatch, capsys):
     assert "2 issue(s) in 1 file(s) analyzed" in captured.err
 
 
-def test_cli_annotations_put_changed_lines_first(repo, tmp_path, monkeypatch, capsys):
+def test_cli_annotations_put_changed_lines_first(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     (repo / "sub" / "b.py").write_text("changed\n")
     monkeypatch.chdir(repo)
@@ -352,18 +392,20 @@ def test_cli_annotations_put_changed_lines_first(repo, tmp_path, monkeypatch, ca
     assert [line.split(",")[0] for line in _annotations(capsys.readouterr().err)] == ["::warning file=sub/b.py"]
 
 
-def test_cli_no_annotations_by_default(tmp_path, monkeypatch, capsys):
+def test_cli_no_annotations_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     (tmp_path / "a.py").write_text("x = 1\n")
     assert cli.main(["--workspace", str(tmp_path), str(tmp_path / "a.py")]) == 1
     assert "::" not in capsys.readouterr().err
 
 
-def _fake_server(tmp_path, monkeypatch):
+def _fake_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[tuple[object, ...]]:
     """Use the fake server, recording the arguments ensure_server gets."""
-    calls = []
+    calls: list[tuple[object, ...]] = []
 
-    def ensure(*args):
+    def ensure(*args: object) -> FakeServer:
         calls.append(args)
         return FakeServer(root=tmp_path, java=Path("java"))
 
@@ -371,11 +413,13 @@ def _fake_server(tmp_path, monkeypatch):
     return calls
 
 
-def _no_download(*args, **kwargs):
+def _no_download(*args: object, **kwargs: object) -> NoReturn:
     raise AssertionError("should not download")
 
 
-def test_cli_diff_base_marks_issues_on_changed_lines(repo, tmp_path, monkeypatch, capsys):
+def test_cli_diff_base_marks_issues_on_changed_lines(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     # The fake server reports an issue on line 1 of each file.
     _fake_server(tmp_path, monkeypatch)
     (repo / "a.py").write_text("ONE\ntwo\nthree\n")
@@ -394,15 +438,16 @@ def test_cli_diff_base_marks_issues_on_changed_lines(repo, tmp_path, monkeypatch
     assert out[1].endswith("python issue")
 
     assert cli.main(["--diff-base", "master", "--format", "markdown", "--workspace", str(repo), str(repo)]) == 1
-    out = capsys.readouterr().out
-    changed, elsewhere = out.split("<details>")
+    changed, elsewhere = capsys.readouterr().out.split("<details>")
     assert "### On changed lines (1)" in changed
     assert "| a.py:1 |" in changed
     assert "<summary>Elsewhere (1)</summary>" in elsewhere
     assert "| sub/b.py:1 |" in elsewhere
 
 
-def test_cli_changed_only_analyzes_and_reports_only_changes(repo, tmp_path, monkeypatch, capsys):
+def test_cli_changed_only_analyzes_and_reports_only_changes(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     (repo / "a.py").write_text("one\nTWO\nthree\n")
     (repo / "sub" / "new.py").write_text("x = 1\n")
@@ -425,7 +470,9 @@ def test_cli_changed_only_analyzes_and_reports_only_changes(repo, tmp_path, monk
     assert "0 issue(s) in 1 file(s) analyzed" in captured.err
 
 
-def test_cli_changed_only_with_no_changed_files(repo, monkeypatch, capsys):
+def test_cli_changed_only_with_no_changed_files(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", _no_download)
     monkeypatch.chdir(repo)
     assert cli.main(["--diff-base", "master", "--changed-only"]) == 0
@@ -443,7 +490,9 @@ def test_cli_changed_only_with_no_changed_files(repo, monkeypatch, capsys):
         (["--statistics", "--format", "markdown"], "markdown"),
     ],
 )
-def test_cli_changed_only_with_no_changed_files_prints_an_empty_report(repo, monkeypatch, capsys, flags, report_kind):
+def test_cli_changed_only_with_no_changed_files_prints_an_empty_report(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flags: list[str], report_kind: str
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", _no_download)
     monkeypatch.chdir(repo)
     assert cli.main(["--diff-base", "master", "--changed-only", *flags]) == 0
@@ -462,7 +511,9 @@ def test_cli_changed_only_with_no_changed_files_prints_an_empty_report(repo, mon
         assert "No issues found.\n" in captured.out
 
 
-def test_cli_diff_base_errors_exit_2_without_downloading(repo, monkeypatch, capsys):
+def test_cli_diff_base_errors_exit_2_without_downloading(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", _no_download)
     monkeypatch.chdir(repo)
     assert cli.main(["--diff-base", "nope"]) == 2
@@ -471,7 +522,9 @@ def test_cli_diff_base_errors_exit_2_without_downloading(repo, monkeypatch, caps
     assert "exolot: can't find commit ''" in capsys.readouterr().err
 
 
-def test_cli_changed_only_needs_diff_base(tmp_path, monkeypatch, capsys):
+def test_cli_changed_only_needs_diff_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", _no_download)
     with pytest.raises(SystemExit) as exc:
         cli.main(["--changed-only", str(tmp_path)])
@@ -479,7 +532,9 @@ def test_cli_changed_only_needs_diff_base(tmp_path, monkeypatch, capsys):
     assert "--changed-only needs --diff-base" in capsys.readouterr().err
 
 
-def test_cli_diff_base_counts_secondary_locations_and_whole_ranges(repo, tmp_path, monkeypatch, capsys):
+def test_cli_diff_base_counts_secondary_locations_and_whole_ranges(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     # The fake server's flow issue (fake:S3) is on line 1, with a secondary
     # location on line 2; its fake:S1 issue is on line 1 alone.
     _fake_server(tmp_path, monkeypatch)
@@ -506,7 +561,7 @@ def test_cli_diff_base_counts_secondary_locations_and_whole_ranges(repo, tmp_pat
     assert cli.main([*args, "--statistics"]) == 1
 
 
-def _in_actions(monkeypatch, run_id="42"):
+def _in_actions(monkeypatch: pytest.MonkeyPatch, run_id: str | None = "42") -> None:
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.example/")
     monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
@@ -514,11 +569,13 @@ def _in_actions(monkeypatch, run_id="42"):
         monkeypatch.setenv("GITHUB_RUN_ID", run_id)
 
 
-def _head(repo):
+def _head(repo: Path) -> str:
     return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
 
 
-def test_cli_markdown_links_to_the_checked_out_commit_in_github_actions(repo, tmp_path, monkeypatch, capsys):
+def test_cli_markdown_links_to_the_checked_out_commit_in_github_actions(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     _in_actions(monkeypatch)
     monkeypatch.chdir(repo / "sub")
@@ -527,7 +584,9 @@ def test_cli_markdown_links_to_the_checked_out_commit_in_github_actions(repo, tm
 
 
 @pytest.mark.parametrize("flags", [["--no-links"], ["--link-template", "u/{path}"]], ids=["no-links", "link-template"])
-def test_cli_markdown_links_in_github_actions_can_be_overridden(repo, tmp_path, monkeypatch, capsys, flags):
+def test_cli_markdown_links_in_github_actions_can_be_overridden(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flags: list[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     _in_actions(monkeypatch)
     monkeypatch.chdir(repo)
@@ -535,7 +594,9 @@ def test_cli_markdown_links_in_github_actions_can_be_overridden(repo, tmp_path, 
     assert "github.example" not in capsys.readouterr().out
 
 
-def test_cli_markdown_has_no_links_in_github_actions_outside_a_repo(tmp_path, monkeypatch, capsys):
+def test_cli_markdown_has_no_links_in_github_actions_outside_a_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     _in_actions(monkeypatch)
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
@@ -545,7 +606,9 @@ def test_cli_markdown_has_no_links_in_github_actions_outside_a_repo(tmp_path, mo
     assert capsys.readouterr().out.endswith("| a.py:1 | fake:S1 | python issue |\n")
 
 
-def test_cli_github_comment(repo, tmp_path, monkeypatch, capsys):
+def test_cli_github_comment(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     _in_actions(monkeypatch)
     (repo / "pyproject.toml").write_text('[tool.exolot]\npreamble = "Read *this*."\n')
@@ -564,7 +627,9 @@ def test_cli_github_comment(repo, tmp_path, monkeypatch, capsys):
     assert "1 on changed lines, in 2 file(s) analyzed" in captured.err
 
 
-def test_cli_github_comment_outside_github_actions(tmp_path, monkeypatch, capsys):
+def test_cli_github_comment_outside_github_actions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     monkeypatch.chdir(tmp_path)
@@ -578,7 +643,9 @@ def test_cli_github_comment_outside_github_actions(tmp_path, monkeypatch, capsys
     assert "1 issue(s) in 1 file(s) analyzed" in captured.err
 
 
-def test_cli_bad_config_exits_2_without_downloading(tmp_path, monkeypatch, capsys):
+def test_cli_bad_config_exits_2_without_downloading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", _no_download)
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".exolot.toml").write_text("nope = 1\n")
@@ -595,7 +662,9 @@ def test_cli_bad_config_exits_2_without_downloading(tmp_path, monkeypatch, capsy
         (["--format", "markdown", "--no-links", "--link-template", "{path}"], "--no-links needs"),
     ],
 )
-def test_cli_rejects_github_comment_and_no_links_misuse(tmp_path, monkeypatch, capsys, flags, error):
+def test_cli_rejects_github_comment_and_no_links_misuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flags: list[str], error: str
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", _no_download)
     with pytest.raises(SystemExit) as exc:
         cli.main([*flags, str(tmp_path)])
@@ -603,11 +672,13 @@ def test_cli_rejects_github_comment_and_no_links_misuse(tmp_path, monkeypatch, c
     assert error in capsys.readouterr().err
 
 
-def test_cli_github_comment_without_git(tmp_path, monkeypatch, capsys):
+def test_cli_github_comment_without_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     real_run = subprocess.run
 
-    def run(cmd, *args, **kwargs):
+    def run(cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[Any]:
         if cmd[0] == "git":
             raise FileNotFoundError("git")
         return real_run(cmd, *args, **kwargs)
@@ -619,7 +690,7 @@ def test_cli_github_comment_without_git(tmp_path, monkeypatch, capsys):
     assert "Analysis of" not in capsys.readouterr().out
 
 
-def test_cli_cache_dir(monkeypatch, capsys):
+def test_cli_cache_dir(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(cli, "cache_dir", lambda: Path("/cache"))
     assert cli.main(["cache-dir"]) == 0
     assert capsys.readouterr().out == f"{Path('/cache')}\n"
@@ -633,10 +704,17 @@ def test_cli_cache_dir(monkeypatch, capsys):
         (["--platform", "win32-x64"], "win32-x64", "win32-x64"),
     ],
 )
-def test_cli_install(tmp_path, monkeypatch, capsys, flags, platform, shown):
-    calls = []
+def test_cli_install(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flags: list[str],
+    platform: str | None,
+    shown: str,
+) -> None:
+    calls: list[str | None] = []
 
-    def ensure(version, plat, java):
+    def ensure(version: str, plat: str | None, java: str | None) -> FakeServer:
         calls.append(plat)
         return FakeServer(root=tmp_path, java=Path("java"))
 
@@ -650,8 +728,10 @@ def test_cli_install(tmp_path, monkeypatch, capsys, flags, platform, shown):
 
 
 @pytest.mark.parametrize("command", [["install"], []])
-def test_cli_server_errors_exit_2(tmp_path, monkeypatch, capsys, command):
-    def fail(*args):
+def test_cli_server_errors_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], command: list[str]
+) -> None:
+    def fail(*args: object) -> NoReturn:
         raise ServerError("no download for you")
 
     monkeypatch.setattr(cli, "ensure_server", fail)
@@ -665,13 +745,15 @@ def test_cli_server_errors_exit_2(tmp_path, monkeypatch, capsys, command):
 B_PY = str(Path("sub", "b.py"))
 
 
-def test_cli_analyze_repo_analyzes_a_temporary_clone(repo, tmp_path, monkeypatch, capsys):
+def test_cli_analyze_repo_analyzes_a_temporary_clone(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
-    clones = []
+    clones: list[Path] = []
     real_clone = clone.clone
 
-    def recording_clone(*args):
+    def recording_clone(*args: Any) -> str:
         clones.append(args[1])
         return real_clone(*args)
 
@@ -686,7 +768,9 @@ def test_cli_analyze_repo_analyzes_a_temporary_clone(repo, tmp_path, monkeypatch
     assert not clones[0].exists()
 
 
-def test_cli_analyze_repo_analyzes_paths_in_the_repo_and_keeps_the_clone(repo, tmp_path, monkeypatch, capsys):
+def test_cli_analyze_repo_analyzes_paths_in_the_repo_and_keeps_the_clone(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     keep = tmp_path / "kept"
     assert cli.main(["analyze-repo", str(repo), "sub", "--ref", "master", "--keep", str(keep)]) == 1
@@ -695,13 +779,17 @@ def test_cli_analyze_repo_analyzes_paths_in_the_repo_and_keeps_the_clone(repo, t
 
 
 @pytest.mark.parametrize("path", ["/abs", "../x", "sub/../../x"])
-def test_cli_analyze_repo_rejects_paths_outside_the_repo(tmp_path, monkeypatch, capsys, path):
+def test_cli_analyze_repo_rejects_paths_outside_the_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], path: str
+) -> None:
     monkeypatch.setattr(clone, "clone", lambda *args: pytest.fail("should not clone"))
     assert cli.main(["analyze-repo", "https://example.com/r.git", path]) == 2
     assert "isn't a path inside the repository" in capsys.readouterr().err
 
 
-def test_cli_analyze_repo_needs_an_empty_keep_directory(tmp_path, monkeypatch, capsys):
+def test_cli_analyze_repo_needs_an_empty_keep_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(clone, "clone", lambda *args: pytest.fail("should not clone"))
     (tmp_path / "file").write_text("x")
     assert cli.main(["analyze-repo", "https://example.com/r.git", "--keep", str(tmp_path)]) == 2
@@ -709,7 +797,9 @@ def test_cli_analyze_repo_needs_an_empty_keep_directory(tmp_path, monkeypatch, c
     assert "isn't an empty directory" in capsys.readouterr().err
 
 
-def test_cli_analyze_repo_clone_errors_exit_2_without_downloading(repo, monkeypatch, capsys):
+def test_cli_analyze_repo_clone_errors_exit_2_without_downloading(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: pytest.fail("should not download"))
     assert cli.main(["analyze-repo", str(repo), "--ref", "nope"]) == 2
     assert "git fetch failed" in capsys.readouterr().err
@@ -717,12 +807,19 @@ def test_cli_analyze_repo_clone_errors_exit_2_without_downloading(repo, monkeypa
 
 @pytest.mark.parametrize("existing", [False, True])
 @pytest.mark.parametrize("error", [clone.CloneError("git checkout failed"), KeyboardInterrupt()])
-def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, monkeypatch, capsys, existing, error):
+def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    existing: bool,
+    error: BaseException,
+) -> None:
     keep = tmp_path / "kept"
     if existing:
         keep.mkdir()
 
-    def fail_after_checking_out_some_files(source, dest, ref=None):
+    def fail_after_checking_out_some_files(source: str, dest: Path, ref: str | None = None) -> NoReturn:
         (dest / ".git").mkdir(parents=True)
         (dest / "sub").mkdir()
         (dest / "a.py").write_text("x\n")
@@ -739,7 +836,9 @@ def test_cli_analyze_repo_cleans_up_keep_after_a_failed_clone(repo, tmp_path, mo
         assert not any(keep.iterdir())
 
 
-def test_cli_analyze_repo_lists_the_clones_files_when_run_from_a_hook(repo, tmp_path, monkeypatch, capsys):
+def test_cli_analyze_repo_lists_the_clones_files_when_run_from_a_hook(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     hook_repo = tmp_path / "hook"
     git(tmp_path, "init", "-q", str(hook_repo))
@@ -749,13 +848,15 @@ def test_cli_analyze_repo_lists_the_clones_files_when_run_from_a_hook(repo, tmp_
     assert "2 issue(s) in 2 file(s) analyzed" in capsys.readouterr().err
 
 
-def test_cli_analyze_repo_has_no_diff_options(capsys):
+def test_cli_analyze_repo_has_no_diff_options(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         cli.main(["analyze-repo", "https://example.com/r.git", "--diff-base", "master"])
     assert "unrecognized arguments: --diff-base" in capsys.readouterr().err
 
 
-def test_cli_analyze_repo_resolves_local_options_before_changing_directory(repo, tmp_path, monkeypatch, capsys):
+def test_cli_analyze_repo_resolves_local_options_before_changing_directory(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     calls = _fake_server(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "rules.json").write_text('{"fake:S1": {"level": "off"}}')
@@ -765,7 +866,9 @@ def test_cli_analyze_repo_resolves_local_options_before_changing_directory(repo,
     assert calls[0][2] == str(tmp_path / "java")
 
 
-def test_cli_analyze_repo_excludes_relative_to_the_clone(repo, tmp_path, monkeypatch, capsys):
+def test_cli_analyze_repo_excludes_relative_to_the_clone(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     monkeypatch.chdir(tmp_path)
     assert cli.main(["analyze-repo", "repo", "--exclude", "sub/*"]) == 1
@@ -773,7 +876,7 @@ def test_cli_analyze_repo_excludes_relative_to_the_clone(repo, tmp_path, monkeyp
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
-def test_collect_files_excludes_symlinks_by_their_listed_path(tmp_path, monkeypatch):
+def test_collect_files_excludes_symlinks_by_their_listed_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     outside = tmp_path / "outside.py"
     outside.write_text("x = 1\n")
     (tmp_path / "proj" / "vendor").mkdir(parents=True)
@@ -784,7 +887,7 @@ def test_collect_files_excludes_symlinks_by_their_listed_path(tmp_path, monkeypa
     assert files == [(tmp_path / "proj" / "kept.py").resolve()]
 
 
-def test_cli_config_excludes_are_relative_to_the_config_file(tmp_path, monkeypatch):
+def test_cli_config_excludes_are_relative_to_the_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_dir = tmp_path / "sub"
     config_dir.mkdir()
     monkeypatch.chdir(tmp_path)
@@ -796,19 +899,19 @@ def test_cli_config_excludes_are_relative_to_the_config_file(tmp_path, monkeypat
 
 
 @pytest.mark.parametrize("glob", ["", "/"])
-def test_cli_rejects_an_empty_exclude(glob, capsys):
+def test_cli_rejects_an_empty_exclude(glob: str, capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         cli.main(["--exclude", glob])
     assert exc.value.code == 2
     assert "would match nothing" in capsys.readouterr().err
 
 
-def test_cli_excludes_without_a_config_file(tmp_path, monkeypatch):
+def test_cli_excludes_without_a_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     assert cli._exclude_patterns(argparse.Namespace(exclude=["*.m"]), Config()) == [Exclude("*.m", tmp_path)]
 
 
-def test_cli_exclude_is_relative_to_the_current_directory(tmp_path, monkeypatch):
+def test_cli_exclude_is_relative_to_the_current_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / ".git").mkdir()
     (tmp_path / "src" / "gen").mkdir(parents=True)
     (tmp_path / "src" / "gen" / "a.py").write_text("x = 1\n")
@@ -818,14 +921,16 @@ def test_cli_exclude_is_relative_to_the_current_directory(tmp_path, monkeypatch)
     assert files == [(tmp_path / "src" / "b.py").resolve()]
 
 
-def _fake_clone(source, dest, ref=None):
+def _fake_clone(source: str, dest: Path, ref: str | None = None) -> str:
     dest.mkdir(exist_ok=True)
     (dest / ".git").mkdir()
     (dest / "a.py").write_text("x = 1\n")
     return "abc123"
 
 
-def test_cli_analyze_repo_links_to_github(tmp_path, monkeypatch, capsys):
+def test_cli_analyze_repo_links_to_github(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     monkeypatch.setattr(clone, "clone", _fake_clone)
     assert cli.main(["analyze-repo", "https://github.com/o/r", "--format", "markdown"]) == 1
@@ -836,7 +941,13 @@ def test_cli_analyze_repo_links_to_github(tmp_path, monkeypatch, capsys):
     ("flags", "link"),
     [([], None), (["--link-template", "https://x/{path}"], "https://x/a.py"), (["--no-links"], None)],
 )
-def test_cli_analyze_repo_links_elsewhere_only_when_asked(tmp_path, monkeypatch, capsys, flags, link):
+def test_cli_analyze_repo_links_elsewhere_only_when_asked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flags: list[str],
+    link: str | None,
+) -> None:
     _fake_server(tmp_path, monkeypatch)
     _in_actions(monkeypatch)
     monkeypatch.setattr(clone, "clone", _fake_clone)
@@ -858,7 +969,14 @@ def test_cli_analyze_repo_links_elsewhere_only_when_asked(tmp_path, monkeypatch,
         (["--verbose"], ["Debug", "Info", "Warn", "Error"]),
     ],
 )
-def test_cli_log_level(tmp_path, monkeypatch, capfd, caplog, args, expected):
+def test_cli_log_level(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    args: list[str],
+    expected: list[str],
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     (tmp_path / "a.py").write_text("x = 1\n")
     monkeypatch.chdir(tmp_path)
@@ -890,7 +1008,7 @@ def test_cli_log_level(tmp_path, monkeypatch, capfd, caplog, args, expected):
     assert logging.getLogger("exolot.server").level == logging.NOTSET
 
 
-def test_cli_rejects_unknown_log_level(capsys):
+def test_cli_rejects_unknown_log_level(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit):
         cli.main(["--log-level", "trace", "a.py"])
     assert "invalid choice: 'trace'" in capsys.readouterr().err
@@ -911,11 +1029,11 @@ class _StopAfterLogging(Exception):
         (["-v"], logging.INFO),
     ],
 )
-def test_cli_log_level_sets_exolots_own_level(monkeypatch, args, level):
+def test_cli_log_level_sets_exolots_own_level(monkeypatch: pytest.MonkeyPatch, args: list[str], level: int) -> None:
     # exolot's own progress messages show only with --log-level debug or info.
-    seen = []
+    seen: list[int] = []
 
-    def basic_config(**kwargs):
+    def basic_config(**kwargs: Any) -> NoReturn:
         seen.append(kwargs["level"])
         raise _StopAfterLogging
 

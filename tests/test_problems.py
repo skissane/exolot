@@ -25,13 +25,13 @@ STACK_TRACE = (
 )
 
 
-def test_failed_sensor():
+def test_failed_sensor() -> None:
     message = "[Error - 15:45:54.733] [sonarlint : sonarlint-analysis-scheduler] Error executing sensor: 'OmniSharp'"
     assert problems.failed_sensor(message) == "OmniSharp"
     assert problems.failed_sensor("[Error - 15:45:54.733] something else") is None
 
 
-def test_stack_trace_reason_takes_the_root_cause_as_its_wrapper_gives_it():
+def test_stack_trace_reason_takes_the_root_cause_as_its_wrapper_gives_it() -> None:
     assert problems.is_stack_trace(STACK_TRACE)
     assert (
         problems.stack_trace_reason(STACK_TRACE)
@@ -56,11 +56,11 @@ def test_stack_trace_reason_takes_the_root_cause_as_its_wrapper_gives_it():
         ("", None),
     ],
 )
-def test_stack_trace_reason(message, reason):
+def test_stack_trace_reason(message: str, reason: str | None) -> None:
     assert problems.stack_trace_reason(message) == reason
 
 
-def test_find_counts_each_file_towards_the_first_problem():
+def test_find_counts_each_file_towards_the_first_problem() -> None:
     files = {
         Path("a.c"): "c",
         Path("b.cpp"): "cpp",
@@ -102,13 +102,13 @@ def test_find_counts_each_file_towards_the_first_problem():
     ]
 
 
-def test_find_with_nothing_wrong():
+def test_find_with_nothing_wrong() -> None:
     assert (
         problems.find({Path("a.py"): "python"}, {"Python": PLUGIN_ACTIVE}, {}, needs_compilation_database=False) == []
     )
 
 
-def test_problem_messages():
+def test_problem_messages() -> None:
     problem = Problem("the C# analyzer failed", "analyzer failed", "C#", ("csharp",), [Path("a.cs"), Path("b.cs")])
     assert problem.message() == (
         "the C# analyzer failed, so 2 C# file(s) were not analyzed; use --log-level error for details"
@@ -120,7 +120,7 @@ def test_problem_messages():
     assert unknown.sentence() == "The X analyzer failed, so some files may not have been analyzed."
 
 
-def test_summary():
+def test_summary() -> None:
     cs = Problem("c", "analyzer failed", "C#", ("csharp",), [Path("a.cs")] * 3)
     c = Problem("c", "analyzer unavailable", "C", ("c",), [Path("a.c")])
     unknown = Problem("the X analyzer failed", "analyzer failed")
@@ -137,7 +137,7 @@ def test_summary():
     assert problems.summary(0, 10, [shown]) == "0 issue(s) in 10 file(s) analyzed"
 
 
-def _session_files(tmp_path):
+def _session_files(tmp_path: Path) -> list[Path]:
     files = []
     for name, text in [("a.py", "SENSORFAIL NEEDCDB SHOWMSG\n"), ("b.cs", "x\n"), ("c.c", "x\n"), ("d.js", "x\n")]:
         (tmp_path / name).write_text(text)
@@ -145,7 +145,9 @@ def _session_files(tmp_path):
     return files
 
 
-def test_session_finds_what_the_server_couldnt_analyze(tmp_path, monkeypatch, caplog):
+def test_session_finds_what_the_server_couldnt_analyze(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     caplog.set_level(logging.INFO, "exolot.analyze")
     monkeypatch.setenv("FAKE_SERVER_PLUGIN_STATES", json.dumps({"JavaScript": PLUGIN_DOWNLOADING, "Python": 0}))
     files = _session_files(tmp_path)
@@ -163,7 +165,9 @@ def test_session_finds_what_the_server_couldnt_analyze(tmp_path, monkeypatch, ca
     assert ("INFO", "message ::of type 3") in shown
 
 
-def test_session_goes_without_plugin_states_the_server_doesnt_give(tmp_path, monkeypatch):
+def test_session_goes_without_plugin_states_the_server_doesnt_give(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("FAKE_SERVER_PLUGIN_STATES", "fail")
     a = tmp_path / "a.js"
     a.write_text("x\n")
@@ -172,7 +176,7 @@ def test_session_goes_without_plugin_states_the_server_doesnt_give(tmp_path, mon
         assert session.unanalyzed([a]) == []
 
 
-def test_session_keeps_the_first_reason_a_sensor_failed_for(tmp_path):
+def test_session_keeps_the_first_reason_a_sensor_failed_for(tmp_path: Path) -> None:
     session = AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path)
     for message in [
         "Error executing sensor: 'S'",
@@ -187,7 +191,7 @@ def test_session_keeps_the_first_reason_a_sensor_failed_for(tmp_path):
 
 
 @pytest.fixture
-def cli_files(tmp_path, monkeypatch):
+def cli_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     monkeypatch.setenv("FAKE_SERVER_PLUGIN_STATES", json.dumps({"C#": PLUGIN_DOWNLOADING}))
     monkeypatch.chdir(tmp_path)
@@ -201,14 +205,16 @@ WARNING = "the C# analyzer couldn't be downloaded, so 2 C# file(s) were not anal
 SUMMARY = "in 1 file(s) analyzed; 2 C# file(s) not analyzed (analyzer unavailable)"
 
 
-def test_cli_warns_about_files_not_analyzed(cli_files, capsys):
+def test_cli_warns_about_files_not_analyzed(cli_files: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     cli.main(cli_files)
     err = capsys.readouterr().err
     assert f"exolot: warning: {WARNING}; use --log-level error for details\n" in err
     assert f"3 issue(s) {SUMMARY}" in err
 
 
-def test_cli_shows_server_messages_when_analysis_fails(cli_files, capsys, tmp_path):
+def test_cli_shows_server_messages_when_analysis_fails(
+    cli_files: list[str], capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
     (tmp_path / "busy.py").write_text("SHOWMSG BUSY\n")
     assert cli.main(["--timeout", "2", "busy.py"]) == 2
     err = capsys.readouterr().err
@@ -216,7 +222,9 @@ def test_cli_shows_server_messages_when_analysis_fails(cli_files, capsys, tmp_pa
     assert "did not finish in time" in err
 
 
-def test_cli_warns_without_the_hint_when_showing_the_servers_log(cli_files, capsys):
+def test_cli_warns_without_the_hint_when_showing_the_servers_log(
+    cli_files: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
     cli.main(["--log-level", "error", *cli_files])
     err = capsys.readouterr().err
     assert f"exolot: warning: {WARNING}\n" in err
@@ -224,14 +232,18 @@ def test_cli_warns_without_the_hint_when_showing_the_servers_log(cli_files, caps
 
 
 @pytest.mark.parametrize("flags", [["--format", "markdown"], ["--format", "markdown", "--statistics"]])
-def test_cli_markdown_warns_about_files_not_analyzed(cli_files, capsys, flags):
+def test_cli_markdown_warns_about_files_not_analyzed(
+    cli_files: list[str], capsys: pytest.CaptureFixture[str], flags: list[str]
+) -> None:
     cli.main([*flags, *cli_files])
     captured = capsys.readouterr()
     assert captured.out.startswith(f"> [!WARNING]\n> - T{WARNING[1:]}.\n\n|")
     assert SUMMARY in captured.err
 
 
-def test_cli_github_comment_warns_about_files_not_analyzed(cli_files, capsys):
+def test_cli_github_comment_warns_about_files_not_analyzed(
+    cli_files: list[str], capsys: pytest.CaptureFixture[str]
+) -> None:
     cli.main(["--format", "github-comment", *cli_files])
     captured = capsys.readouterr()
     assert f"> [!WARNING]\n> - T{WARNING[1:]}.\n\n### Findings" in captured.out
@@ -239,12 +251,14 @@ def test_cli_github_comment_warns_about_files_not_analyzed(cli_files, capsys):
 
 
 @pytest.mark.parametrize("flags", [[], ["--statistics"]])
-def test_cli_text_and_statistics_summaries(cli_files, capsys, flags):
+def test_cli_text_and_statistics_summaries(
+    cli_files: list[str], capsys: pytest.CaptureFixture[str], flags: list[str]
+) -> None:
     cli.main([*flags, *cli_files])
     assert SUMMARY in capsys.readouterr().err
 
 
-def test_cli_annotations_put_files_not_analyzed_first(cli_files, capsys):
+def test_cli_annotations_put_files_not_analyzed_first(cli_files: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     cli.main(["--annotations", *cli_files])
     lines = [line for line in capsys.readouterr().err.splitlines() if line.startswith("::")]
     assert lines[0] == f"::warning title=exolot::T{WARNING[1:]}."
@@ -252,7 +266,7 @@ def test_cli_annotations_put_files_not_analyzed_first(cli_files, capsys):
     assert all(line.startswith("::warning file=") for line in lines[1:])
 
 
-def test_cli_sarif_warns_about_files_not_analyzed(cli_files, capsys):
+def test_cli_sarif_warns_about_files_not_analyzed(cli_files: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     cli.main(["--format", "sarif", *cli_files])
     captured = capsys.readouterr()
     log = json.loads(captured.out)

@@ -5,6 +5,7 @@ EXOLOT_INTEGRATION=1.
 """
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -14,7 +15,7 @@ from exolot.server import ensure_server
 pytestmark = pytest.mark.skipif(os.environ.get("EXOLOT_INTEGRATION") != "1", reason="set EXOLOT_INTEGRATION=1")
 
 
-def test_finds_python_issue(tmp_path):
+def test_finds_python_issue(tmp_path: Path) -> None:
     source = tmp_path / "bad.py"
     source.write_text("def f(x):\n    if x == x:\n        pass\n")
     with AnalysisSession(ensure_server(progress=False), tmp_path) as session:
@@ -24,7 +25,7 @@ def test_finds_python_issue(tmp_path):
     assert names["python:S1764"] == "Identical expressions should not be used on both sides of a binary operator"
 
 
-def test_finds_secondary_locations(tmp_path):
+def test_finds_secondary_locations(tmp_path: Path) -> None:
     source = tmp_path / "bad.py"
     source.write_text("def f(x):\n    if x == x:\n        pass\n")
     with AnalysisSession(ensure_server(progress=False), tmp_path) as session:

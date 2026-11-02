@@ -1,5 +1,7 @@
 import json
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Any, NoReturn
 
 import jsonschema
 import pytest
@@ -12,11 +14,17 @@ from tests.test_analyze import FakeServer
 SCHEMA = json.loads(Path(__file__).with_name("data").joinpath("sarif-schema-2.1.0.json").read_text())
 
 
-def validate(log):
+def validate(log: object) -> None:
     jsonschema.validate(log, SCHEMA)
 
 
-def issue(path="/r/a.py", rule="python:S1", severity="warning", line=2, related=()):
+def issue(
+    path: str = "/r/a.py",
+    rule: str = "python:S1",
+    severity: str = "warning",
+    line: int = 2,
+    related: Iterable[Location] = (),
+) -> Issue:
     return Issue(
         path=Path(path),
         line=line,
@@ -31,11 +39,11 @@ def issue(path="/r/a.py", rule="python:S1", severity="warning", line=2, related=
     )
 
 
-def relative(path):
+def relative(path: Path) -> dict[str, str]:
     return {"uri": path.name, "uriBaseId": "%SRCROOT%"}
 
 
-def test_log_maps_issues_to_results():
+def test_log_maps_issues_to_results() -> None:
     other = Location(Path("/r/b.py"), 7, 1, 8, 2, "see here")
     unnamed = Location(Path("/r/a.py"), 1, 1, 1, 1, "")
     issues = [
@@ -88,13 +96,13 @@ def test_log_maps_issues_to_results():
     assert "relatedLocations" not in results[1]
 
 
-def test_log_defines_srcroot():
+def test_log_defines_srcroot() -> None:
     log = sarif.log([issue()], "1.2.3", {}, relative, "file:///r/")
     validate(log)
     assert log["runs"][0]["originalUriBaseIds"] == {"%SRCROOT%": {"uri": "file:///r/"}}
 
 
-def test_related_locations_share_one_timeout(tmp_path):
+def test_related_locations_share_one_timeout(tmp_path: Path) -> None:
     source = tmp_path / "a.py"
     source.write_text("FLOW\n")
     with AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path) as session:
@@ -105,14 +113,20 @@ def test_related_locations_share_one_timeout(tmp_path):
     assert flow.related == []
 
 
-def test_log_with_no_issues():
+def test_log_with_no_issues() -> None:
     log = sarif.log([], "1.2.3", {}, relative)
     validate(log)
     assert log["runs"][0]["results"] == []
     assert log["runs"][0]["tool"]["driver"]["rules"] == []
 
 
-def _run(tmp_path, monkeypatch, capsys, *texts, flags=()):
+def _run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *texts: str,
+    flags: tuple[str, ...] = (),
+) -> tuple[int, dict[str, Any], str]:
     """Analyze one file per text in a git repo, from a subdirectory of it."""
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     repo = tmp_path / "repo"
@@ -129,7 +143,7 @@ def _run(tmp_path, monkeypatch, capsys, *texts, flags=()):
     return status, log, captured.err
 
 
-def test_cli_sarif(tmp_path, monkeypatch, capsys):
+def test_cli_sarif(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     status, log, err = _run(tmp_path, monkeypatch, capsys, "FLOW", "x = 1")
     assert status == 1
     assert "3 issue(s) in 2 file(s) analyzed" in err
@@ -162,7 +176,9 @@ def test_cli_sarif(tmp_path, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("env", [{}, {"FAKE_SERVER_CODE_ACTIONS_FAIL": "1"}])
-def test_cli_sarif_keeps_the_message_without_the_locations(tmp_path, monkeypatch, capsys, env):
+def test_cli_sarif_keeps_the_message_without_the_locations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], env: dict[str, str]
+) -> None:
     for name, value in env.items():
         monkeypatch.setenv(name, value)
     _, log, _ = _run(tmp_path, monkeypatch, capsys, "FLOW NOLOCATIONS")
@@ -171,7 +187,9 @@ def test_cli_sarif_keeps_the_message_without_the_locations(tmp_path, monkeypatch
     assert "relatedLocations" not in flow
 
 
-def test_cli_sarif_file_outside_a_repo(tmp_path, monkeypatch, capsys):
+def test_cli_sarif_file_outside_a_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
     source = tmp_path / "a.py"
     source.write_text("x = 1\n")
@@ -183,10 +201,12 @@ def test_cli_sarif_file_outside_a_repo(tmp_path, monkeypatch, capsys):
     assert location["artifactLocation"] == {"uri": source.resolve().as_uri()}
 
 
-def test_cli_sarif_with_no_issues(tmp_path, monkeypatch, capsys):
+def test_cli_sarif_with_no_issues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(AnalysisSession, "analyze", lambda self, files, timeout=None: [])
 
-    def unneeded(self, *args):
+    def unneeded(self: AnalysisSession, *args: object) -> NoReturn:
         raise AssertionError("not needed when there are no issues")
 
     monkeypatch.setattr(AnalysisSession, "rule_names", unneeded)
@@ -197,8 +217,10 @@ def test_cli_sarif_with_no_issues(tmp_path, monkeypatch, capsys):
     assert "0 issue(s) in 1 file(s) analyzed" in err
 
 
-def test_cli_rejects_statistics_with_sarif(tmp_path, monkeypatch, capsys):
-    def fail(*args, **kwargs):
+def test_cli_rejects_statistics_with_sarif(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fail(*args: object, **kwargs: object) -> NoReturn:
         raise AssertionError("should not download")
 
     monkeypatch.setattr(cli, "ensure_server", fail)

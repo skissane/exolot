@@ -2,24 +2,25 @@
 
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _outside_github_actions(monkeypatch):
+def _outside_github_actions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Run every test as if outside GitHub Actions, even in CI, so exolot
     doesn't link to the workflow's repository unless a test asks it to."""
     for name in ("GITHUB_ACTIONS", "GITHUB_SERVER_URL", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"):
         monkeypatch.delenv(name, raising=False)
 
 
-def git(repo, *args):
+def git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
 
 
 @pytest.fixture
-def repo(tmp_path, monkeypatch):
+def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A repo whose master has a.py (three lines) and b.py, checked out on a
     branch "topic" from it, with the user's git config ignored."""
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)

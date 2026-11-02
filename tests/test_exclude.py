@@ -46,11 +46,11 @@ FILE = BASE / "vendor" / "lib" / "a.py"
         ("!a.py", False),
     ],
 )
-def test_matches(pattern, skipped):
+def test_matches(pattern: str, skipped: bool) -> None:
     assert Exclude(pattern, BASE).matches(FILE) is skipped
 
 
-def test_paths_outside_the_base_match_only_by_file_name():
+def test_paths_outside_the_base_match_only_by_file_name() -> None:
     outside = BASE.parent / "other" / "vendor" / "a.py"
     assert Exclude("*.py", BASE).matches(outside)
     assert not Exclude("vendor", BASE).matches(outside)
@@ -58,38 +58,38 @@ def test_paths_outside_the_base_match_only_by_file_name():
 
 
 @pytest.mark.parametrize("insensitive", [True, False])
-def test_case(monkeypatch, insensitive):
+def test_case(monkeypatch: pytest.MonkeyPatch, insensitive: bool) -> None:
     monkeypatch.setattr(exclude, "CASE_INSENSITIVE", insensitive)
     assert Exclude("VENDOR/**", BASE).matches(FILE) is insensitive
     assert Exclude("*.PY", BASE).matches(FILE) is insensitive
     assert Exclude("*.py", BASE).matches(BASE.parent / "A.PY") is insensitive
 
 
-def test_is_excluded():
+def test_is_excluded() -> None:
     assert is_excluded(FILE, [Exclude("*.m", BASE), Exclude("lib", BASE)])
     assert not is_excluded(FILE, [Exclude("*.m", BASE)])
     assert not is_excluded(FILE, [])
 
 
-def test_dir_glob_doesnt_match_a_file_of_that_name():
+def test_dir_glob_doesnt_match_a_file_of_that_name() -> None:
     assert not Exclude("foo/**", BASE).matches(BASE / "foo")
     assert Exclude("foo/**", BASE).matches(BASE / "foo" / "bar")
 
 
-def test_base_case_is_folded_too(monkeypatch):
+def test_base_case_is_folded_too(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(exclude, "CASE_INSENSITIVE", True)
     assert Exclude("vendor/**", BASE.parent / "REPO").matches(FILE)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
-def test_unresolved_base(tmp_path):
+def test_unresolved_base(tmp_path: Path) -> None:
     (tmp_path / "real").mkdir()
     (tmp_path / "link").symlink_to(tmp_path / "real", target_is_directory=True)
     target = (tmp_path / "real" / "vendor" / "a.py").resolve()
     assert Exclude("vendor/**", tmp_path / "link").matches(target)
 
 
-def test_many_double_stars_stay_fast():
+def test_many_double_stars_stay_fast() -> None:
     deep = BASE.joinpath(*["d"] * 40, "a.py")
     assert not Exclude("/".join(["**", "d"] * 10) + "/x/**", BASE).matches(deep)
 
@@ -97,5 +97,5 @@ def test_many_double_stars_stay_fast():
 @pytest.mark.parametrize(
     ("pattern", "empty"), [("", True), ("/", True), ("./", True), ("//", True), ("a", False), ("/a/", False)]
 )
-def test_is_empty(pattern, empty):
+def test_is_empty(pattern: str, empty: bool) -> None:
     assert is_empty(pattern) is empty
