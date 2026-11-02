@@ -159,8 +159,8 @@ status 2 if the repository or REF can't be fetched.
   (Location, Rule and Message), with characters Markdown or HTML would
   interpret escaped, and `--statistics` as a Count, Rule and Name table.
   Its paths are relative to the root of the git repository each file is in
-  (so links work from any subdirectory), or to the current directory for
-  files outside one.
+  (so links work from any subdirectory). Files outside one get paths relative
+  to the current directory, or absolute paths if they're outside it too.
 - `--link-template TEMPLATE` (with `--format markdown` or `github-comment`)
   links each location to a URL made from TEMPLATE, filling in `{path}`
   (URL-quoted, with forward slashes), `{line}`, `{column}`, `{end_line}` and
@@ -218,9 +218,10 @@ status 2 if the repository or REF can't be fetched.
   see [Workflow annotations](#workflow-annotations). The command is `error`,
   `warning` or `notice` (for the server's info and hint severities), and paths
   are relative to the root of the git repository each file is in (files
-  outside one get paths relative to the current directory, which GitHub can't
-  place on a diff, so their annotations show only in the run). Warnings about
-  files that weren't analyzed come first, as `::warning` annotations with no
+  outside one get paths relative to the current directory, or absolute if
+  they're outside that too; GitHub can't place either on a diff, so their
+  annotations show only in the run). Warnings about files that weren't
+  analyzed come first, as `::warning` annotations with no
   file, then with `--diff-base` the issues on changed lines.
 - `--log-level LEVEL` shows the server's log messages at `LEVEL` and above,
   where `LEVEL` is `debug`, `info`, `warn` or `error` (by default exolot

@@ -3,6 +3,7 @@ import json
 import logging
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from exolot import cli
 from exolot.analyze import AnalysisSession, collect_files, language_id
 from exolot.config import Config
 from exolot.exclude import Exclude
+from exolot.markdown import escape
 from exolot.server import Server, ServerError
 from tests.conftest import git
 
@@ -293,7 +295,9 @@ def test_cli_markdown_paths_are_relative_to_the_repo_root(tmp_path, monkeypatch,
     cli.main(["--format", "markdown", "--link-template", "u/{path}", "--workspace", str(repo), "a.py", str(outside)])
     out = capsys.readouterr().out
     assert "| [sub/a.py:1](u/sub/a.py) |" in out
-    assert "| [../../b.py:1](u/../../b.py) |" in out
+    # Outside any repo the path is absolute, with forward slashes even on Windows.
+    expected = escape(f"{outside.as_posix()}:1")
+    assert f"| [{expected}](u/{urllib.parse.quote(outside.as_posix())}) |" in out
 
 
 def _annotations(err):
@@ -372,7 +376,7 @@ def test_cli_diff_base_marks_issues_on_changed_lines(repo, tmp_path, monkeypatch
     monkeypatch.chdir(repo / "sub")
     assert cli.main(["--diff-base", "master", "--format", "json", "--workspace", str(repo), str(repo)]) == 1
     assert [(f["path"], f["changed"]) for f in json.loads(capsys.readouterr().out)] == [
-        (str(Path("../a.py")), True),
+        (str(repo / "a.py"), True),
         ("b.py", False),
     ]
 
