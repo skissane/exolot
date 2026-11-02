@@ -7,23 +7,27 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from .exclude import is_empty
+
 
 class ConfigError(Exception):
     pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Config:
     # Markdown that --format github-comment puts after its heading.
     preamble: str | None = None
     # The C/C++ compilation database, made absolute against the config file's directory.
     compile_commands: Path | None = None
+    # Glob patterns of files to skip.
+    exclude: tuple[str, ...] = ()
     # The file the settings came from, if any.
     path: Path | None = None
 
 
 # Each setting's name in the file, with its type there.
-SETTINGS = {"preamble": str, "compile-commands": str}
+SETTINGS = {"preamble": str, "compile-commands": str, "exclude": list}
 PYPROJECT = "pyproject.toml"
 
 
@@ -65,11 +69,23 @@ def load(start: Path) -> Config:
         if not isinstance(value, SETTINGS[key]):
             raise ConfigError(f"{where}: {key} should be a {SETTINGS[key].__name__}")
     compile_commands = table.get("compile-commands")
+    exclude = _exclude(table.get("exclude", []), where)
     return Config(
         preamble=table.get("preamble"),
         compile_commands=None if compile_commands is None else path.parent.joinpath(compile_commands).resolve(),
+        exclude=exclude,
         path=path,
     )
+
+
+def _exclude(value: list, where: str) -> tuple[str, ...]:
+    """The exclude setting's globs. Raises ConfigError if one isn't a string
+    or is empty."""
+    if any(not isinstance(v, str) for v in value):
+        raise ConfigError(f"{where}: exclude should be a list of str")
+    if any(is_empty(v) for v in value):
+        raise ConfigError(f"{where}: exclude has an empty glob, which would match nothing")
+    return tuple(value)
 
 
 def _read(path: Path) -> dict:
