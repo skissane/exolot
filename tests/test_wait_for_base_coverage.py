@@ -1,6 +1,8 @@
 import io
 import urllib.error
+from collections.abc import Sequence
 from email.message import Message
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -9,21 +11,21 @@ from scripts import github_comments
 from scripts import wait_for_base_coverage as w
 
 
-def response(status: int, payload: bytes):
+def response(status: int, payload: bytes) -> mock.MagicMock:
     r = mock.MagicMock()
     r.__enter__.return_value.status = status
     r.__enter__.return_value.read.return_value = payload
     return r
 
 
-def http_error(code: int, payload: bytes = b""):
+def http_error(code: int, payload: bytes = b"") -> urllib.error.HTTPError:
     return urllib.error.HTTPError("https://x", code, "err", Message(), io.BytesIO(payload))
 
 
 # _get_json
 
 
-def test_get_json_uses_urlopen_by_default():
+def test_get_json_uses_urlopen_by_default() -> None:
     with mock.patch("urllib.request.urlopen", return_value=response(200, b'{"a": 1}')) as urlopen:
         assert w._get_json("https://x/y", {"H": "v"}, 5) == (200, {"a": 1})
     req = urlopen.call_args.args[0]
@@ -33,7 +35,7 @@ def test_get_json_uses_urlopen_by_default():
     assert urlopen.call_args.kwargs == {"timeout": 5}
 
 
-def test_get_json_uses_given_opener():
+def test_get_json_uses_given_opener() -> None:
     opener = mock.Mock()
     opener.open.return_value = response(200, b"[]")
     with mock.patch("urllib.request.urlopen") as urlopen:
@@ -41,12 +43,12 @@ def test_get_json_uses_given_opener():
     urlopen.assert_not_called()
 
 
-def test_get_json_returns_http_error_status_and_body():
+def test_get_json_returns_http_error_status_and_body() -> None:
     with mock.patch("urllib.request.urlopen", side_effect=http_error(404, b'{"detail": "no"}')):
         assert w._get_json("https://x", {}, 5) == (404, {"detail": "no"})
 
 
-def test_get_json_non_json_body_is_none():
+def test_get_json_non_json_body_is_none() -> None:
     with mock.patch("urllib.request.urlopen", return_value=response(200, b"<html>")):
         assert w._get_json("https://x", {}, 5) == (200, None)
 
@@ -65,14 +67,14 @@ def test_get_json_non_json_body_is_none():
         ((200, None), (False, "no coverage in report")),
     ],
 )
-def test_codecov_coverage(result, expected):
+def test_codecov_coverage(result: tuple[int, Any], expected: tuple[bool, str]) -> None:
     with mock.patch.object(w, "_get_json", return_value=result) as get:
         assert w.codecov_coverage("o/r", "abc", 5) == expected
     assert get.call_args.args[0] == "https://api.codecov.io/api/v2/github/o/repos/r/totals/?sha=abc"
     assert get.call_args.args[1] == {}
 
 
-def test_codecov_coverage_request_failure():
+def test_codecov_coverage_request_failure() -> None:
     with mock.patch.object(w, "_get_json", side_effect=urllib.error.URLError("down")):
         assert w.codecov_coverage("o/r", "abc", 5) == (False, "request failed: down")
 
@@ -110,7 +112,7 @@ def test_codecov_coverage_request_failure():
         ((200, None), ("running", "HTTP 200")),
     ],
 )
-def test_base_ci_state(result, expected):
+def test_base_ci_state(result: tuple[int, Any], expected: tuple[str, str]) -> None:
     with mock.patch.object(w, "_get_json", return_value=result) as get:
         assert w.base_ci_state("o/r", "abc", "coverage", "tok", 5) == expected
     url, headers, timeout, opener = get.call_args.args
@@ -120,13 +122,13 @@ def test_base_ci_state(result, expected):
     assert opener is github_comments._opener
 
 
-def test_base_ci_state_without_token():
+def test_base_ci_state_without_token() -> None:
     with mock.patch.object(w, "_get_json", return_value=(200, {"check_runs": []})) as get:
         w.base_ci_state("o/r", "abc", "coverage", None, 5)
     assert "Authorization" not in get.call_args.args[1]
 
 
-def test_base_ci_state_request_failure():
+def test_base_ci_state_request_failure() -> None:
     with mock.patch.object(w, "_get_json", side_effect=OSError("boom")):
         assert w.base_ci_state("o/r", "abc", "coverage", None, 5) == ("running", "request failed: boom")
 
@@ -135,34 +137,41 @@ def test_base_ci_state_request_failure():
 
 
 class FakeClock:
-    def __init__(self):
+    def __init__(self) -> None:
         self.now = 0.0
 
-    def __call__(self):
+    def __call__(self) -> float:
         return self.now
 
-    def sleep(self, seconds):
+    def sleep(self, seconds: float) -> None:
         self.now += seconds
 
 
-def run(monkeypatch, coverage, states, argv=()):
+def run(
+    monkeypatch: pytest.MonkeyPatch,
+    coverage: list[tuple[bool, str]],
+    states: list[tuple[str, str]],
+    argv: Sequence[str] = (),
+) -> tuple[FakeClock, list[tuple[str, str, str, str | None]]]:
     """Run main() with codecov_coverage and base_ci_state answering from the given lists, one per attempt."""
     monkeypatch.setenv("GITHUB_TOKEN", "tok")
-    coverage, states = iter(coverage), iter(states)
-    calls = []
+    coverages, state_iter = iter(coverage), iter(states)
+    calls: list[tuple[str, str, str, str | None]] = []
 
-    def fake_state(repo, sha, check_name, token, timeout):
+    def fake_state(repo: str, sha: str, check_name: str, token: str | None, timeout: float) -> tuple[str, str]:
         calls.append((repo, sha, check_name, token))
-        return next(states)
+        return next(state_iter)
 
-    monkeypatch.setattr(w, "codecov_coverage", lambda repo, sha, timeout: next(coverage))
+    monkeypatch.setattr(w, "codecov_coverage", lambda repo, sha, timeout: next(coverages))
     monkeypatch.setattr(w, "base_ci_state", fake_state)
     clock = FakeClock()
     w.main(["o/r", "abc", *argv], clock=clock, sleep=clock.sleep)
     return clock, calls
 
 
-def test_main_returns_once_codecov_has_the_report(monkeypatch, capsys):
+def test_main_returns_once_codecov_has_the_report(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     clock, calls = run(
         monkeypatch,
         [(False, "no report yet"), (True, "coverage 90%")],
@@ -174,13 +183,17 @@ def test_main_returns_once_codecov_has_the_report(monkeypatch, capsys):
     assert "Attempt 2: Codecov has the base report for abc (coverage 90%)" in out
 
 
-def test_main_gives_up_at_once_when_base_ci_failed(monkeypatch, capsys):
+def test_main_gives_up_at_once_when_base_ci_failed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     clock, _ = run(monkeypatch, [(False, "no report yet")], [("failed", "coverage failure")])
     assert clock.now == 0
     assert "::warning::Codecov has no coverage for base commit abc, whose CI didn't succeed" in capsys.readouterr().out
 
 
-def test_main_gives_up_after_grace_once_base_ci_finished(monkeypatch, capsys):
+def test_main_gives_up_after_grace_once_base_ci_finished(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     # Finished, re-run (which restarts the grace period), then finished for good.
     states = [("succeeded", "s"), ("running", "r")] + [("none", "n")] * 4
     clock, _ = run(monkeypatch, [(False, "x")] * 6, states, ["--grace", "30", "--check-name", "test"])
@@ -188,7 +201,7 @@ def test_main_gives_up_after_grace_once_base_ci_finished(monkeypatch, capsys):
     assert "whose CI has finished (n)" in capsys.readouterr().out
 
 
-def test_main_gives_up_at_timeout(monkeypatch, capsys):
+def test_main_gives_up_at_timeout(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     clock, _ = run(monkeypatch, [(False, "x")] * 4, [("running", "r")] * 4, ["--timeout", "35"])
     assert clock.now == 30
     out = capsys.readouterr().out

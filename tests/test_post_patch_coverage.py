@@ -1,9 +1,11 @@
 import subprocess
 import sys
 import urllib.error
+from collections.abc import Iterable
 from email.message import Message
 from io import BytesIO
 from pathlib import Path
+from typing import Any, NoReturn, Protocol
 
 import pytest
 
@@ -15,19 +17,39 @@ HEAD = (
 )
 REPORT = HEAD + "\n\n\n## a&#46;py\n\nLines 1-2\n\n```python\n  1 a = 1\n! 2 b = 2\n```\n\n\n---\n"
 
+# A request main() made: (method, url, token, json_body).
+Request = tuple[str, str, str, Any]
+
+
+class Run(Protocol):
+    def __call__(
+        self,
+        *args: str,
+        report: str | None = ...,
+        comments: Iterable[dict[str, Any]] = ...,
+        fail: tuple[str, str] | tuple[str, str, Exception] | None = ...,
+        head: str = ...,
+    ) -> tuple[int, str, list[Request]]: ...
+
 
 @pytest.fixture
-def run(tmp_path, monkeypatch, capsys):
+def run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> Run:
     """Run main() on PR 7 in tmp_path, holding report as patch-coverage.md
     (unless it's None), with the API faked: comments are the PR's comments,
     head its head commit, and fail (method, url prefix[, exception]) a request
     that fails (default with HTTP 403). Return the exit code, stderr and each
     request as (method, url, token, json_body)."""
 
-    def run(*args, report=REPORT, comments=(), fail=None, head="abc1234def"):
-        requests = []
+    def run(
+        *args: str,
+        report: str | None = REPORT,
+        comments: Iterable[dict[str, Any]] = (),
+        fail: tuple[str, str] | tuple[str, str, Exception] | None = None,
+        head: str = "abc1234def",
+    ) -> tuple[int, str, list[Request]]:
+        requests: list[Request] = []
 
-        def fake_request(method, url, token, *, json_body=None, **kw):
+        def fake_request(method: str, url: str, token: str, *, json_body: object = None, **kw: object) -> Any:
             requests.append((method, url, token, json_body))
             if fail and method == fail[0] and url.startswith(fail[1]):
                 if len(fail) > 2:
@@ -53,11 +75,11 @@ def run(tmp_path, monkeypatch, capsys):
     return run
 
 
-def writes(requests):
+def writes(requests: list[Request]) -> list[Request]:
     return [r for r in requests if r[0] in ("POST", "PATCH", "DELETE")]
 
 
-def test_posts_report(run):
+def test_posts_report(run: Run) -> None:
     code, _, requests = run(
         "--commit", "abc1234", "--run-url", "https://example.com/run", "--author", "github-actions[bot]"
     )
@@ -76,7 +98,7 @@ def test_posts_report(run):
     )
 
 
-def test_no_lines(run):
+def test_no_lines(run: Run) -> None:
     report = "# Diff Coverage\n## Diff: origin/master...HEAD\n\nNo lines with coverage information in this diff.\n"
     code, _, requests = run(report=report)
     assert code == 0
@@ -103,20 +125,20 @@ NO_LINES = "# Diff Coverage\n## Diff: x\n\nNo lines with coverage information in
         (HEAD.replace("- **Coverage**: 50%\n", ""), "line 10: expected '- **Coverage**: ...', found the end"),
     ],
 )
-def test_unexpected_report_fails(run, report, error):
+def test_unexpected_report_fails(run: Run, report: str | None, error: str) -> None:
     code, stderr, requests = run(report=report)
     assert code == 1
     assert f"diff-cover report {error}" in stderr
     assert requests == []
 
 
-def test_stale_commit_posts_nothing(run):
+def test_stale_commit_posts_nothing(run: Run) -> None:
     code, _, requests = run("--commit", "0ld0ld0")
     assert code == 0
     assert writes(requests) == []
 
 
-def test_edits_previous_comment(run):
+def test_edits_previous_comment(run: Run) -> None:
     comments = [
         {"id": 1, "user": {"login": "someone"}, "body": MARKER + "\nnot ours"},
         {"id": 2, "user": {"login": "me"}, "body": "<!-- other -->\nanother kind of comment"},
@@ -131,7 +153,7 @@ def test_edits_previous_comment(run):
     ]
 
 
-def test_lists_become_tables(run):
+def test_lists_become_tables(run: Run) -> None:
     report = (
         "# Diff Coverage\n## Diff: origin/master...HEAD\n\n"
         "- scripts/a&#46;py (100%)\n- b&#46;py (40.0%): Missing lines 3,5-9,12\n\n"
@@ -163,14 +185,14 @@ def test_lists_become_tables(run):
     ]
 
 
-def test_awkward_paths_stay_in_their_cell(run):
+def test_awkward_paths_stay_in_their_cell(run: Run) -> None:
     report = HEAD.replace("- a&#46;py (50.0%)", "- a|b`c&#46;py (50.0%)")
     code, _, requests = run(report=report)
     assert code == 0
     assert "| `` a\\|b`c.py `` | 50.0% | 2 |" in writes(requests)[0][3]["body"]
 
 
-def test_long_report_truncated(run):
+def test_long_report_truncated(run: Run) -> None:
     lines = "\n".join(f"  {n} x = {n}" for n in range(20_000))
     report = f"{HEAD}\n## a.py\n\n```python\n{lines}\n```\n"
     code, _, requests = run("--run-url", "https://example.com/run", report=report)
@@ -188,7 +210,7 @@ def test_long_report_truncated(run):
     )
 
 
-def test_long_report_truncated_outside_code_block(run):
+def test_long_report_truncated_outside_code_block(run: Run) -> None:
     report = HEAD + "\n## a.py\n\n" + "text\n" * 20_000
     code, _, requests = run(report=report)
     assert code == 0
@@ -198,28 +220,30 @@ def test_long_report_truncated_outside_code_block(run):
     assert note == "_Report truncated; the whole of it is in the `patch-coverage` artifact of the workflow run._"
 
 
-def test_missing_report(run):
+def test_missing_report(run: Run) -> None:
     code, stderr, requests = run(report=None)
     assert code == 1
     assert "patch-coverage.md" in stderr
     assert requests == []
 
 
-def test_network_error_reported(run):
+def test_network_error_reported(run: Run) -> None:
     code, stderr, _ = run(fail=("GET", "https://api.github.com/user", urllib.error.URLError("unreachable")))
     assert code == 1
     assert "unreachable" in stderr
 
 
-def test_http_error_reported(run):
+def test_http_error_reported(run: Run) -> None:
     code, stderr, _ = run(fail=("POST", "https://api.github.com/repos/o/r/issues/7/comments"))
     assert code == 1
     assert "HTTP 403" in stderr
     assert "nope" in stderr
 
 
-def test_gh_failure_reported(tmp_path, monkeypatch, capsys):
-    def fake_gh(cmd, **kwargs):
+def test_gh_failure_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_gh(cmd: list[str], **kwargs: object) -> NoReturn:
         raise subprocess.CalledProcessError(1, cmd, stderr="not logged in")
 
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
@@ -241,7 +265,7 @@ def real_report(tmp_path: Path, new_source: str, hits: dict[int, int]) -> str:
     changes a.py from one line to new_source, with coverage.xml giving each
     line's hits."""
 
-    def git(*args):
+    def git(*args: str) -> None:
         subprocess.run(
             ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "core.autocrlf=false", *args],
             cwd=tmp_path,
@@ -278,19 +302,19 @@ def real_report(tmp_path: Path, new_source: str, hits: dict[int, int]) -> str:
     return (tmp_path / "report.md").read_text()
 
 
-def test_real_diff_cover_missing_lines(tmp_path):
+def test_real_diff_cover_missing_lines(tmp_path: Path) -> None:
     body = _build_body(real_report(tmp_path, "a = 1\nb = 2\nc = 3\nd = 4\n", {1: 1, 2: 0, 3: 1, 4: 0}), "abc", None)
     assert "| `a.py` | 33.3% | 2, 4 |" in body
     assert "| 3 lines | 2 lines | 33% |" in body
     assert "! 2 b = 2" in body
 
 
-def test_real_diff_cover_all_covered(tmp_path):
+def test_real_diff_cover_all_covered(tmp_path: Path) -> None:
     body = _build_body(real_report(tmp_path, "a = 1\nb = 2\n", {1: 1, 2: 1}), "abc", None)
     assert "| `a.py` | 100% |  |" in body
     assert "| 1 line | 0 lines | 100% |" in body
 
 
-def test_real_diff_cover_no_lines(tmp_path):
+def test_real_diff_cover_no_lines(tmp_path: Path) -> None:
     body = _build_body(real_report(tmp_path, "a = 1\n# comment\n", {1: 1}), "abc", None)
     assert body.endswith("No lines with coverage information in this diff.")

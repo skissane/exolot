@@ -12,19 +12,19 @@ from exolot import server
 from exolot.server import ServerError, _extract, _publish, asset_name
 
 
-def _add(z, name, data, mode):
+def _add(z: zipfile.ZipFile, name: str, data: bytes, mode: int) -> None:
     info = zipfile.ZipInfo(name)
     info.external_attr = mode << 16
     z.writestr(info, data)
 
 
-def test_asset_name():
+def test_asset_name() -> None:
     assert asset_name("6.2.0+91200", "linux-x64") == "sonarlint-vscode-linux-x64-6.2.0.vsix"
     assert asset_name("6.2.0+91200", "") == "sonarlint-vscode-6.2.0.vsix"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="permission bits are POSIX-only")
-def test_extract_restores_modes_and_filters(tmp_path):
+def test_extract_restores_modes_and_filters(tmp_path: Path) -> None:
     vsix = tmp_path / "x.vsix"
     with zipfile.ZipFile(vsix, "w") as z:
         _add(z, "extension/jre/j/bin/java", b"#!", 0o755)
@@ -39,7 +39,7 @@ def test_extract_restores_modes_and_filters(tmp_path):
     assert not (dest / "extension/images").exists()
 
 
-def test_extract_rejects_path_traversal(tmp_path):
+def test_extract_rejects_path_traversal(tmp_path: Path) -> None:
     vsix = tmp_path / "x.vsix"
     with zipfile.ZipFile(vsix, "w") as z:
         _add(z, "extension/server/../../../evil", b"x", 0o644)
@@ -58,13 +58,13 @@ def test_extract_rejects_path_traversal(tmp_path):
         ("freebsd14", "amd64", ""),
     ],
 )
-def test_detect_platform(monkeypatch, plat, machine, expected):
+def test_detect_platform(monkeypatch: pytest.MonkeyPatch, plat: str, machine: str, expected: str) -> None:
     monkeypatch.setattr(sys, "platform", plat)
     monkeypatch.setattr(platform, "machine", lambda: machine)
     assert server.detect_platform() == expected
 
 
-def test_publish_keeps_existing_complete_install(tmp_path):
+def test_publish_keeps_existing_complete_install(tmp_path: Path) -> None:
     install = tmp_path / "install"
     install.mkdir()
     (install / ".complete").write_text("theirs")
@@ -77,7 +77,7 @@ def test_publish_keeps_existing_complete_install(tmp_path):
     assert (install / ".complete").read_text() == "theirs"
 
 
-def test_publish_replaces_incomplete_install(tmp_path):
+def test_publish_replaces_incomplete_install(tmp_path: Path) -> None:
     install = tmp_path / "install"
     install.mkdir()
     (install / "junk").write_text("x")
@@ -89,7 +89,7 @@ def test_publish_replaces_incomplete_install(tmp_path):
     assert not (install / "junk").exists()
 
 
-def _fake_release(tmp_path, monkeypatch, tag="1.0", plat="linux-x64"):
+def _fake_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tag: str = "1.0", plat: str = "linux-x64") -> str:
     """Serve a tiny VSIX for tag and plat from a file:// RELEASE_URL, with the
     cache in tmp_path, and return the VSIX's sha256."""
     asset = asset_name(tag, plat)
@@ -103,7 +103,7 @@ def _fake_release(tmp_path, monkeypatch, tag="1.0", plat="linux-x64"):
     return server._sha256(release / asset)
 
 
-def test_ensure_server_installs_then_uses_the_cache(tmp_path, monkeypatch):
+def test_ensure_server_installs_then_uses_the_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     digest = _fake_release(tmp_path, monkeypatch)
     monkeypatch.setitem(server.KNOWN_DIGESTS, "1.0", {"linux-x64": digest})
     s = server.ensure_server("1.0", "linux-x64", java="myjava")
@@ -119,7 +119,7 @@ def test_ensure_server_installs_then_uses_the_cache(tmp_path, monkeypatch):
     assert server.ensure_server("1.0", "linux-x64", java="myjava") == s
 
 
-def test_ensure_server_rejects_a_digest_mismatch(tmp_path, monkeypatch):
+def test_ensure_server_rejects_a_digest_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_release(tmp_path, monkeypatch)
     monkeypatch.setitem(server.KNOWN_DIGESTS, "1.0", {"linux-x64": "0" * 64})
     with pytest.raises(ServerError, match="sha256 mismatch"):
@@ -127,7 +127,9 @@ def test_ensure_server_rejects_a_digest_mismatch(tmp_path, monkeypatch):
     assert not (tmp_path / "cache" / "servers" / "1.0-linux-x64").exists()
 
 
-def test_ensure_server_warns_about_an_unknown_version(tmp_path, monkeypatch, caplog):
+def test_ensure_server_warns_about_an_unknown_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     digest = _fake_release(tmp_path, monkeypatch, plat="")
     monkeypatch.setattr(server, "detect_platform", lambda: "")
     s = server.ensure_server("1.0", java="myjava")
@@ -135,15 +137,15 @@ def test_ensure_server_warns_about_an_unknown_version(tmp_path, monkeypatch, cap
     assert f"no known digest for sonarlint-vscode-1.0.vsix; downloaded file has sha256 {digest}" in caplog.text
 
 
-def _java_exe():
+def _java_exe() -> str:
     return "java.exe" if sys.platform == "win32" else "java"
 
 
-def test_find_java_prefers_the_override(tmp_path):
+def test_find_java_prefers_the_override(tmp_path: Path) -> None:
     assert server._find_java(tmp_path, "/my/java") == Path("/my/java")
 
 
-def test_find_java_uses_the_bundled_jre(tmp_path, monkeypatch):
+def test_find_java_uses_the_bundled_jre(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     java = tmp_path / "jre" / "jdk-21" / "bin" / _java_exe()
     java.parent.mkdir(parents=True)
     java.write_text("")
@@ -151,7 +153,7 @@ def test_find_java_uses_the_bundled_jre(tmp_path, monkeypatch):
     assert server._find_java(tmp_path, None) == java
 
 
-def test_find_java_falls_back_to_java_home_then_path(tmp_path, monkeypatch):
+def test_find_java_falls_back_to_java_home_then_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     java = home / "bin" / _java_exe()
     java.parent.mkdir(parents=True)
@@ -164,7 +166,7 @@ def test_find_java_falls_back_to_java_home_then_path(tmp_path, monkeypatch):
     assert server._find_java(tmp_path, None) == Path("/usr/bin/java")
 
 
-def test_find_java_fails_without_any_java(tmp_path, monkeypatch):
+def test_find_java_fails_without_any_java(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("JAVA_HOME", raising=False)
     monkeypatch.setattr(shutil, "which", lambda name: None)
     with pytest.raises(ServerError, match="no Java was found"):
@@ -182,7 +184,7 @@ def test_find_java_fails_without_any_java(tmp_path, monkeypatch):
         ("linux", {"EXOLOT_CACHE_DIR": "/mine", "XDG_CACHE_HOME": "/xdg"}, "/mine"),
     ],
 )
-def test_cache_dir(monkeypatch, plat, env, expected):
+def test_cache_dir(monkeypatch: pytest.MonkeyPatch, plat: str, env: dict[str, str], expected: str) -> None:
     for name in ("EXOLOT_CACHE_DIR", "XDG_CACHE_HOME", "LOCALAPPDATA"):
         monkeypatch.delenv(name, raising=False)
     for name, value in env.items():

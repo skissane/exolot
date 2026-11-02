@@ -65,13 +65,6 @@ strict = true
 mypy_path = "src"
 explicit_package_bases = true
 
-# Tests are type-checked, but needn't annotate every test function and fixture.
-[[tool.mypy.overrides]]
-module = ["tests.*"]
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-disallow_untyped_calls = false
-
 # The repo root, so tests can import the stdlib-only CI scripts in scripts/.
 [tool.pytest.ini_options]
 pythonpath = ["."]

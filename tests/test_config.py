@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
@@ -6,12 +7,12 @@ from exolot import config
 from exolot.config import Config, ConfigError
 
 
-def test_no_config(tmp_path):
+def test_no_config(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     assert config.load(tmp_path) == Config()
 
 
-def test_exolot_toml_comes_before_pyproject(tmp_path):
+def test_exolot_toml_comes_before_pyproject(tmp_path: Path) -> None:
     (tmp_path / ".exolot.toml").write_text('preamble = "from exolot.toml"\nexclude = ["*.m"]\n')
     (tmp_path / "pyproject.toml").write_text('[tool.exolot]\npreamble = "from pyproject"\n')
     assert config.load(tmp_path) == Config(
@@ -21,7 +22,7 @@ def test_exolot_toml_comes_before_pyproject(tmp_path):
     )
 
 
-def test_pyproject_without_a_table_is_skipped(tmp_path):
+def test_pyproject_without_a_table_is_skipped(tmp_path: Path) -> None:
     sub = tmp_path / "sub"
     sub.mkdir()
     (sub / "pyproject.toml").write_text("[tool.ruff]\nline-length = 1\n")
@@ -31,7 +32,7 @@ def test_pyproject_without_a_table_is_skipped(tmp_path):
     assert config.load(sub / "deeper") == Config(preamble="Read *this*.\n", path=tmp_path / "pyproject.toml")
 
 
-def test_search_stops_at_the_repo_root(tmp_path):
+def test_search_stops_at_the_repo_root(tmp_path: Path) -> None:
     (tmp_path / ".exolot.toml").write_text('preamble = "outside"\n')
     repo = tmp_path / "repo"
     (repo / "sub").mkdir(parents=True)
@@ -55,23 +56,23 @@ def test_search_stops_at_the_repo_root(tmp_path):
         ("pyproject.toml", "[tool\n", "pyproject.toml: "),
     ],
 )
-def test_bad_config(tmp_path, name, text, error):
+def test_bad_config(tmp_path: Path, name: str, text: str, error: str) -> None:
     (tmp_path / name).write_text(text)
     with pytest.raises(ConfigError) as exc:
         config.load(tmp_path)
     assert error in str(exc.value)
 
 
-def test_directories_named_like_config_files_are_skipped(tmp_path):
+def test_directories_named_like_config_files_are_skipped(tmp_path: Path) -> None:
     (tmp_path / ".exolot.toml").mkdir()
     (tmp_path / "pyproject.toml").mkdir()
     assert config.load(tmp_path) == Config()
 
 
-def test_unreadable_config(tmp_path, monkeypatch):
+def test_unreadable_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / ".exolot.toml").write_text("")
 
-    def fail(self, *args, **kwargs):
+    def fail(self: Path, *args: object, **kwargs: object) -> NoReturn:
         raise PermissionError(13, "Permission denied")
 
     # Rather than chmod, which doesn't stop root or work on Windows.

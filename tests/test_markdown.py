@@ -1,20 +1,24 @@
+from typing import Any
+
 import pytest
 
 from exolot import markdown
 from exolot.markdown import check_link_template, escape, findings_table, link, statistics_table
 
 
-def finding(path="src/a.py", line=3, rule="python:S1", message="bad", **extra):
+def finding(
+    path: str = "src/a.py", line: int = 3, rule: str = "python:S1", message: str = "bad", **extra: object
+) -> dict[str, Any]:
     return {"path": path, "line": line, "column": 5, "rule": rule, "severity": "warning", "message": message, **extra}
 
 
-def test_escape_puts_text_on_one_line_and_escapes_markdown():
+def test_escape_puts_text_on_one_line_and_escapes_markdown() -> None:
     assert escape("a | b `c` <d>\nnext *e* &amp; [f](g) _h_ ~i~ \\") == (
         "a \\| b \\`c\\` \\<d\\> next \\*e\\* \\&amp; \\[f\\](g) \\_h\\_ \\~i\\~ \\\\"
     )
 
 
-def test_findings_table_without_links():
+def test_findings_table_without_links() -> None:
     assert findings_table([finding(), finding(path="tests\\b_c.py", line=1, message="x|y")]) == [
         "| Location | Rule | Message |",
         "| --- | --- | --- |",
@@ -23,14 +27,14 @@ def test_findings_table_without_links():
     ]
 
 
-def test_findings_table_with_links():
+def test_findings_table_with_links() -> None:
     rows = findings_table(
         [finding(endLine=4, endColumn=9)], "https://x/{path}?l={line}&c={column}-{end_line}.{end_column}"
     )
     assert rows[2] == "| [src/a.py:3](https://x/src/a.py?l=3&c=5-4.9) | python:S1 | bad |"
 
 
-def test_link_quotes_the_path_and_defaults_the_end():
+def test_link_quotes_the_path_and_defaults_the_end() -> None:
     f = finding(path="a) [x](https://evil.example).py")
     assert link("{path}#L{end_line}:{end_column}", f) == "a%29%20%5Bx%5D%28https%3A//evil.example%29.py#L3:5"
 
@@ -46,16 +50,16 @@ def test_link_quotes_the_path_and_defaults_the_end():
         ("{line[0]}", "bad link template"),
     ],
 )
-def test_check_link_template_rejects_bad_templates(template, error):
+def test_check_link_template_rejects_bad_templates(template: str, error: str) -> None:
     with pytest.raises(ValueError, match=error):
         check_link_template(template)
 
 
-def test_check_link_template_accepts_good_ones():
+def test_check_link_template_accepts_good_ones() -> None:
     assert check_link_template("u/{path}#L{line}") == "u/{path}#L{line}"
 
 
-def test_statistics_table():
+def test_statistics_table() -> None:
     assert statistics_table([("python:S1", 2), ("x:S_2", 1)], {"python:S1": "Rule <one>"}) == [
         "| Count | Rule | Name |",
         "| ---: | --- | --- |",
@@ -64,7 +68,7 @@ def test_statistics_table():
     ]
 
 
-def test_changed_findings_sections():
+def test_changed_findings_sections() -> None:
     findings = [
         {"path": "a.py", "line": 1, "column": 1, "rule": "r", "message": "m", "changed": True},
         {"path": "b.py", "line": 2, "column": 1, "rule": "r", "message": "m", "changed": False},
@@ -94,17 +98,17 @@ def test_changed_findings_sections():
     ]
 
 
-def test_comment_without_findings():
+def test_comment_without_findings() -> None:
     assert markdown.comment([]) == "## exolot's findings\n\nNo issues found.\n"
 
 
-def test_comment_lists_all_findings_with_a_count():
+def test_comment_lists_all_findings_with_a_count() -> None:
     body = markdown.comment([finding(line=3), finding(line=9)], preamble="  Read *this*.\n")
     assert body.startswith("## exolot's findings\n\nRead *this*.\n\n### Findings (2)\n\n| Location |")
     assert "<details>" not in body
 
 
-def test_comment_puts_changed_lines_first_and_links():
+def test_comment_puts_changed_lines_first_and_links() -> None:
     body = markdown.comment(
         [finding(line=3, changed=True), finding(line=9, changed=False)],
         link_template="https://x/{path}#L{line}",
@@ -120,18 +124,18 @@ def test_comment_puts_changed_lines_first_and_links():
     assert "[src/a.py:9](https://x/src/a.py#L9)" in old
 
 
-def test_comment_names_the_commit_without_a_run():
+def test_comment_names_the_commit_without_a_run() -> None:
     body = markdown.comment([], commit="abc")
     assert "Analysis of abc.\n" in body
     assert "workflow run" not in body
 
 
-def test_comment_ignores_a_blank_preamble():
+def test_comment_ignores_a_blank_preamble() -> None:
     assert markdown.comment([], preamble=" \n") == markdown.comment([])
 
 
 @pytest.mark.parametrize("run_url", [None, "https://run"])
-def test_comment_is_truncated_to_fit(run_url):
+def test_comment_is_truncated_to_fit(run_url: str | None) -> None:
     body = markdown.comment([finding(line=n, message="x" * 500) for n in range(1, 200)], run_url=run_url)
     assert len(body) <= markdown.MAX_COMMENT_CHARS + 200
     assert body.endswith("._\n")
@@ -139,7 +143,7 @@ def test_comment_is_truncated_to_fit(run_url):
     assert ("[this workflow run](https://run)" in body.rsplit("\n\n", 1)[1]) == bool(run_url)
 
 
-def test_comment_closes_a_truncated_elsewhere_section():
+def test_comment_closes_a_truncated_elsewhere_section() -> None:
     findings = [finding(line=1, changed=True)] + [finding(line=n, message="x" * 500) for n in range(2, 200)]
     body = markdown.comment(findings, changed=True)
     assert body.count("<details>") == body.count("</details>") == 1

@@ -1,6 +1,7 @@
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -22,7 +23,7 @@ def _file(path: Path) -> Path:
     return path
 
 
-def test_find_takes_the_nearest_in_or_above_each_file(tmp_path):
+def test_find_takes_the_nearest_in_or_above_each_file(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     top = _database(tmp_path / "compile_commands.json")
     cmake = _database(tmp_path / "lib" / "build" / "compile_commands.json")
@@ -34,14 +35,14 @@ def test_find_takes_the_nearest_in_or_above_each_file(tmp_path):
     assert compiledb.find([deep, src, lib]) == {top: [deep, src], cmake: [lib]}
 
 
-def test_find_comes_before_build(tmp_path):
+def test_find_comes_before_build(tmp_path: Path) -> None:
     here = _database(tmp_path / "compile_commands.json")
     _database(tmp_path / "build" / "compile_commands.json")
     a = _file(tmp_path / "a.c")
     assert compiledb.find([a]) == {here: [a]}
 
 
-def test_find_stops_at_the_repo_root(tmp_path):
+def test_find_stops_at_the_repo_root(tmp_path: Path) -> None:
     _database(tmp_path / "compile_commands.json")
     (tmp_path / "repo" / ".git").mkdir(parents=True)
     (tmp_path / "repo" / "compile_commands.json").mkdir()  # not a file
@@ -49,7 +50,7 @@ def test_find_stops_at_the_repo_root(tmp_path):
     assert compiledb.find([a]) == {None: [a]}
 
 
-def test_find_takes_symlinks_to_one_database_as_one(tmp_path):
+def test_find_takes_symlinks_to_one_database_as_one(tmp_path: Path) -> None:
     database = _database(tmp_path / "build" / "compile_commands.json")
     try:
         (tmp_path / "compile_commands.json").symlink_to(database)
@@ -61,14 +62,14 @@ def test_find_takes_symlinks_to_one_database_as_one(tmp_path):
     assert compiledb.find([a, b]) == {database.resolve(): [a, b]}
 
 
-def test_find_outside_a_repo_looks_up_to_the_root(tmp_path):
+def test_find_outside_a_repo_looks_up_to_the_root(tmp_path: Path) -> None:
     a = _file(tmp_path / "a" / "b" / "a.c")
     assert compiledb.find([a]) == {None: [a]}  # nothing above tmp_path has one
     database = _database(tmp_path / "compile_commands.json")
     assert compiledb.find([a]) == {database: [a]}
 
 
-def test_config_compile_commands_is_relative_to_the_config_file(tmp_path):
+def test_config_compile_commands_is_relative_to_the_config_file(tmp_path: Path) -> None:
     (tmp_path / ".exolot.toml").write_text('compile-commands = "build/compile_commands.json"\n')
     (tmp_path / "sub").mkdir()
     assert config.load(tmp_path / "sub") == Config(
@@ -76,7 +77,7 @@ def test_config_compile_commands_is_relative_to_the_config_file(tmp_path):
     )
 
 
-def test_session_passes_the_database_in_its_settings(tmp_path):
+def test_session_passes_the_database_in_its_settings(tmp_path: Path) -> None:
     server = FakeServer(root=tmp_path, java=Path("java"))
     assert "pathToCompileCommands" not in AnalysisSession(server, tmp_path)._settings()
     database = tmp_path / "compile_commands.json"
@@ -85,14 +86,14 @@ def test_session_passes_the_database_in_its_settings(tmp_path):
 
 
 @pytest.fixture
-def c_project(tmp_path, monkeypatch):
+def c_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[Path | None]:
     """A git repository with C and Python files, analyzed by the fake
     server, whose AnalysisSession records the database it was given."""
     monkeypatch.setattr(cli, "ensure_server", lambda *args: FakeServer(root=tmp_path, java=Path("java")))
-    used = []
+    used: list[Path | None] = []
     real_init = AnalysisSession.__init__
 
-    def init(self, *args, **kwargs):
+    def init(self: AnalysisSession, *args: Any, **kwargs: Any) -> None:
         real_init(self, *args, **kwargs)
         used.append(self.compile_commands)
 
@@ -104,7 +105,7 @@ def c_project(tmp_path, monkeypatch):
     return used
 
 
-def test_cli_skips_c_files_without_a_database(c_project, capsys):
+def test_cli_skips_c_files_without_a_database(c_project: list[Path | None], capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["--exit-zero"]) == 0
     err = capsys.readouterr().err
     assert (
@@ -115,7 +116,9 @@ def test_cli_skips_c_files_without_a_database(c_project, capsys):
     assert c_project == [None]
 
 
-def test_cli_finds_the_database(c_project, tmp_path, capsys, caplog):
+def test_cli_finds_the_database(
+    c_project: list[Path | None], tmp_path: Path, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+) -> None:
     caplog.set_level(logging.INFO, "exolot.cli")
     database = _database(tmp_path / "build" / "compile_commands.json")
     cli.main([])
@@ -125,7 +128,9 @@ def test_cli_finds_the_database(c_project, tmp_path, capsys, caplog):
     assert c_project == [database]
 
 
-def test_cli_wont_choose_between_databases(c_project, tmp_path, capsys):
+def test_cli_wont_choose_between_databases(
+    c_project: list[Path | None], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     (tmp_path / "x").mkdir()
     (tmp_path / "x" / "e.c").write_text("x\n")
     one = _database(tmp_path / "compile_commands.json")
@@ -137,13 +142,17 @@ def test_cli_wont_choose_between_databases(c_project, tmp_path, capsys):
     assert c_project == [None]
 
 
-def test_cli_doesnt_look_without_c_files(c_project, tmp_path, monkeypatch):
+def test_cli_doesnt_look_without_c_files(
+    c_project: list[Path | None], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(compiledb, "find", lambda paths: pytest.fail("looked for a database"))
     cli.main(["a.py"])
     assert c_project == [None]
 
 
-def test_cli_excludes_cfamily_before_checking_for_a_database(c_project, tmp_path, monkeypatch, capsys):
+def test_cli_excludes_cfamily_before_checking_for_a_database(
+    c_project: list[Path | None], tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(compiledb, "find", lambda paths: pytest.fail("looked for a database"))
     (tmp_path / ".exolot.toml").write_text('exclude = ["*.c", "*.h"]\n')
     assert cli.main(["--exclude", "*.cpp", "--exit-zero"]) == 0
@@ -153,7 +162,7 @@ def test_cli_excludes_cfamily_before_checking_for_a_database(c_project, tmp_path
     assert c_project == [None]
 
 
-def test_cli_uses_the_given_database_before_the_configs(c_project, tmp_path):
+def test_cli_uses_the_given_database_before_the_configs(c_project: list[Path | None], tmp_path: Path) -> None:
     given = _database(tmp_path / "given.json")
     configured = _database(tmp_path / "configured.json")
     _database(tmp_path / "compile_commands.json")
@@ -170,7 +179,14 @@ def test_cli_uses_the_given_database_before_the_configs(c_project, tmp_path):
         ([], 'compile-commands = "missing.json"\n', ".exolot.toml"),
     ],
 )
-def test_cli_rejects_a_missing_database(c_project, tmp_path, capsys, args, config_text, source):
+def test_cli_rejects_a_missing_database(
+    c_project: list[Path | None],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    args: list[str],
+    config_text: str | None,
+    source: str,
+) -> None:
     if config_text:
         (tmp_path / ".exolot.toml").write_text(config_text)
     assert cli.main(args) == 2
@@ -180,7 +196,9 @@ def test_cli_rejects_a_missing_database(c_project, tmp_path, capsys, args, confi
     assert c_project == []
 
 
-def test_analyze_repo_takes_the_database_from_the_current_directory(tmp_path, monkeypatch):
+def test_analyze_repo_takes_the_database_from_the_current_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     seen: dict[str, object] = {}
     monkeypatch.setattr(cli, "_clone_and_analyze", lambda args: seen.setdefault("path", args.compile_commands) and 0)
     monkeypatch.chdir(tmp_path)
@@ -188,7 +206,9 @@ def test_analyze_repo_takes_the_database_from_the_current_directory(tmp_path, mo
     assert seen["path"] == tmp_path / "db.json"
 
 
-def test_cli_skips_only_the_files_without_a_database(c_project, tmp_path, capsys):
+def test_cli_skips_only_the_files_without_a_database(
+    c_project: list[Path | None], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     (tmp_path / "x" / ".git").mkdir(parents=True)  # a repository of its own, e.g. a submodule
     (tmp_path / "x" / "e.m").write_text("x\n")
     database = _database(tmp_path / "compile_commands.json")
@@ -199,7 +219,9 @@ def test_cli_skips_only_the_files_without_a_database(c_project, tmp_path, capsys
     assert c_project == [database]
 
 
-def test_cli_doesnt_start_the_server_when_every_file_is_skipped(c_project, monkeypatch, capsys):
+def test_cli_doesnt_start_the_server_when_every_file_is_skipped(
+    c_project: list[Path | None], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(cli, "ensure_server", lambda *args: pytest.fail("started the server"))
     assert cli.main(["b.c", "d.cpp"]) == 0
     err = capsys.readouterr().err
@@ -210,7 +232,9 @@ def test_cli_doesnt_start_the_server_when_every_file_is_skipped(c_project, monke
 
 
 @pytest.mark.parametrize("fmt", ["text", "json"])
-def test_cli_annotates_the_warning_when_every_file_is_skipped(c_project, capsys, fmt):
+def test_cli_annotates_the_warning_when_every_file_is_skipped(
+    c_project: list[Path | None], capsys: pytest.CaptureFixture[str], fmt: str
+) -> None:
     assert cli.main(["--format", fmt, "--annotations", "b.c", "d.cpp"]) == 0
     err = capsys.readouterr().err
     assert "::warning title=exolot::No compilation database" in err
@@ -227,7 +251,9 @@ def test_cli_annotates_the_warning_when_every_file_is_skipped(c_project, capsys,
         (["--statistics", "--format", "markdown"], "markdown"),
     ],
 )
-def test_cli_prints_an_empty_report_when_every_file_is_skipped(c_project, capsys, flags, report_kind):
+def test_cli_prints_an_empty_report_when_every_file_is_skipped(
+    c_project: list[Path | None], capsys: pytest.CaptureFixture[str], flags: list[str], report_kind: str
+) -> None:
     assert cli.main([*flags, "b.c", "d.cpp"]) == 0
     captured = capsys.readouterr()
     assert "warning: no compilation database" in captured.err
@@ -248,6 +274,6 @@ def test_cli_prints_an_empty_report_when_every_file_is_skipped(c_project, capsys
         assert "> [!WARNING]" in captured.out
 
 
-def test_empty_config_compile_commands_is_an_error(tmp_path):
+def test_empty_config_compile_commands_is_an_error(tmp_path: Path) -> None:
     (tmp_path / ".exolot.toml").write_text('compile-commands = ""\n')
     assert config.load(tmp_path).compile_commands == tmp_path
