@@ -18,7 +18,7 @@ from scripts import github_comments
 MARKER = "<!-- exolot-self-analysis -->"
 
 
-def _post(args) -> None:
+def _post(args: argparse.Namespace) -> None:
     body = f"{MARKER}\n{args.body.read_text()}"
     token = os.environ.get("GITHUB_TOKEN") or github_comments.gh_output("auth", "token")
     repo = args.repo or github_comments.gh_output("repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")

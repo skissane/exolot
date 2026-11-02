@@ -122,9 +122,9 @@ fmt:
 fmt-check:
     uv run --group dev ruff format --check .
 
-# Type-check src with mypy in strict mode
+# Type-check src, scripts and tests with mypy (strict, relaxed for tests; see pyproject.toml's [tool.mypy])
 mypy:
-    uv run --group dev mypy --strict
+    uv run --group dev mypy
 
 # Lint the GitHub Actions workflows with jactionlint
 lint-workflows:

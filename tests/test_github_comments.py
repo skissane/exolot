@@ -1,5 +1,7 @@
+import io
 import urllib.error
 import urllib.request
+from email.message import Message
 from unittest import mock
 
 import pytest
@@ -15,7 +17,9 @@ def response(payload: bytes):
 
 
 def redirect(url, location):
-    return urllib.error.HTTPError(url, 307, "Redirect", {"Location": location}, None)
+    headers = Message()
+    headers["Location"] = location
+    return urllib.error.HTTPError(url, 307, "Redirect", headers, None)
 
 
 def test_sends_json_with_token():
@@ -65,7 +69,8 @@ def test_follows_get_redirects_itself():
 
 def test_opener_does_not_follow_redirects():
     req = urllib.request.Request("https://api.github.com/a")
-    assert github_comments._NoRedirects().redirect_request(req, None, 302, "Found", {}, "https://x.example/") is None
+    handler = github_comments._NoRedirects()
+    assert handler.redirect_request(req, io.BytesIO(), 302, "Found", Message(), "https://x.example/") is None
 
 
 def test_drops_token_on_redirect_to_http():
@@ -86,7 +91,7 @@ def test_too_many_redirects():
 
 
 def test_other_errors_raised():
-    error = urllib.error.HTTPError("https://api.github.com/x", 404, "Not Found", {}, None)
+    error = urllib.error.HTTPError("https://api.github.com/x", 404, "Not Found", Message(), None)
     with (
         error,
         mock.patch("scripts.github_comments._opener.open", side_effect=error),

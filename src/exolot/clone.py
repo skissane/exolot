@@ -7,7 +7,7 @@ import os
 import re
 import subprocess
 import urllib.parse
-from collections.abc import Iterator
+from collections.abc import Generator
 from pathlib import Path
 
 # github.com repository URLs, over HTTPS or SSH, with or without ".git".
@@ -49,7 +49,7 @@ _REPO_ENV = (
 
 
 @contextlib.contextmanager
-def without_repo_env() -> Iterator[None]:
+def without_repo_env() -> Generator[None]:
     """Unset the variables that point git at a particular repository while
     in this context, so every git command run in it, such as the one listing
     a clone's files, uses the repository its directory is in."""

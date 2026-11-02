@@ -184,13 +184,13 @@ def test_cli_sarif_file_outside_a_repo(tmp_path, monkeypatch, capsys):
 
 
 def test_cli_sarif_with_no_issues(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(cli.AnalysisSession, "analyze", lambda self, files, timeout=None: [])
+    monkeypatch.setattr(AnalysisSession, "analyze", lambda self, files, timeout=None: [])
 
     def unneeded(self, *args):
         raise AssertionError("not needed when there are no issues")
 
-    monkeypatch.setattr(cli.AnalysisSession, "rule_names", unneeded)
-    monkeypatch.setattr(cli.AnalysisSession, "add_related_locations", unneeded)
+    monkeypatch.setattr(AnalysisSession, "rule_names", unneeded)
+    monkeypatch.setattr(AnalysisSession, "add_related_locations", unneeded)
     status, log, err = _run(tmp_path, monkeypatch, capsys, "x = 1")
     assert status == 0
     assert log["runs"][0]["results"] == []

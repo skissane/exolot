@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from exolot import gitdiff
 from exolot.gitdiff import Changes, GitError, changes_since, parse_diff
 from tests.conftest import git
 
@@ -127,13 +126,13 @@ def test_changes_without_git(monkeypatch):
     def run(*args, **kwargs):
         raise FileNotFoundError("git")
 
-    monkeypatch.setattr(gitdiff.subprocess, "run", run)
+    monkeypatch.setattr(subprocess, "run", run)
     with pytest.raises(GitError, match="needs git"):
         changes_since("master")
 
 
 def test_git_failure_without_a_message(monkeypatch):
-    monkeypatch.setattr(gitdiff.subprocess, "run", lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 1, "", ""))
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: subprocess.CompletedProcess(cmd, 1, "", ""))
     with pytest.raises(GitError, match="^not in a git repository$"):
         changes_since("master")
 
