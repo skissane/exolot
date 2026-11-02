@@ -122,7 +122,7 @@ fmt:
 fmt-check:
     uv run --group dev ruff format --check .
 
-# Type-check src, scripts and tests with mypy (strict, relaxed for tests; see pyproject.toml's [tool.mypy])
+# Type-check src, scripts and tests with mypy (strict; see pyproject.toml's [tool.mypy])
 mypy:
     uv run --group dev mypy
 
