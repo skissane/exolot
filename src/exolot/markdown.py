@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 import urllib.parse
 from collections.abc import Iterable, Mapping, Sequence
+from typing import Any
 
 # The fields a --link-template can use, with example values to check it with.
 LINK_FIELDS = {"path": "src/a.py", "line": 1, "column": 1, "end_line": 1, "end_column": 1}
@@ -33,7 +34,7 @@ def check_link_template(template: str) -> str:
     return template
 
 
-def link(template: str, finding: Mapping) -> str:
+def link(template: str, finding: Mapping[str, Any]) -> str:
     """The URL template gives for a finding (as in exolot's JSON output), with
     its path URL-quoted so the path can't end the Markdown link early."""
     return template.format_map(
@@ -47,7 +48,7 @@ def link(template: str, finding: Mapping) -> str:
     )
 
 
-def findings_table(findings: Iterable[Mapping], link_template: str | None = None) -> list[str]:
+def findings_table(findings: Iterable[Mapping[str, Any]], link_template: str | None = None) -> list[str]:
     """The lines of a Location | Rule | Message table of findings (dicts as in
     exolot's JSON output), in the order given. Paths use forward slashes, and
     with link_template each location links to the code."""
@@ -68,7 +69,7 @@ def statistics_table(rows: Iterable[tuple[str, int]], names: Mapping[str, str]) 
 
 
 def changed_findings_sections(
-    findings: Iterable[Mapping], link_template: str | None = None, heading: str = "On changed lines"
+    findings: Iterable[Mapping[str, Any]], link_template: str | None = None, heading: str = "On changed lines"
 ) -> list[str]:
     """The lines of a heading and table of the findings (dicts as in exolot's
     JSON output with --diff-base) whose "changed" is true, then the rest in a
@@ -99,7 +100,7 @@ def warnings_alert(messages: Iterable[str]) -> list[str]:
 
 
 def comment(
-    findings: Sequence[Mapping],
+    findings: Sequence[Mapping[str, Any]],
     *,
     link_template: str | None = None,
     changed: bool = False,

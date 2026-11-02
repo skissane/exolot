@@ -96,7 +96,8 @@ class LspClient:
         if len(body) < length:
             return None
         log.debug("<- %s", body[:2000])
-        return json.loads(body)
+        message: dict[str, Any] = json.loads(body)
+        return message
 
     def _read_loop(self) -> None:
         try:

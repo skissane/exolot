@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 # The annotation command for each LSP severity: GitHub has none below notice.
 COMMANDS = {"error": "error", "warning": "warning", "info": "notice", "hint": "notice"}
@@ -24,7 +25,7 @@ def warning(message: str, title: str = "exolot") -> str:
     return f"::warning title={escape_property(title)}::{escape_data(message)}"
 
 
-def annotation(finding: Mapping) -> str:
+def annotation(finding: Mapping[str, Any]) -> str:
     """The workflow command for a finding (a dict as in exolot's JSON output):
     ``::warning file=PATH,line=N,col=N,endLine=N,endColumn=N,title=RULE::MESSAGE``,
     with a forward-slashed path."""
