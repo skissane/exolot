@@ -117,7 +117,7 @@ class LspClient:
         if method is None:
             request_id = message.get("id")
             with self._pending_lock:
-                future = self._pending.pop(request_id, None) if isinstance(request_id, int) else None
+                future = self._pending.pop(request_id, None) if type(request_id) is int else None
             if future is None:
                 log.warning("response for unknown request id %r", request_id)
             elif not future.set_running_or_notify_cancel():
