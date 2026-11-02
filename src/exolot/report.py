@@ -12,8 +12,9 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import __version__, annotations, gitdiff, markdown, problems, sarif
-from .analyze import Issue
+from . import __version__, gitdiff, markdown, problems, sarif
+from . import annotations as gh_annotations
+from .analyze import Issue, Location
 
 
 @dataclass
@@ -44,7 +45,7 @@ def print_findings(
     --diff-base without --changed-only), saying which are on changed lines."""
     issues = _sorted(issues)
     findings = [issue_json(i, changes) for i in issues]
-    summary = totals.summary(len(issues), sum(f["changed"] for f in findings) if changes is not None else None)
+    summary = totals.summary(len(issues), sum(1 for f in findings if f["changed"]) if changes is not None else None)
     if fmt == "json":
         json.dump(findings, sys.stdout, indent=2)
         print()
@@ -83,10 +84,10 @@ def print_annotations(
     issues on changed lines. Paths are relative to the repo root, which is
     what GitHub matches them against."""
     for problem in unanalyzed or []:
-        print(annotations.warning(problem.sentence()), file=sys.stderr)
+        print(gh_annotations.warning(problem.sentence()), file=sys.stderr)
     findings = [{**issue_json(i, changes), "path": repo_path(i.path)} for i in _sorted(issues)]
     for finding in sorted(findings, key=lambda f: not f.get("changed")):
-        print(annotations.annotation(finding), file=sys.stderr)
+        print(gh_annotations.annotation(finding), file=sys.stderr)
     sys.stderr.flush()
 
 
@@ -112,7 +113,7 @@ def print_comment(
     )
     sys.stdout.write(body)
     sys.stdout.flush()
-    changed = sum(f["changed"] for f in findings) if changes is not None else None
+    changed = sum(1 for f in findings if f["changed"]) if changes is not None else None
     print(totals.summary(len(issues), changed), file=sys.stderr)
 
 
@@ -120,7 +121,7 @@ def print_sarif(issues: list[Issue], totals: Report, names: dict[str, str]) -> N
     """Print the issues as a SARIF log, with names giving each rule's name."""
     issues = _sorted(issues)
     paths = {i.path for i in issues} | {loc.path for i in issues for loc in i.related}
-    roots = {_repo_root(path.parent) for path in paths} - {None}
+    roots = {root for path in paths if (root := _repo_root(path.parent)) is not None}
     # %SRCROOT% can only stand for one directory. GitHub code scanning doesn't
     # need it defined, as it takes paths to be relative to the checkout.
     src_root = roots.pop().as_uri() + "/" if len(roots) == 1 else None
@@ -167,7 +168,8 @@ def actions_link_template() -> str | None:
 def on_changed_lines(issue: Issue, changes: gitdiff.Changes) -> bool:
     """Whether any line of issue's range, or of its secondary locations (if
     fetched), is changed."""
-    return any(changes.touches(loc.path, loc.line, loc.end_line) for loc in (issue, *issue.related))
+    locations: list[Issue | Location] = [issue, *issue.related]
+    return any(changes.touches(loc.path, loc.line, loc.end_line) for loc in locations)
 
 
 def issue_json(issue: Issue, changes: gitdiff.Changes | None = None) -> dict[str, object]:

@@ -48,3 +48,11 @@ def test_response_to_cancelled_request_is_dropped(client):
     # The reader must survive the response to the cancelled request.
     assert client.request("initialize", {}).result(timeout=10) is not None
     assert notes
+
+
+@pytest.mark.parametrize("request_id", [True, 99, "1", None])
+def test_response_with_unknown_id_is_ignored(client, caplog, request_id):
+    future = client.request("slow")  # id 1; the reader isn't started, so no response arrives
+    client._dispatch({"jsonrpc": "2.0", "id": request_id, "result": "wrong"})
+    assert not future.done()
+    assert f"response for unknown request id {request_id!r}" in caplog.text

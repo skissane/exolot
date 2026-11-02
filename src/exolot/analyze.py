@@ -147,7 +147,7 @@ def _list_dir(directory: Path) -> list[Path]:
         )
         if proc.returncode == 0:
             return [directory / name for name in proc.stdout.decode().split("\0") if name]
-    files = []
+    files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(directory):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
         files.extend(Path(dirpath) / name for name in filenames)

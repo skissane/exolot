@@ -122,6 +122,10 @@ fmt:
 fmt-check:
     uv run --group dev ruff format --check .
 
+# Type-check src with mypy in strict mode
+mypy:
+    uv run --group dev mypy --strict
+
 # Lint the GitHub Actions workflows with jactionlint
 lint-workflows:
     uv run --group dev jactionlint
@@ -135,7 +139,7 @@ check-checkout-credentials:
     uv run --no-project python -m scripts.check_checkout_credentials
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check lint-workflows check-pins check-checkout-credentials
+check: lint fmt-check mypy lint-workflows check-pins check-checkout-credentials
 
 # Reformat code and autofix lint issues. Formatting first fixes the long lines it
 # can, so lint-fix stops only on findings that need a hand edit.

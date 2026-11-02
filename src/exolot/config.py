@@ -6,6 +6,7 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .exclude import is_empty
 
@@ -78,17 +79,18 @@ def load(start: Path) -> Config:
     )
 
 
-def _exclude(value: list, where: str) -> tuple[str, ...]:
+def _exclude(value: list[object], where: str) -> tuple[str, ...]:
     """The exclude setting's globs. Raises ConfigError if one isn't a string
     or is empty."""
-    if any(not isinstance(v, str) for v in value):
+    globs = tuple(v for v in value if isinstance(v, str))
+    if len(globs) != len(value):
         raise ConfigError(f"{where}: exclude should be a list of str")
-    if any(is_empty(v) for v in value):
+    if any(is_empty(v) for v in globs):
         raise ConfigError(f"{where}: exclude has an empty glob, which would match nothing")
-    return tuple(value)
+    return globs
 
 
-def _read(path: Path) -> dict:
+def _read(path: Path) -> dict[str, Any]:
     try:
         with path.open("rb") as f:
             return tomllib.load(f)

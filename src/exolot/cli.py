@@ -10,6 +10,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from . import __version__, clone, compiledb, config, gitdiff, markdown, problems, report
 from .analyze import SERVER_LOG_LEVELS, AnalysisSession, Issue, collect_files, language_id
@@ -372,7 +373,7 @@ class _Inputs:
     """What the analyze command reads before starting the server."""
 
     files: list[Path]
-    rules: dict | None
+    rules: dict[str, Any] | None
     changes: gitdiff.Changes | None
     settings: config.Config
     compile_commands: Path | None = None
@@ -528,8 +529,9 @@ def _links(args: argparse.Namespace) -> str | None:
     """The link template for Markdown locations: --link-template's, or in
     GitHub Actions (unless --no-links), one for the checked-out commit in the
     workflow's repository."""
-    if args.link_template or args.no_links or args.format not in ("markdown", "github-comment"):
-        return args.link_template
+    link_template: str | None = args.link_template
+    if link_template or args.no_links or args.format not in ("markdown", "github-comment"):
+        return link_template
     return report.actions_link_template()
 
 

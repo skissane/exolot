@@ -96,7 +96,8 @@ class LspClient:
         if len(body) < length:
             return None
         log.debug("<- %s", body[:2000])
-        return json.loads(body)
+        message: dict[str, Any] = json.loads(body)
+        return message
 
     def _read_loop(self) -> None:
         try:
@@ -115,12 +116,13 @@ class LspClient:
     def _dispatch(self, message: dict[str, Any]) -> None:
         method = message.get("method")
         if method is None:
+            request_id = message.get("id")
             with self._pending_lock:
-                future = self._pending.pop(message.get("id"), None)
+                future = self._pending.pop(request_id, None) if type(request_id) is int else None
             if future is None:
-                log.warning("response for unknown request id %r", message.get("id"))
+                log.warning("response for unknown request id %r", request_id)
             elif not future.set_running_or_notify_cancel():
-                log.debug("dropping response to cancelled request %r", message.get("id"))
+                log.debug("dropping response to cancelled request %r", request_id)
             elif "error" in message:
                 future.set_exception(LspError(message["error"]))
             else:
