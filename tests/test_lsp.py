@@ -1,3 +1,4 @@
+import logging
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -59,3 +60,22 @@ def test_response_with_unknown_id_is_ignored(
     client._dispatch({"jsonrpc": "2.0", "id": request_id, "result": "wrong"})
     assert not future.done()
     assert f"response for unknown request id {request_id!r}" in caplog.text
+
+
+def test_request_after_the_server_closed_fails_at_once(client: LspClient) -> None:
+    client.start()
+    client.notify("exit")
+    assert client.closed.wait(timeout=10)
+    with pytest.raises(ConnectionError):
+        client.request("initialize", {}).result(timeout=0)
+
+
+def test_writing_to_a_dead_server_is_logged_not_raised(client: LspClient, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="exolot.lsp")
+    client.start()
+    client.notify("exit")
+    assert client.closed.wait(timeout=10)
+    client._proc.wait(timeout=10)
+    client.notify("x" * 1_000_000)  # more than the pipe holds, so the write fails
+    client.close()
+    assert "LSP writer failed" in caplog.text

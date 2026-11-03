@@ -3,6 +3,8 @@ import json
 import logging
 import subprocess
 import sys
+import threading
+import time
 import urllib.parse
 from pathlib import Path
 from typing import Any, NoReturn
@@ -111,6 +113,62 @@ def test_session_waits_while_the_server_reports_progress(tmp_path: Path) -> None
     with AnalysisSession(server, tmp_path) as session:
         with pytest.raises(TimeoutError):
             session.analyze([a], settle=0.1, stall=0.1, timeout=1)
+
+
+def _analyze_or_kill(session: AnalysisSession, files: list[Path], within: float, **kwargs: Any) -> object:
+    """Run session.analyze(files, **kwargs) and return its issues or the
+    exception it raised, killing the server and failing if it takes longer than
+    within seconds (so a deadlock fails the test rather than hanging it)."""
+    outcome: list[object] = []
+
+    def run() -> None:
+        try:
+            outcome.append(session.analyze(files, **kwargs))
+        except Exception as e:
+            outcome.append(e)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(within)
+    if thread.is_alive():
+        assert session._proc is not None
+        session._proc.kill()
+        thread.join()
+        pytest.fail(f"analyze() was still running after {within} seconds")
+    return outcome[0]
+
+
+def test_session_keeps_reading_the_server_while_it_sends_files(tmp_path: Path) -> None:
+    # Many big files, each making the server write a request and a big log
+    # message without reading: this deadlocked when sending a file blocked the
+    # thread that reads the server's output and answers its requests (#73).
+    files = []
+    for n in range(100):
+        f = tmp_path / f"f{n}.py"
+        f.write_text("CHATTY\n" + "# padding\n" * 5_000)
+        files.append(f)
+    server = FakeServer(root=tmp_path, java=Path("java"))
+    with AnalysisSession(server, tmp_path, log_level=logging.DEBUG) as session:
+        issues = _analyze_or_kill(session, files, 60, settle=0.2, timeout=50)
+    assert isinstance(issues, list)
+    assert len(issues) == len(files)
+
+
+def test_session_times_out_while_the_server_is_not_reading(tmp_path: Path) -> None:
+    # Enough to fill the pipe to the server while it isn't reading, so sending
+    # the files would block if analyze() waited for that (#73).
+    files = []
+    for n in range(40):
+        f = tmp_path / f"f{n}.py"
+        f.write_text(("DEAF\n" if n == 0 else "") + "# padding\n" * 2_000)
+        files.append(f)
+    server = FakeServer(root=tmp_path, java=Path("java"))
+    with AnalysisSession(server, tmp_path) as session:
+        start = time.monotonic()
+        error = _analyze_or_kill(session, files, 10, settle=0.1, timeout=0.5)
+        elapsed = time.monotonic() - start
+    assert isinstance(error, TimeoutError)
+    assert elapsed < 2.5  # the server stops reading for 3 seconds
 
 
 def test_session_closes_server_pipes(tmp_path: Path) -> None:

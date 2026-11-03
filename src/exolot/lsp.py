@@ -4,12 +4,20 @@ A background thread reads messages from the server. Responses resolve the
 matching pending request; server-initiated requests and notifications are
 dispatched to registered handlers. Server requests with no handler are
 answered with ``null`` so the server never blocks waiting on us.
+
+Another background thread writes the messages we send, from a queue, so
+sending never blocks. This matters because the server stops reading our
+messages while it waits to write its own: if the reader thread could block
+writing a reply while the server's output pipe is full, neither side would
+ever make progress.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import queue
 import subprocess
 import threading
 from collections.abc import Callable
@@ -33,21 +41,30 @@ class LspClient:
         self._proc = proc
         self._stdin: IO[bytes] = proc.stdin
         self._stdout: IO[bytes] = proc.stdout
-        self._write_lock = threading.Lock()
+        # Encoded messages for the writer thread to send; None tells it to stop.
+        self._outbox: queue.SimpleQueue[bytes | None] = queue.SimpleQueue()
         self._next_id = 0
         self._pending: dict[int, Future[Any]] = {}
         self._pending_lock = threading.Lock()
         self._request_handlers: dict[str, Handler] = {}
         self._notification_handlers: dict[str, Handler] = {}
         self._reader = threading.Thread(target=self._read_loop, name="lsp-reader", daemon=True)
+        self._writer = threading.Thread(target=self._write_loop, name="lsp-writer", daemon=True)
         self.closed = threading.Event()
 
     def start(self) -> None:
+        self._writer.start()
         self._reader.start()
 
     def close(self) -> None:
-        """Close the pipes to the server. Call this once the server has exited."""
-        self._stdin.close()
+        """Close the pipes to the server. Call this once the server has exited:
+        until then, the writer thread may still be blocked writing to it."""
+        self._outbox.put(None)
+        if self._writer.is_alive():
+            self._writer.join()
+        # Raises if a failed write left data in the buffer, but still closes.
+        with contextlib.suppress(OSError):
+            self._stdin.close()
         if self._reader.is_alive():
             self._reader.join()
         self._stdout.close()
@@ -59,10 +76,15 @@ class LspClient:
         self._notification_handlers[method] = handler
 
     def request(self, method: str, params: Any = None) -> Future[Any]:
+        future: Future[Any] = Future()
         with self._pending_lock:
+            # The reader sets closed before it fails the pending requests
+            # with this lock held, so a request can't be left pending forever.
+            if self.closed.is_set():
+                future.set_exception(ConnectionError("language server closed the connection"))
+                return future
             self._next_id += 1
             msg_id = self._next_id
-            future: Future[Any] = Future()
             self._pending[msg_id] = future
         self._send({"jsonrpc": "2.0", "id": msg_id, "method": method, "params": params})
         return future
@@ -71,12 +93,20 @@ class LspClient:
         self._send({"jsonrpc": "2.0", "method": method, "params": params})
 
     def _send(self, message: dict[str, Any]) -> None:
+        """Queue message for the writer thread, without waiting for it to be sent."""
         body = json.dumps(message, separators=(",", ":")).encode("utf-8")
         header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
         log.debug("-> %s", body[:2000])
-        with self._write_lock:
-            self._stdin.write(header + body)
-            self._stdin.flush()
+        self._outbox.put(header + body)
+
+    def _write_loop(self) -> None:
+        try:
+            while (data := self._outbox.get()) is not None:
+                self._stdin.write(data)
+                self._stdin.flush()
+        except (OSError, ValueError):  # ValueError: the pipe was closed
+            # The server has gone, which the reader thread sees too.
+            log.debug("LSP writer failed", exc_info=True)
 
     def _read_message(self) -> dict[str, Any] | None:
         length = None

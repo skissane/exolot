@@ -4,6 +4,7 @@ configuration, and publishes one diagnostic per opened document."""
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -78,6 +79,22 @@ while (msg := read()) is not None:
             continue
         if "CRASH" in doc["text"]:
             sys.exit(1)
+        if "DEAF" in doc["text"]:
+            # Stop reading for a while, so the client's writes to us block.
+            time.sleep(3)
+        if "CHATTY" in doc["text"]:
+            # Like the real server with verbose logs: a request the client must
+            # answer and lots of log output for every file, written without
+            # reading anything, so the client must keep reading while it writes.
+            send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": f"open-{doc['uri']}",
+                    "method": "sonarlint/isOpenInEditor",
+                    "params": doc["uri"],
+                }
+            )
+            log("[Debug - 01:02:03.004] " + "x" * 50_000)
         send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": "t", "value": {"kind": "begin"}}})
         if "SENSORFAIL" in doc["text"]:
             for message in SENSOR_FAILURE:
