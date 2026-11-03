@@ -66,8 +66,9 @@ def test_request_after_the_server_closed_fails_at_once(client: LspClient) -> Non
     client.start()
     client.notify("exit")
     assert client.closed.wait(timeout=10)
+    future = client.request("initialize", {})
     with pytest.raises(ConnectionError):
-        client.request("initialize", {}).result(timeout=0)
+        future.result(timeout=0)
 
 
 def test_writing_to_a_dead_server_is_logged_not_raised(client: LspClient, caplog: pytest.LogCaptureFixture) -> None:
