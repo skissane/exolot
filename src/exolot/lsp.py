@@ -105,8 +105,9 @@ class LspClient:
                 self._stdin.write(data)
                 self._stdin.flush()
         except (OSError, ValueError):  # ValueError: the pipe was closed
-            # The server has gone, which the reader thread sees too.
+            # Nothing more can reach the server, even if it keeps writing.
             log.debug("LSP writer failed", exc_info=True)
+            self._connection_lost()
 
     def _read_message(self) -> dict[str, Any] | None:
         length = None
@@ -136,12 +137,16 @@ class LspClient:
         except Exception:
             log.exception("LSP reader failed")
         finally:
-            self.closed.set()
-            with self._pending_lock:
-                pending, self._pending = self._pending, {}
-            for future in pending.values():
-                if future.set_running_or_notify_cancel():
-                    future.set_exception(ConnectionError("language server closed the connection"))
+            self._connection_lost()
+
+    def _connection_lost(self) -> None:
+        """Mark the connection closed and fail every pending request."""
+        self.closed.set()
+        with self._pending_lock:
+            pending, self._pending = self._pending, {}
+        for future in pending.values():
+            if future.set_running_or_notify_cancel():
+                future.set_exception(ConnectionError("language server closed the connection"))
 
     def _dispatch(self, message: dict[str, Any]) -> None:
         method = message.get("method")

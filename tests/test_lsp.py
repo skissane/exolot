@@ -80,3 +80,19 @@ def test_writing_to_a_dead_server_is_logged_not_raised(client: LspClient, caplog
     client.notify("x" * 1_000_000)  # more than the pipe holds, so the write fails
     client.close()
     assert "LSP writer failed" in caplog.text
+
+
+def test_a_failed_write_fails_pending_requests(client: LspClient) -> None:
+    client.start()
+    client._stdin.close()  # as if the server stopped reading but kept its output open
+    future = client.request("initialize", {})
+    with pytest.raises(ConnectionError):
+        future.result(timeout=10)
+    assert client.closed.is_set()
+
+
+def test_losing_the_connection_leaves_cancelled_requests_cancelled(client: LspClient) -> None:
+    future = client.request("slow")  # the reader isn't started, so no response arrives
+    assert future.cancel()
+    client._connection_lost()
+    assert future.cancelled()
