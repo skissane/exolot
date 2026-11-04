@@ -4,7 +4,7 @@ configuration, and publishes one diagnostic per opened document."""
 import json
 import os
 import sys
-import time
+import threading
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -80,8 +80,9 @@ while (msg := read()) is not None:
         if "CRASH" in doc["text"]:
             sys.exit(1)
         if "DEAF" in doc["text"]:
-            # Stop reading for a while, so the client's writes to us block.
-            time.sleep(3)
+            # Never read again, so the client's writes to us block once the
+            # pipe is full. The test kills us.
+            threading.Event().wait()
         if "CHATTY" in doc["text"]:
             # Like the real server with verbose logs: a request the client must
             # answer and lots of log output for every file, written without

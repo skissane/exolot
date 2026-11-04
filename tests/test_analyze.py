@@ -4,7 +4,6 @@ import logging
 import subprocess
 import sys
 import threading
-import time
 import urllib.parse
 from pathlib import Path
 from typing import Any, NoReturn
@@ -155,8 +154,8 @@ def test_session_keeps_reading_the_server_while_it_sends_files(tmp_path: Path) -
 
 
 def test_session_times_out_while_the_server_is_not_reading(tmp_path: Path) -> None:
-    # Enough to fill the pipe to the server while it isn't reading, so sending
-    # the files would block if analyze() waited for that (#73).
+    # Enough to fill the pipe to the server, which stops reading after the
+    # first file: this hung when analyze() waited for each file to be sent (#73).
     files = []
     for n in range(40):
         f = tmp_path / f"f{n}.py"
@@ -164,11 +163,12 @@ def test_session_times_out_while_the_server_is_not_reading(tmp_path: Path) -> No
         files.append(f)
     server = FakeServer(root=tmp_path, java=Path("java"))
     with AnalysisSession(server, tmp_path) as session:
-        start = time.monotonic()
-        error = _analyze_or_kill(session, files, 10, settle=0.1, timeout=0.5)
-        elapsed = time.monotonic() - start
+        error = _analyze_or_kill(session, files, 30, settle=0.1, timeout=0.5)
+        # The server will never answer a shutdown request, so don't wait for one.
+        assert session._proc is not None
+        session._proc.kill()
+        session._proc.wait()
     assert isinstance(error, TimeoutError)
-    assert elapsed < 2.5  # the server stops reading for 3 seconds
 
 
 def test_session_closes_server_pipes(tmp_path: Path) -> None:
