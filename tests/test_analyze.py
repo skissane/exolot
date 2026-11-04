@@ -223,6 +223,19 @@ def test_ctrl_c_during_shutdown_still_kills_server(tmp_path: Path, monkeypatch: 
     _assert_server_gone(session._proc)
 
 
+class _FailedFuture:
+    def result(self, timeout: float | None = None) -> NoReturn:
+        raise ConnectionError("language server closed the connection")
+
+
+def test_failed_shutdown_kills_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    session = AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path).__enter__()
+    assert session._client is not None
+    monkeypatch.setattr(session._client, "request", lambda method, params=None: _FailedFuture())
+    session.close()
+    _assert_server_gone(session._proc)
+
+
 def test_ctrl_c_in_session_kills_server_without_waiting_to_shut_down(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -271,7 +284,11 @@ with cli._exit_on_sigterm(), AnalysisSession(FakeServer(root=Path("."), java=Pat
 def test_exit_on_sigterm_restores_handler() -> None:
     before = signal.getsignal(signal.SIGTERM)
     with cli._exit_on_sigterm():
-        assert signal.getsignal(signal.SIGTERM) is not before
+        handler = signal.getsignal(signal.SIGTERM)
+        assert callable(handler)
+        with pytest.raises(SystemExit) as exit_info:
+            handler(signal.SIGTERM, None)
+        assert exit_info.value.code == 128 + signal.SIGTERM
     assert signal.getsignal(signal.SIGTERM) is before
 
 
