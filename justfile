@@ -98,7 +98,7 @@ check-release version index="https://pypi.org/simple/":
     set -euo pipefail
     for delay in 0 10 20 40 80 160; do
         sleep "$delay"
-        if actual="$(uvx --isolated --no-cache --index "$2" --from "exolot==$1" exolot --version)" && [ "$actual" = "exolot $1" ]; then
+        if actual="$(uvx --isolated --no-cache --default-index "$2" --from "exolot==$1" exolot --version)" && [ "$actual" = "exolot $1" ]; then
             echo "exolot $1 installs from $2 and runs"
             exit 0
         fi

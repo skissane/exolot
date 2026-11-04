@@ -42,7 +42,9 @@ jobs:
           fi
 
       # The run number is unique per workflow, so each manual run gets its own
-      # version. --frozen leaves uv.lock alone; only the built package changes.
+      # version. Re-running a run reuses its number, so once its upload has
+      # succeeded, start a new run rather than re-running all jobs.
+      # --frozen leaves uv.lock alone; only the built package changes.
       - name: Set dev version
         if: github.event_name == 'workflow_dispatch'
         run: uv version --frozen --bump patch --bump "dev=${GITHUB_RUN_NUMBER}"
