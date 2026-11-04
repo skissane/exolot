@@ -1,8 +1,19 @@
-name: Publish to PyPI
+name: Publish
 
-# Publishes only from a v* tag. A manual run (e.g. to retry a failed publish)
-# must be started on the release's tag; on a branch it fails before building.
-# For a test release of a branch, run "Publish to TestPyPI" instead.
+# A v* tag push builds the release once, publishes it to TestPyPI, checks it
+# installs from there, and only then publishes the same files to PyPI and
+# checks it installs from PyPI. If a job fails, fix the cause and use "Re-run
+# failed jobs" on that run; never re-run the whole run once a publish job has
+# succeeded, as neither index accepts the same file twice.
+#
+# A manual run (Actions > Publish > Run workflow, on any branch) publishes a
+# test release of that branch to TestPyPI only, as a dev version of the next
+# patch release numbered by the run's ID, e.g. 0.2.1.dev41908943359, as
+# TestPyPI never accepts the same version twice. It never reaches the PyPI
+# jobs, even on a tag.
+#
+# TestPyPI and PyPI trusted publishing both name this file, so renaming it
+# means updating both trusted publishers.
 on:
   push:
     tags:
@@ -10,12 +21,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Builds in its own job, without the publish job's id-token: write, so the
+  # Builds in its own job, without the publish jobs' id-token: write, so the
   # build steps can't mint a token to publish or sign with.
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,16 +41,27 @@ jobs:
           version: "0.13.6"
 
       - name: Check tag matches version
+        if: github.event_name == 'push'
         run: |
-          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
-            echo "Publishing to PyPI needs a v* tag, not the ${GITHUB_REF_TYPE} ${GITHUB_REF_NAME}"
-            exit 1
-          fi
           VERSION="$(uv version --short)"
           if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
             echo "Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${VERSION}"
             exit 1
           fi
+
+      # The run ID is unique across the repository, so each manual run gets its
+      # own version, which can't clash with the dev versions the old
+      # publish-testpypi.yml numbered by its run number. Re-running a run
+      # reuses its ID, so once its upload has succeeded, start a new run
+      # rather than re-running all jobs.
+      # --frozen leaves uv.lock alone; only the built package changes.
+      - name: Set dev version
+        if: github.event_name == 'workflow_dispatch'
+        run: uv version --frozen --bump patch --bump "dev=${GITHUB_RUN_ID}"
+
+      - name: Get version
+        id: version
+        run: echo "version=$(uv version --short)" >> "$GITHUB_OUTPUT"
 
       - name: Build package
         run: uv build
@@ -52,8 +76,94 @@ jobs:
           # its first attempt uploaded.
           overwrite: true
 
-  publish:
+  publish-testpypi:
     needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/exolot
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.6"
+
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
+
+      # Signs a PEP 740 publish attestation for each file in dist/ with this
+      # workflow's identity (the trusted publisher), which uv publish uploads
+      # alongside it; TestPyPI shows them as the release's provenance.
+      - name: Generate attestations
+        uses: astral-sh/attest-action@39b6ce43875c196a579e31635b11aa2a2036384a # v0.0.7
+
+      # uv publish uploads without attestations if they're missing, so stop
+      # here rather than publish a release with no provenance.
+      - name: Check every distribution has an attestation
+        run: |
+          shopt -s nullglob
+          dists=(dist/*.whl dist/*.tar.gz)
+          if [ "${#dists[@]}" -eq 0 ]; then
+            echo "::error::No distributions found in dist/"
+            exit 1
+          fi
+          missing=0
+          for dist in "${dists[@]}"; do
+            if [ ! -s "${dist}.publish.attestation" ]; then
+              echo "::error::No attestation for ${dist}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: Publish to TestPyPI
+        run: uv publish --verbose --publish-url=https://test.pypi.org/legacy/
+
+  # Checks the release installs from TestPyPI and runs, as users get it with uvx.
+  verify-testpypi:
+    needs: [build, publish-testpypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.6"
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.58.0"
+
+      - name: Check release installs from TestPyPI
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: just check-release "$VERSION" https://test.pypi.org/simple/
+
+  # Publishes the same files TestPyPI got, with fresh attestations, and only
+  # for a tag push: a manual run stops after verifying TestPyPI.
+  publish-pypi:
+    needs: [build, verify-testpypi]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -107,8 +217,8 @@ jobs:
         run: uv publish --verbose
 
   # Checks the release installs from PyPI and runs, as users get it with uvx.
-  verify:
-    needs: publish
+  verify-pypi:
+    needs: [build, publish-pypi]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -131,4 +241,6 @@ jobs:
           just-version: "1.58.0"
 
       - name: Check release installs from PyPI
-        run: just check-release "$(uv version --short)"
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: just check-release "$VERSION"
