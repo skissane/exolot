@@ -23,10 +23,11 @@ def escape(text: str) -> str:
     space after each "@" or "#" that would start a GitHub @mention or #123
     issue reference (GitHub doesn't document a backslash as stopping them),
     e.g. the "@Override" a Java rule's message quotes, which would notify
-    whoever has that name."""
+    whoever has that name. An "@" after a letter or digit, as in an email
+    address, can't start a mention, so it's left alone."""
     text = " ".join(text.split())
     text = re.sub(r"([\\`*_\[\]<>|~&])", r"\\\1", text)
-    return re.sub(r"(@(?=\w)|#(?=\d))", r"\1" + ZWSP, text)
+    return re.sub(r"((?<!\w)@(?=\w)|#(?=\d))", r"\1" + ZWSP, text)
 
 
 def check_link_template(template: str) -> str:

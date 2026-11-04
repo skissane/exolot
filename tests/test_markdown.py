@@ -25,7 +25,7 @@ def test_escape_puts_text_on_one_line_and_escapes_markdown() -> None:
         ("@staticmethod, see #12 and org/repo#3", "@\u200bstaticmethod, see #\u200b12 and org/repo#\u200b3"),
         ("node_modules/@types/a.ts:1", "node\\_modules/@\u200btypes/a.ts:1"),
         # Neither a mention nor a reference, so left alone.
-        ("a @ b, C# #define", "a @ b, C# #define"),
+        ("a @ b, C# #define, dev@example.com", "a @ b, C# #define, dev@example.com"),
     ],
 )
 def test_escape_stops_mentions_and_references(text: str, escaped: str) -> None:
