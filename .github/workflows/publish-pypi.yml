@@ -78,6 +78,25 @@ jobs:
       - name: Generate attestations
         uses: astral-sh/attest-action@39b6ce43875c196a579e31635b11aa2a2036384a # v0.0.7
 
+      # uv publish uploads without attestations if they're missing, so stop
+      # here rather than publish a release with no provenance.
+      - name: Check every distribution has an attestation
+        run: |
+          shopt -s nullglob
+          dists=(dist/*.whl dist/*.tar.gz)
+          if [ "${#dists[@]}" -eq 0 ]; then
+            echo "::error::No distributions found in dist/"
+            exit 1
+          fi
+          missing=0
+          for dist in "${dists[@]}"; do
+            if [ ! -s "${dist}.publish.attestation" ]; then
+              echo "::error::No attestation for ${dist}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
       - name: Publish to PyPI
         run: uv publish --verbose
 
