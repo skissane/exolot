@@ -12,11 +12,21 @@ from typing import Any
 LINK_FIELDS = {"path": "src/a.py", "line": 1, "column": 1, "end_line": 1, "end_column": 1}
 
 
+# A zero-width space, which GitHub doesn't treat as part of a mention or
+# reference, so putting one after "@" or "#" stops them being one.
+ZWSP = "\u200b"
+
+
 def escape(text: str) -> str:
     """text on one line, with the characters that would format it, end a table
-    cell or start an HTML tag or entity backslash-escaped."""
+    cell or start an HTML tag or entity backslash-escaped, and with a zero-width
+    space after each "@" or "#" that would start a GitHub @mention or #123
+    issue reference (GitHub doesn't document a backslash as stopping them),
+    e.g. the "@Override" a Java rule's message quotes, which would notify
+    whoever has that name."""
     text = " ".join(text.split())
-    return re.sub(r"([\\`*_\[\]<>|~&])", r"\\\1", text)
+    text = re.sub(r"([\\`*_\[\]<>|~&])", r"\\\1", text)
+    return re.sub(r"(@(?=\w)|#(?=\d))", r"\1" + ZWSP, text)
 
 
 def check_link_template(template: str) -> str:
