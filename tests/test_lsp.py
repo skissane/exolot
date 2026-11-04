@@ -1,3 +1,4 @@
+import logging
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -59,3 +60,39 @@ def test_response_with_unknown_id_is_ignored(
     client._dispatch({"jsonrpc": "2.0", "id": request_id, "result": "wrong"})
     assert not future.done()
     assert f"response for unknown request id {request_id!r}" in caplog.text
+
+
+def test_request_after_the_server_closed_fails_at_once(client: LspClient) -> None:
+    client.start()
+    client.notify("exit")
+    assert client.closed.wait(timeout=10)
+    future = client.request("initialize", {})
+    with pytest.raises(ConnectionError):
+        future.result(timeout=0)
+
+
+def test_writing_to_a_dead_server_is_logged_not_raised(client: LspClient, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG, logger="exolot.lsp")
+    client.start()
+    client.notify("exit")
+    assert client.closed.wait(timeout=10)
+    client._proc.wait(timeout=10)
+    client.notify("x" * 1_000_000)  # more than the pipe holds, so the write fails
+    client.close()
+    assert "LSP writer failed" in caplog.text
+
+
+def test_a_failed_write_fails_pending_requests(client: LspClient) -> None:
+    client.start()
+    client._stdin.close()  # as if the server stopped reading but kept its output open
+    future = client.request("initialize", {})
+    with pytest.raises(ConnectionError):
+        future.result(timeout=10)
+    assert client.closed.is_set()
+
+
+def test_losing_the_connection_leaves_cancelled_requests_cancelled(client: LspClient) -> None:
+    future = client.request("slow")  # the reader isn't started, so no response arrives
+    assert future.cancel()
+    client._connection_lost()
+    assert future.cancelled()
