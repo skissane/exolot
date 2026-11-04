@@ -1,6 +1,8 @@
 import argparse
 import json
 import logging
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -194,6 +196,97 @@ def test_session_closes_pipes_of_a_server_that_died(tmp_path: Path) -> None:
         proc.wait()
     assert proc.stdin.closed
     assert proc.stdout.closed
+
+
+class _InterruptedFuture:
+    """A request whose result the user interrupts waiting for."""
+
+    def result(self, timeout: float | None = None) -> NoReturn:
+        raise KeyboardInterrupt
+
+
+def _assert_server_gone(proc: subprocess.Popen[bytes] | None) -> None:
+    assert proc is not None
+    assert proc.stdin is not None
+    assert proc.stdout is not None
+    assert proc.returncode is not None
+    assert proc.stdin.closed
+    assert proc.stdout.closed
+
+
+def test_ctrl_c_during_shutdown_still_kills_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    session = AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path).__enter__()
+    assert session._client is not None
+    monkeypatch.setattr(session._client, "request", lambda method, params=None: _InterruptedFuture())
+    with pytest.raises(KeyboardInterrupt):
+        session.close()
+    _assert_server_gone(session._proc)
+
+
+def test_ctrl_c_in_session_kills_server_without_waiting_to_shut_down(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[str] = []
+
+    def record(method: str, params: object = None) -> _InterruptedFuture:
+        sent.append(method)
+        return _InterruptedFuture()
+
+    with (
+        pytest.raises(KeyboardInterrupt),
+        AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path) as session,
+    ):
+        assert session._client is not None
+        monkeypatch.setattr(session._client, "request", record)
+        raise KeyboardInterrupt
+    assert sent == []
+    _assert_server_gone(session._proc)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="SIGTERM can't be caught on Windows")
+def test_sigterm_kills_server(tmp_path: Path) -> None:
+    # exolot is signalled on its own, as under a process supervisor, not with its process group.
+    script = f"""
+import sys, time
+from pathlib import Path
+sys.path[:0] = {[str(Path(__file__).parent.parent)]!r}
+from exolot import cli
+from exolot.analyze import AnalysisSession
+from tests.test_analyze import FakeServer
+with cli._exit_on_sigterm(), AnalysisSession(FakeServer(root=Path("."), java=Path("java")), Path(".")) as session:
+    print(session._proc.pid, flush=True)
+    time.sleep(60)
+"""
+    proc = subprocess.Popen([sys.executable, "-c", script], cwd=tmp_path, stdout=subprocess.PIPE, text=True)
+    with proc:
+        assert proc.stdout is not None
+        server_pid = int(proc.stdout.readline())
+        proc.terminate()
+        assert proc.wait(timeout=30) == 128 + signal.SIGTERM
+    # Killed and reaped by exolot, so there's no such process any more.
+    with pytest.raises(ProcessLookupError):
+        os.kill(server_pid, 0)
+
+
+def test_exit_on_sigterm_restores_handler() -> None:
+    before = signal.getsignal(signal.SIGTERM)
+    with cli._exit_on_sigterm():
+        assert signal.getsignal(signal.SIGTERM) is not before
+    assert signal.getsignal(signal.SIGTERM) is before
+
+
+def test_exit_on_sigterm_does_nothing_outside_main_thread() -> None:
+    before = signal.getsignal(signal.SIGTERM)
+    seen: list[object] = []
+
+    def run() -> None:
+        with cli._exit_on_sigterm():
+            seen.append(signal.getsignal(signal.SIGTERM))
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    thread.join()
+    assert seen == [before]
 
 
 def test_closing_an_unstarted_session_does_nothing(tmp_path: Path) -> None:

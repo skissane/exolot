@@ -213,8 +213,13 @@ class AnalysisSession:
             raise
         return self
 
-    def __exit__(self, *exc: object) -> None:
-        self.close()
+    def __exit__(self, exc_type: type[BaseException] | None, *exc: object) -> None:
+        if exc_type is not None and not issubclass(exc_type, Exception):
+            # Interrupted (Ctrl-C, or SIGTERM via cli.main): don't make the
+            # user wait seconds more for a clean shutdown.
+            self._kill()
+        else:
+            self.close()
 
     def _start(self) -> None:
         cmd = self.server.command(self.jvm_args)
@@ -509,15 +514,20 @@ class AnalysisSession:
                 issue.message = MORE_LOCATIONS.sub("", issue.message)
 
     def close(self) -> None:
-        if self._client is not None and self._proc is not None and self._proc.poll() is None:
-            self._shutting_down = True
-            try:
-                self._client.request("shutdown").result(timeout=30)
-                self._client.notify("exit")
-                self._proc.wait(timeout=30)
-            except Exception:
-                log.debug("clean shutdown failed; killing server", exc_info=True)
-        self._kill()
+        """Ask the server to shut down and wait for it to exit, killing it
+        if that fails or is interrupted (e.g. by Ctrl-C), so it never
+        outlives exolot."""
+        try:
+            if self._client is not None and self._proc is not None and self._proc.poll() is None:
+                self._shutting_down = True
+                try:
+                    self._client.request("shutdown").result(timeout=30)
+                    self._client.notify("exit")
+                    self._proc.wait(timeout=30)
+                except Exception:
+                    log.debug("clean shutdown failed; killing server", exc_info=True)
+        finally:
+            self._kill()
 
     def _kill(self) -> None:
         if self._proc is None:

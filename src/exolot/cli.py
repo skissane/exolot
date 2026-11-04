@@ -6,8 +6,11 @@ import json
 import logging
 import os
 import shutil
+import signal
 import sys
 import tempfile
+import threading
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -191,11 +194,32 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "cache-dir":
         print(cache_dir())
         return 0
-    if args.command == "install":
-        return _install(args)
-    if args.command == "analyze-repo":
-        return _run_analyze_repo(args)
-    return _run_analyze(args)
+    with _exit_on_sigterm():
+        if args.command == "install":
+            return _install(args)
+        if args.command == "analyze-repo":
+            return _run_analyze_repo(args)
+        return _run_analyze(args)
+
+
+@contextlib.contextmanager
+def _exit_on_sigterm() -> Generator[None]:
+    """Turn SIGTERM (e.g. a cancelled CI job) into SystemExit, so cleanup
+    such as killing the language server and deleting temporary directories
+    still runs; Python's default handling exits without any. Does nothing
+    outside the main thread, where signal handlers can't be set."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def handler(signum: int, frame: object) -> None:
+        raise SystemExit(128 + signum)
+
+    previous = signal.signal(signal.SIGTERM, handler)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 
 def _platform(args: argparse.Namespace) -> str | None:
