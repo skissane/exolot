@@ -42,6 +42,9 @@ jobs:
           name: dist
           path: dist/
           if-no-files-found: error
+          # Re-running a failed release would otherwise fail on the artifact
+          # its first attempt uploaded.
+          overwrite: true
 
   publish:
     needs: build
