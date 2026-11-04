@@ -1,5 +1,8 @@
 name: Publish to PyPI
 
+# Publishes only from a v* tag. A manual run (e.g. to retry a failed publish)
+# must be started on the release's tag; on a branch it fails before building.
+# For a test release of a branch, run "Publish to TestPyPI" instead.
 on:
   push:
     tags:
@@ -27,8 +30,11 @@ jobs:
           version: "0.13.6"
 
       - name: Check tag matches version
-        if: github.ref_type == 'tag'
         run: |
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "Publishing to PyPI needs a v* tag, not the ${GITHUB_REF_TYPE} ${GITHUB_REF_NAME}"
+            exit 1
+          fi
           VERSION="$(uv version --short)"
           if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
             echo "Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${VERSION}"
