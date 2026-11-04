@@ -18,6 +18,26 @@ def test_escape_puts_text_on_one_line_and_escapes_markdown() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("text", "escaped"),
+    [
+        ('Add the "@Override" annotation', 'Add the "@\u200bOverride" annotation'),
+        ("@staticmethod, see #12 and org/repo#3", "@\u200bstaticmethod, see #\u200b12 and org/repo#\u200b3"),
+        ("node_modules/@types/a.ts:1", "node\\_modules/@\u200btypes/a.ts:1"),
+        # Neither a mention nor a reference, so left alone.
+        ("a @ b, C# #define, dev@example.com", "a @ b, C# #define, dev@example.com"),
+    ],
+)
+def test_escape_stops_mentions_and_references(text: str, escaped: str) -> None:
+    assert escape(text) == escaped
+
+
+def test_comment_doesnt_mention_annotations_in_messages() -> None:
+    body = markdown.comment([finding(message='Add the "@Override" annotation')])
+    assert "@Override" not in body
+    assert "@\u200bOverride" in body
+
+
 def test_findings_table_without_links() -> None:
     assert findings_table([finding(), finding(path="tests\\b_c.py", line=1, message="x|y")]) == [
         "| Location | Rule | Message |",
