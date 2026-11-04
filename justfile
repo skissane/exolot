@@ -90,20 +90,20 @@ smoke:
     run cache-dir >/dev/null
     echo "${wheel} installs and runs"
 
-# Retries while PyPI's index catches up with a new upload.
-# Check that a released version installs from PyPI and runs
+# Retries while the index catches up with a new upload.
+# Check that a released version installs from PyPI (or the index given) and runs
 [positional-arguments]
-check-release version:
+check-release version index="https://pypi.org/simple/":
     #!/usr/bin/env bash
     set -euo pipefail
     for delay in 0 10 20 40 80 160; do
         sleep "$delay"
-        if actual="$(uvx --isolated --no-cache --from "exolot==$1" exolot --version)" && [ "$actual" = "exolot $1" ]; then
-            echo "exolot $1 installs from PyPI and runs"
+        if actual="$(uvx --isolated --no-cache --default-index "$2" --from "exolot==$1" exolot --version)" && [ "$actual" = "exolot $1" ]; then
+            echo "exolot $1 installs from $2 and runs"
             exit 0
         fi
     done
-    echo "exolot $1 did not install from PyPI and run" >&2
+    echo "exolot $1 did not install from $2 and run" >&2
     exit 1
 
 # Lint with ruff
