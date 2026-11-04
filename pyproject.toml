@@ -1,6 +1,6 @@
 [project]
 name = "exolot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Analyze code locally from the command line with the SonarQube for IDE language server"
 readme = "README.md"
 requires-python = ">=3.11"
