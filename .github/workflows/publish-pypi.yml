@@ -8,8 +8,9 @@ name: Publish
 #
 # A manual run (Actions > Publish > Run workflow, on any branch) publishes a
 # test release of that branch to TestPyPI only, as a dev version of the next
-# patch release, e.g. 0.2.1.dev42 for run 42, as TestPyPI never accepts the
-# same version twice. It never reaches the PyPI jobs, even on a tag.
+# patch release numbered by the run's ID, e.g. 0.2.1.dev41908943359, as
+# TestPyPI never accepts the same version twice. It never reaches the PyPI
+# jobs, even on a tag.
 #
 # TestPyPI and PyPI trusted publishing both name this file, so renaming it
 # means updating both trusted publishers.
@@ -48,13 +49,15 @@ jobs:
             exit 1
           fi
 
-      # The run number is unique per workflow, so each manual run gets its own
-      # version. Re-running a run reuses its number, so once its upload has
-      # succeeded, start a new run rather than re-running all jobs.
+      # The run ID is unique across the repository, so each manual run gets its
+      # own version, which can't clash with the dev versions the old
+      # publish-testpypi.yml numbered by its run number. Re-running a run
+      # reuses its ID, so once its upload has succeeded, start a new run
+      # rather than re-running all jobs.
       # --frozen leaves uv.lock alone; only the built package changes.
       - name: Set dev version
         if: github.event_name == 'workflow_dispatch'
-        run: uv version --frozen --bump patch --bump "dev=${GITHUB_RUN_NUMBER}"
+        run: uv version --frozen --bump patch --bump "dev=${GITHUB_RUN_ID}"
 
       - name: Get version
         id: version
