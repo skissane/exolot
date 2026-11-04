@@ -1,5 +1,9 @@
 name: Publish to TestPyPI
 
+# A tag push publishes the release itself. A manual run (Actions > Publish to
+# TestPyPI > Run workflow, on any branch) publishes a test release of that
+# branch as a dev version of the next patch release, e.g. 0.2.1.dev42 for run
+# 42, as TestPyPI never accepts the same version twice.
 on:
   push:
     tags:
@@ -13,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,13 +31,25 @@ jobs:
           version: "0.13.6"
 
       - name: Check tag matches version
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push'
         run: |
           VERSION="$(uv version --short)"
           if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
             echo "Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${VERSION}"
             exit 1
           fi
+
+      # The run number is unique per workflow, so each manual run gets its own
+      # version. Re-running a run reuses its number, so once its upload has
+      # succeeded, start a new run rather than re-running all jobs.
+      # --frozen leaves uv.lock alone; only the built package changes.
+      - name: Set dev version
+        if: github.event_name == 'workflow_dispatch'
+        run: uv version --frozen --bump patch --bump "dev=${GITHUB_RUN_NUMBER}"
+
+      - name: Get version
+        id: version
+        run: echo "version=$(uv version --short)" >> "$GITHUB_OUTPUT"
 
       - name: Build package
         run: uv build
@@ -99,3 +117,32 @@ jobs:
 
       - name: Publish to TestPyPI
         run: uv publish --verbose --publish-url=https://test.pypi.org/legacy/
+
+  # Checks the release installs from TestPyPI and runs, as users get it with uvx.
+  verify:
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.6"
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.58.0"
+
+      - name: Check release installs from TestPyPI
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: just check-release "$VERSION" https://test.pypi.org/simple/
