@@ -46,7 +46,7 @@ def _check_rule(key: str, setting: object, where: str) -> dict[str, Any]:
         raise ValueError(f'{where}: should be an object, e.g. {{"level": "off"}}')
     unknown = set(setting) - {"level", "parameters"}
     if unknown:
-        raise ValueError(f"{where}: unknown setting {sorted(unknown)[0]!r} (known: level, parameters)")
+        raise ValueError(f"{where}: unknown setting {min(unknown)!r} (known: level, parameters)")
     checked: dict[str, Any] = {}
     if "level" in setting:
         if setting["level"] not in LEVELS:
