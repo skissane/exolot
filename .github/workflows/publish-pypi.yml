@@ -15,7 +15,8 @@ name: Publish
 # test release of that branch to TestPyPI only, as a dev version of the next
 # patch release numbered by the run's ID, e.g. 0.2.1.dev41908943359, as
 # TestPyPI never accepts the same version twice. It never reaches the PyPI
-# jobs, even on a tag.
+# jobs, even on a tag. On a PR from this repo, the owner can start one for the
+# PR's branch by commenting just "/testpypi" (testpypi-comment.yml).
 #
 # TestPyPI and PyPI trusted publishing both name this file, so renaming it
 # means updating both trusted publishers.
