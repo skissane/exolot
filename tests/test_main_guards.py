@@ -72,6 +72,14 @@ def test_comment_posters(
     assert "missing.md" in capsys.readouterr().err
 
 
+def test_check_attestations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # An empty directory has no distributions, so it fails without any.
+    assert run_as_main(monkeypatch, "scripts.check_attestations", str(tmp_path)) == 1
+    assert "No distributions found" in capsys.readouterr().out
+
+
 def test_wait_for_base_coverage(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     def urlopen(request: urllib.request.Request, **kwargs: Any) -> io.BytesIO:
         assert request.full_url.startswith("https://api.codecov.io/")
