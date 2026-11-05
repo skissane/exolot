@@ -1,6 +1,6 @@
 """Check that every workflow or local composite action step that installs uv
-or just pins the version the project requires: pyproject.toml's [tool.uv] required-version minimum and
-the justfile's minimum-version."""
+or just pins the version the project requires: pyproject.toml's [tool.uv]
+required-version minimum and the justfile's minimum-version."""
 
 import re
 import sys
