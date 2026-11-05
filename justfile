@@ -74,6 +74,15 @@ self-analysis-post *args:
 build:
     uv build
 
+# The publish jobs run this between attest-action and uv publish, which would
+# otherwise upload a file without its attestation. --no-project, like
+# patch-coverage-post, as they run it with id-token: write.
+
+# Check that every distribution in dist/ (or the directory given) has a PEP 740 publish attestation
+[positional-arguments]
+check-attestations dist="dist":
+    uv run --no-project python -m scripts.check_attestations "$1"
+
 # Install the wheel `just build` built into a fresh environment and check that it runs
 smoke:
     #!/usr/bin/env bash
@@ -130,7 +139,7 @@ mypy:
 lint-workflows:
     uv run --group dev jactionlint
 
-# Check that every workflow installs the uv version pyproject.toml requires and the just version the justfile requires
+# Check that every workflow and local action installs the uv version pyproject.toml requires and the just version the justfile requires
 check-pins:
     uv run --no-project python -m scripts.check_pins
 

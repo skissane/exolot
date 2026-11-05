@@ -1,6 +1,6 @@
-"""Check that every workflow step that installs uv or just pins the version
-the project requires: pyproject.toml's [tool.uv] required-version minimum and
-the justfile's minimum-version."""
+"""Check that every workflow or local composite action step that installs uv
+or just pins the version the project requires: pyproject.toml's [tool.uv]
+required-version minimum and the justfile's minimum-version."""
 
 import re
 import sys
@@ -82,6 +82,13 @@ def pins(text: str, action: str, key: str) -> list[str | None]:
     return found
 
 
+def workflow_files(root: Path) -> list[Path]:
+    """The workflows, and the local composite actions they use, whose steps the
+    checks read: .github/workflows/*.y*ml and .github/actions/**/action.y*ml."""
+    github = root / ".github"
+    return sorted([*(github / "workflows").glob("*.y*ml"), *(github / "actions").glob("**/action.y*ml")])
+
+
 def minimums(root: Path) -> dict[tuple[str, str], str]:
     with (root / "pyproject.toml").open("rb") as f:
         required = tomllib.load(f)["tool"]["uv"]["required-version"]
@@ -99,10 +106,9 @@ def problems(root: Path) -> tuple[list[str], dict[tuple[str, str], int]]:
     means steps() or _USES_RE no longer recognize them than that CI stopped
     installing uv or just."""
     want = minimums(root)
-    workflows = sorted((root / ".github" / "workflows").glob("*.y*ml"))
     found = []
     counts = dict.fromkeys(want, 0)
-    for path in workflows:
+    for path in workflow_files(root):
         text = path.read_text()
         for (action, key), version in want.items():
             for pin in pins(text, action, key):
@@ -110,7 +116,7 @@ def problems(root: Path) -> tuple[list[str], dict[tuple[str, str], int]]:
                 if pin != version:
                     setting = f"{key}: {pin}" if pin else f"no {key}"
                     found.append(f"{path.relative_to(root).as_posix()}: a {action} step has {setting}, not {version}")
-    found += [f"no workflow has a {action} step" for (action, _), count in counts.items() if not count]
+    found += [f"no workflow or action has a {action} step" for (action, _), count in counts.items() if not count]
     return found, counts
 
 
@@ -121,7 +127,8 @@ def main(root: Path = Path()) -> int:
     if found:
         return 1
     want = minimums(root)
-    print(f"workflows pin uv {want[UV]} in {counts[UV]} steps and just {want[JUST]} in {counts[JUST]} steps")
+    uv, just = f"uv {want[UV]} in {counts[UV]} steps", f"just {want[JUST]} in {counts[JUST]} steps"
+    print(f"workflows and actions pin {uv} and {just}")
     return 0
 
 
