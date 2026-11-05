@@ -67,10 +67,22 @@ def test_main_reports_unset_and_unexpected_values(workflows: Path, capsys: pytes
     ]
 
 
+def test_main_reads_composite_actions_too(workflows: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (workflows / ".github/workflows/a.yml").write_text(WORKFLOW)
+    (workflows / ".github/actions/setup").mkdir(parents=True)
+    (workflows / ".github/actions/setup/action.yml").write_text(
+        "runs:\n  using: composite\n  steps:\n    - uses: actions/checkout@v7\n"
+    )
+    assert main(workflows) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        ".github/actions/setup/action.yml: a actions/checkout step has no persist-credentials, not false or true",
+    ]
+
+
 def test_main_fails_when_no_checkout_is_recognized(workflows: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (workflows / ".github/workflows/a.yml").write_text("jobs:\n  a:\n    steps:\n      - run: echo\n")
     assert main(workflows) == 1
-    assert capsys.readouterr().err.splitlines() == ["no workflow has a actions/checkout step"]
+    assert capsys.readouterr().err.splitlines() == ["no workflow or action has a actions/checkout step"]
 
 
 def test_repo_workflows_pass() -> None:

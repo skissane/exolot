@@ -3,8 +3,13 @@
 # compromised release has time to be noticed and pulled before it lands here.
 version: 2
 updates:
+  # "/" covers .github/workflows; the local composite actions in
+  # .github/actions need listing too, as Dependabot reads only the action.yml
+  # of each directory listed.
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: weekly
     cooldown:

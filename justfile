@@ -139,7 +139,7 @@ mypy:
 lint-workflows:
     uv run --group dev jactionlint
 
-# Check that every workflow installs the uv version pyproject.toml requires and the just version the justfile requires
+# Check that every workflow and local action installs the uv version pyproject.toml requires and the just version the justfile requires
 check-pins:
     uv run --no-project python -m scripts.check_pins
 

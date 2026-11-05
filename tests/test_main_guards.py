@@ -40,7 +40,7 @@ def run_as_main(monkeypatch: pytest.MonkeyPatch, module: str, *args: str) -> obj
 @pytest.mark.parametrize(
     ("module", "expected"),
     [
-        ("scripts.check_pins", "workflows pin uv "),
+        ("scripts.check_pins", "workflows and actions pin uv "),
         ("scripts.check_checkout_credentials", "actions/checkout steps set persist-credentials"),
     ],
 )
