@@ -148,8 +148,8 @@ status 2 if the repository or REF can't be fetched.
   Windows. Matching ignores case on macOS and Windows. Excluded files are skipped even when you name them as `PATH`s, so
   a hook that passes exolot a list of files still honours the excludes.
 - `--rules FILE` reads rule settings from a JSON file, in the same format as
-  VS Code's `sonarlint.rules` setting: an object of rule keys, each with a
-  `level` of `"on"` or `"off"` and optionally the rule's `parameters`, e.g.
+  VS Code's `sonarlint.rules` setting: an object of rule keys, each with an
+  optional `level` of `"on"` or `"off"` and the rule's optional `parameters`, e.g.
   `{"python:S1764": {"level": "off"}, "python:S107": {"level": "on", "parameters": {"max": "5"}}}`.
   Malformed settings are an error (exit status 2). It replaces the config
   file's `rules` or `rules-file` (see [Configuration](#configuration)) rather
@@ -264,7 +264,8 @@ status 2). The settings are:
   `exclude = ["vendor", "*.m", "generated/**/*.py"]`. `--exclude` adds to it.
 
 - `rules`: rule settings, like `--rules`'s file but as a table, e.g. to turn
-  a rule off and set another's parameters:
+  a rule off and set another's parameters in a `pyproject.toml` (in a
+  `.exolot.toml`, the table is `[rules]`):
 
   ```toml
   [tool.exolot.rules]
