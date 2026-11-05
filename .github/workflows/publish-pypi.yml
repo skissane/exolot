@@ -19,6 +19,10 @@ name: Publish
 #
 # TestPyPI and PyPI trusted publishing both name this file, so renaming it
 # means updating both trusted publishers.
+#
+# The Attestations workflow (attestations.yml) runs the build and the attest
+# and check steps on PRs that change this file, without publishing; keep its
+# steps in step with these.
 on:
   push:
     tags:
@@ -101,6 +105,12 @@ jobs:
         with:
           version: "0.13.6"
 
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.58.0"
+
       - name: Download distributions
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -116,21 +126,7 @@ jobs:
       # uv publish uploads without attestations if they're missing, so stop
       # here rather than publish a release with no provenance.
       - name: Check every distribution has an attestation
-        run: |
-          shopt -s nullglob
-          dists=(dist/*.whl dist/*.tar.gz)
-          if [ "${#dists[@]}" -eq 0 ]; then
-            echo "::error::No distributions found in dist/"
-            exit 1
-          fi
-          missing=0
-          for dist in "${dists[@]}"; do
-            if [ ! -s "${dist}.publish.attestation" ]; then
-              echo "::error::No attestation for ${dist}"
-              missing=1
-            fi
-          done
-          exit "${missing}"
+        run: just check-attestations
 
       # --check-url skips files TestPyPI already has with the same hash, so
       # re-running this job after an upload that got through is safe.
@@ -192,6 +188,12 @@ jobs:
         with:
           version: "0.13.6"
 
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.58.0"
+
       - name: Download distributions
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -207,21 +209,7 @@ jobs:
       # uv publish uploads without attestations if they're missing, so stop
       # here rather than publish a release with no provenance.
       - name: Check every distribution has an attestation
-        run: |
-          shopt -s nullglob
-          dists=(dist/*.whl dist/*.tar.gz)
-          if [ "${#dists[@]}" -eq 0 ]; then
-            echo "::error::No distributions found in dist/"
-            exit 1
-          fi
-          missing=0
-          for dist in "${dists[@]}"; do
-            if [ ! -s "${dist}.publish.attestation" ]; then
-              echo "::error::No attestation for ${dist}"
-              missing=1
-            fi
-          done
-          exit "${missing}"
+        run: just check-attestations
 
       # --check-url skips files PyPI already has with the same hash, so
       # re-running this job after an upload that got through is safe.
