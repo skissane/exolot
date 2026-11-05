@@ -59,6 +59,9 @@ def test_load(tmp_path: Path) -> None:
     path.write_text('["python:S1764"]')
     with pytest.raises(ValueError, match=r"rules\.json: rules should be an object"):
         rules.load(path)
+    path.write_bytes(b'{"python:S1764": {"level": "\xff"}}')
+    with pytest.raises(ValueError, match=r"rules\.json: 'utf-8' codec can't decode"):
+        rules.load(path)
     with pytest.raises(OSError):
         rules.load(tmp_path / "missing.json")
 

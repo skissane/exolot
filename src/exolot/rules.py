@@ -18,10 +18,10 @@ PARAMETER_TYPES = (str, int, float, bool)
 
 def load(path: Path) -> dict[str, Any]:
     """The rule settings in the JSON file at path. Raises OSError if it can't
-    be read, or ValueError if it isn't JSON or the settings are malformed."""
+    be read, or ValueError if it isn't UTF-8 JSON or the settings are malformed."""
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
         raise ValueError(f"{path}: {e}") from None
     return check(value, str(path))
 
