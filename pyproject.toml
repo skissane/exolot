@@ -73,10 +73,18 @@ filterwarnings = ["error"]
 [tool.coverage.run]
 source = ["exolot", "scripts"]
 branch = true
+# `python -m exolot`'s two-line shim: it has no `if __name__` guard for
+# exclude_also to match, and the tests call cli.main() directly instead.
+omit = ["*/exolot/__main__.py"]
 
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
+# Script entry points; the tests call main() directly instead.
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "sys.exit\\(main\\(\\)\\)",
+]
 
 [tool.coverage.xml]
 output = "coverage.xml"
