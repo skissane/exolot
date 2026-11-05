@@ -22,9 +22,45 @@ on:
   workflow_dispatch:
 
 jobs:
-  attest:
+  # Builds without id-token: write, as publish-pypi.yml's build job does, so
+  # the build steps (and the build backend they install) can't mint a token.
+  build:
     # A fork PR's run gets no OIDC token, so attest-action can't sign there.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.6"
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: "1.58.0"
+
+      - name: Build package
+        run: just build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          overwrite: true
+
+  attest:
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -47,8 +83,11 @@ jobs:
         with:
           just-version: "1.58.0"
 
-      - name: Build package
-        run: just build
+      - name: Download distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist/
 
       - name: Generate attestations
         uses: astral-sh/attest-action@39b6ce43875c196a579e31635b11aa2a2036384a # v0.0.7
