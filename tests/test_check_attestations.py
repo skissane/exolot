@@ -1,3 +1,5 @@
+import runpy
+import sys
 from pathlib import Path
 
 import pytest
@@ -61,3 +63,13 @@ def test_default_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: py
 def test_too_many_args(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["a", "b"]) == 2
     assert "usage" in capsys.readouterr().err
+
+
+def test_run_as_module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr("sys.argv", ["check_attestations.py", str(tmp_path)])
+    # Already imported above; run_module warns about running a module twice.
+    monkeypatch.delitem(sys.modules, "scripts.check_attestations")
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_module("scripts.check_attestations", run_name="__main__")
+    assert exit_info.value.code == 1
+    assert "No distributions found" in capsys.readouterr().out
