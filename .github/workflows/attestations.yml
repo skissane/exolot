@@ -21,9 +21,20 @@ on:
       - scripts/check_attestations.py
   workflow_dispatch:
 
+# A new push to the PR cancels the run for the one before, so a superseded
+# commit doesn't go on to sign (and add a transparency log entry). Set on the
+# workflow so a cancelled run's attest job is cancelled too; a manual run gets
+# a group of its own, so it never cancels or waits for another.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('attestations.yml-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   # Builds without id-token: write, as publish-pypi.yml's build job does, so
   # the build steps (and the build backend they install) can't mint a token.
+  # That keeps only the build away from it: the attest job still runs the PR's
+  # justfile and check script with the token, and a same-repo PR can edit this
+  # workflow anyway, so the split isn't a boundary against the PR's author.
   build:
     # A fork PR's run gets no OIDC token, so attest-action can't sign there.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
