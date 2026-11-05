@@ -54,3 +54,34 @@ def test_rule_settings_turn_rules_off_and_set_parameters(tmp_path: Path) -> None
         configured = {i.rule for i in session.analyze([source], timeout=300)}
     assert "python:S1764" not in configured
     assert "python:S107" in configured
+
+
+# Cognitive complexity 1 (simple) and 6 (nested: 1 + 2 + 3).
+COMPLEXITY = """\
+def simple(a):
+    if a:
+        return 1
+    return 0
+
+
+def nested(a, b, c):
+    if a:
+        if b:
+            if c:
+                return 1
+    return 0
+"""
+
+
+@pytest.mark.parametrize(
+    ("threshold", "expected"),
+    [(0, {"simple", "nested"}), (3, {"nested"}), (10, set())],
+)
+def test_rule_parameter_sets_the_complexity_threshold(tmp_path: Path, threshold: int, expected: set[str]) -> None:
+    source = tmp_path / "complexity.py"
+    source.write_text(COMPLEXITY)
+    lines = {1: "simple", 7: "nested"}
+    rule_settings = rules.check({"python:S3776": {"level": "on", "parameters": {"threshold": threshold}}}, "test")
+    with AnalysisSession(ensure_server(progress=False), tmp_path, rules=rule_settings) as session:
+        issues = session.analyze([source], timeout=300)
+    assert {lines[i.line] for i in issues if i.rule == "python:S3776"} == expected
