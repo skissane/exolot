@@ -53,14 +53,22 @@ def test_workflow_checks(
     assert expected in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("module", ["scripts.post_patch_coverage", "scripts.self_analysis"])
+@pytest.mark.parametrize(
+    ("module", "args"),
+    [
+        ("scripts.post_patch_coverage", ["1", "--report"]),
+        ("scripts.self_analysis", ["1"]),
+    ],
+)
 def test_comment_posters(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], module: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    module: str,
+    args: list[str],
 ) -> None:
     # A missing report fails before anything talks to GitHub.
-    missing = str(tmp_path / "missing.md")
-    args = ["1", "--report", missing] if module == "scripts.post_patch_coverage" else ["1", missing]
-    assert run_as_main(monkeypatch, module, *args) == 1
+    assert run_as_main(monkeypatch, module, *args, str(tmp_path / "missing.md")) == 1
     assert "missing.md" in capsys.readouterr().err
 
 
