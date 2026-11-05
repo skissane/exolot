@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import rules
 from .exclude import is_empty
 
 
@@ -23,12 +24,16 @@ class Config:
     compile_commands: Path | None = None
     # Glob patterns of files to skip.
     exclude: tuple[str, ...] = ()
+    # The `rules` table's rule settings, checked, if it has one.
+    rules: dict[str, Any] | None = None
+    # The JSON file of rule settings, made absolute against the config file's directory.
+    rules_file: Path | None = None
     # The file the settings came from, if any.
     path: Path | None = None
 
 
 # Each setting's name in the file, with its type there.
-SETTINGS = {"preamble": str, "compile-commands": str, "exclude": list}
+SETTINGS = {"preamble": str, "compile-commands": str, "exclude": list, "rules": dict, "rules-file": str}
 PYPROJECT = "pyproject.toml"
 
 
@@ -71,12 +76,26 @@ def load(start: Path) -> Config:
             raise ConfigError(f"{where}: {key} should be a {SETTINGS[key].__name__}")
     compile_commands = table.get("compile-commands")
     exclude = _exclude(table.get("exclude", []), where)
+    if "rules" in table and "rules-file" in table:
+        raise ConfigError(f"{where}: set rules or rules-file, not both")
+    try:
+        rule_settings = rules.check(table["rules"], where) if "rules" in table else None
+    except ValueError as e:
+        raise ConfigError(str(e)) from None
+    rules_file = table.get("rules-file")
     return Config(
         preamble=table.get("preamble"),
-        compile_commands=None if compile_commands is None else path.parent.joinpath(compile_commands).resolve(),
+        compile_commands=_relative_path(path, compile_commands),
         exclude=exclude,
+        rules=rule_settings,
+        rules_file=_relative_path(path, rules_file),
         path=path,
     )
+
+
+def _relative_path(config_file: Path, value: str | None) -> Path | None:
+    """value, a path relative to config_file's directory, made absolute."""
+    return None if value is None else config_file.parent.joinpath(value).resolve()
 
 
 def _exclude(value: list[object], where: str) -> tuple[str, ...]:

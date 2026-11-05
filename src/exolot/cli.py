@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import json
 import logging
 import os
 import shutil
@@ -15,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from . import __version__, clone, compiledb, config, gitdiff, markdown, problems, report
+from . import __version__, clone, compiledb, config, gitdiff, markdown, problems, report, rules
 from .analyze import SERVER_LOG_LEVELS, AnalysisSession, Issue, collect_files, language_id
 from .exclude import Exclude, is_empty
 from .server import DEFAULT_SERVER_VERSION, Server, ServerError, cache_dir, detect_platform, ensure_server
@@ -417,14 +416,29 @@ def _load_inputs(args: argparse.Namespace) -> _Inputs:
     ConfigError."""
     settings = config.load(Path.cwd())
     files = collect_files(args.paths, exclude=_exclude_patterns(args, settings))
-    rules = json.loads(args.rules.read_text()) if args.rules else None
+    rule_settings = _rule_settings(args, settings)
     changes = gitdiff.changes_since(args.diff_base) if args.diff_base is not None else None
     if changes is not None and args.changed_only:
         changed_files = changes.files()
         files = [f for f in files if f in changed_files]
-    inputs = _Inputs(files, rules, changes, settings)
+    inputs = _Inputs(files, rule_settings, changes, settings)
     _find_compilation_database(args, inputs)
     return inputs
+
+
+def _rule_settings(args: argparse.Namespace, settings: config.Config) -> dict[str, Any] | None:
+    """The rule settings: --rules's file, else the config file's `rules`,
+    else its `rules-file`. Raises OSError or ValueError."""
+    if args.rules:
+        return rules.load(args.rules)
+    if settings.rules_file is not None:
+        try:
+            return rules.load(settings.rules_file)
+        except OSError as e:
+            raise OSError(
+                f"can't read rules-file {settings.rules_file} (from {settings.path}): {e.strerror or e}"
+            ) from None
+    return settings.rules
 
 
 def _exclude_glob(value: str) -> str:

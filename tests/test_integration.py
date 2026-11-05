@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from exolot import rules
 from exolot.analyze import AnalysisSession
 from exolot.server import ensure_server
 
@@ -36,3 +37,20 @@ def test_finds_secondary_locations(tmp_path: Path) -> None:
     assert [(loc.path, loc.line, loc.column, loc.end_line, loc.end_column) for loc in issue.related] == [
         (source, 2, 8, 2, 9)
     ]
+
+
+def test_rule_settings_turn_rules_off_and_set_parameters(tmp_path: Path) -> None:
+    source = tmp_path / "bad.py"
+    source.write_text("def f(x, y):\n    if x == x:\n        pass\n")
+    # S107 (too many parameters) allows 13 by default.
+    with AnalysisSession(ensure_server(progress=False), tmp_path) as session:
+        default = {i.rule for i in session.analyze([source], timeout=300)}
+    assert "python:S1764" in default
+    assert "python:S107" not in default
+    rule_settings = rules.check(
+        {"python:S1764": {"level": "off"}, "python:S107": {"level": "on", "parameters": {"max": 1}}}, "test"
+    )
+    with AnalysisSession(ensure_server(progress=False), tmp_path, rules=rule_settings) as session:
+        configured = {i.rule for i in session.analyze([source], timeout=300)}
+    assert "python:S1764" not in configured
+    assert "python:S107" in configured

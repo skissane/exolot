@@ -148,8 +148,12 @@ status 2 if the repository or REF can't be fetched.
   Windows. Matching ignores case on macOS and Windows. Excluded files are skipped even when you name them as `PATH`s, so
   a hook that passes exolot a list of files still honours the excludes.
 - `--rules FILE` reads rule settings from a JSON file, in the same format as
-  VS Code's `sonarlint.rules` setting, e.g.
-  `{"python:S1764": {"level": "off"}}`.
+  VS Code's `sonarlint.rules` setting: an object of rule keys, each with a
+  `level` of `"on"` or `"off"` and optionally the rule's `parameters`, e.g.
+  `{"python:S1764": {"level": "off"}, "python:S107": {"level": "on", "parameters": {"max": "5"}}}`.
+  Malformed settings are an error (exit status 2). It replaces the config
+  file's `rules` or `rules-file` (see [Configuration](#configuration)) rather
+  than adding to them.
 - `--statistics` prints one line per rule instead of the issues: the number of
   issues, the rule key and the rule's name, most common rule first (ties in
   rule key order), like `ruff check --statistics`. The name is left blank if
@@ -258,6 +262,22 @@ status 2). The settings are:
 - `exclude`: a list of file globs to skip, matched like `--exclude`'s but
   relative to the config file's directory, e.g.
   `exclude = ["vendor", "*.m", "generated/**/*.py"]`. `--exclude` adds to it.
+
+- `rules`: rule settings, like `--rules`'s file but as a table, e.g. to turn
+  a rule off and set another's parameters:
+
+  ```toml
+  [tool.exolot.rules]
+  "python:S1764" = { level = "off" }
+  "python:S107" = { level = "on", parameters = { max = 5 } }
+  ```
+
+  Parameters may be numbers or booleans as well as strings; exolot passes
+  them to the server as strings.
+
+- `rules-file`: a JSON file of rule settings in `--rules`'s format, relative
+  to the config file's directory, e.g. `rules-file = "sonarlint-rules.json"`.
+  Set `rules` or `rules-file`, not both. `--rules` overrides either.
 
 ## Workflow annotations
 
