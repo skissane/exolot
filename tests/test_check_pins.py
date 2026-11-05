@@ -81,7 +81,7 @@ def repo(tmp_path: Path) -> Path:
 def test_main_passes_when_all_pinned(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (repo / ".github/workflows/a.yml").write_text(WORKFLOW.split("  other:")[0])
     assert main(repo) == 0
-    assert capsys.readouterr().out == "workflows pin uv 0.13.6 in 1 steps and just 1.58.0 in 1 steps\n"
+    assert capsys.readouterr().out == "workflows and actions pin uv 0.13.6 in 1 steps and just 1.58.0 in 1 steps\n"
 
 
 def test_main_reports_unpinned_and_mismatched_in_yaml_files(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -95,12 +95,43 @@ def test_main_reports_unpinned_and_mismatched_in_yaml_files(repo: Path, capsys: 
     ]
 
 
+ACTION = """\
+name: Setup
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v5
+      with:
+        version: "0.13.5"
+    - uses: extractions/setup-just@v3
+      with:
+        just-version: "1.58.0"
+"""
+
+
+def test_main_reads_composite_actions_too(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    # Only action.yml/action.yaml under .github/actions count, in any subdirectory.
+    (repo / ".github/workflows/a.yml").write_text(WORKFLOW.split("  other:")[0])
+    (repo / ".github/actions/setup").mkdir(parents=True)
+    (repo / ".github/actions/setup/action.yml").write_text(ACTION)
+    (repo / ".github/actions/nested/deeper").mkdir(parents=True)
+    (repo / ".github/actions/nested/deeper/action.yaml").write_text(ACTION.replace("0.13.5", "0.13.6"))
+    (repo / ".github/actions/setup/other.yml").write_text(ACTION)
+    assert main(repo) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        ".github/actions/setup/action.yml: a astral-sh/setup-uv step has version: 0.13.5, not 0.13.6",
+    ]
+    (repo / ".github/actions/setup/action.yml").write_text(ACTION.replace("0.13.5", "0.13.6"))
+    assert main(repo) == 0
+    assert capsys.readouterr().out == "workflows and actions pin uv 0.13.6 in 3 steps and just 1.58.0 in 3 steps\n"
+
+
 def test_main_fails_when_no_step_is_recognized(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (repo / ".github/workflows/a.yml").write_text("jobs:\n  a:\n    steps:\n      - run: echo\n")
     assert main(repo) == 1
     assert capsys.readouterr().err.splitlines() == [
-        "no workflow has a astral-sh/setup-uv step",
-        "no workflow has a extractions/setup-just step",
+        "no workflow or action has a astral-sh/setup-uv step",
+        "no workflow or action has a extractions/setup-just step",
     ]
 
 

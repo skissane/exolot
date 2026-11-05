@@ -1,6 +1,6 @@
-"""Check that every actions/checkout step in the workflows says whether it keeps
-its token: `persist-credentials: false`, or `persist-credentials: true` in a job
-that pushes with it.
+"""Check that every actions/checkout step in the workflows and local composite
+actions says whether it keeps its token: `persist-credentials: false`, or
+`persist-credentials: true` in a job that pushes with it.
 
 Left unset, checkout keeps the token where every later step of the job can read
 it. jactionlint's artipacked rule would catch that, but it doesn't report
@@ -11,7 +11,7 @@ it, but any step can still read it)."""
 import sys
 from pathlib import Path
 
-from scripts.check_pins import pins
+from scripts.check_pins import pins, workflow_files
 
 CHECKOUT = "actions/checkout"
 KEY = "persist-credentials"
@@ -23,14 +23,14 @@ def problems(root: Path) -> tuple[list[str], int]:
     too, as it more likely means they're no longer recognized."""
     found = []
     count = 0
-    for path in sorted((root / ".github" / "workflows").glob("*.y*ml")):
+    for path in workflow_files(root):
         for value in pins(path.read_text(), CHECKOUT, KEY):
             count += 1
             if value not in ("true", "false"):
                 setting = f"{KEY}: {value}" if value else f"no {KEY}"
                 found.append(f"{path.relative_to(root).as_posix()}: a {CHECKOUT} step has {setting}, not false or true")
     if not count:
-        found.append(f"no workflow has a {CHECKOUT} step")
+        found.append(f"no workflow or action has a {CHECKOUT} step")
     return found, count
 
 
