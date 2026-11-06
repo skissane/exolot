@@ -567,6 +567,8 @@ class AnalysisSession:
 def _link_dir(link: Path, target: Path) -> None:
     """Make link a link to the directory target, creating target if need be:
     a junction on Windows, where symlinks need extra privileges."""
+    # A relative symlink target would be relative to link's directory.
+    target = target.absolute()
     target.mkdir(parents=True, exist_ok=True)
     link.parent.mkdir(parents=True, exist_ok=True)
     if sys.platform == "win32":

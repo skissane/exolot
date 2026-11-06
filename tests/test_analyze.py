@@ -376,6 +376,15 @@ def test_downloaded_analyzers_are_kept_for_later_runs(tmp_path: Path, temp_dir: 
     assert list(temp_dir.iterdir()) == []
 
 
+def test_downloaded_analyzers_are_kept_in_a_relative_plugins_dir(
+    tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    with AnalysisSession(FakeServer(root=tmp_path, java=Path("java"), plugins=Path("plugins")), tmp_path):
+        pass
+    assert (tmp_path / "plugins" / "fake" / "1.0" / "sonar-fake-plugin-1.0.jar").is_file()
+
+
 def test_downloaded_analyzers_are_linked_with_a_junction_on_windows(
     tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
