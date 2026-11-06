@@ -67,6 +67,10 @@ while (msg := read()) is not None:
             # Like the real server, keep state in its home (but never in ~/.sonarlint).
             (Path(home) / "storage").mkdir(exist_ok=True)
             (Path(home) / "storage" / "state").write_text("fake server state\n")
+            # And an analyzer it downloaded.
+            plugin = Path(home) / "storage" / "ondemand-plugins" / "fake" / "1.0"
+            plugin.mkdir(parents=True, exist_ok=True)
+            (plugin / "sonar-fake-plugin-1.0.jar").write_text("fake plugin\n")
         send(
             {
                 "jsonrpc": "2.0",

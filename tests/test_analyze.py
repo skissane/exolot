@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import types
 import urllib.parse
 from pathlib import Path
 from typing import Any, NoReturn
@@ -363,6 +364,34 @@ def test_server_pipes_and_home_are_cleaned_up_if_the_client_fails_to_start(
     assert session._proc is not None
     assert session._proc.returncode is not None
     _assert_server_gone(session._proc)
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_downloaded_analyzers_are_kept_for_later_runs(tmp_path: Path, temp_dir: Path) -> None:
+    plugins = tmp_path / "cache" / "plugins"
+    server = FakeServer(root=tmp_path, java=Path("java"), plugins=plugins)
+    with AnalysisSession(server, tmp_path), AnalysisSession(server, tmp_path):
+        pass
+    assert (plugins / "fake" / "1.0" / "sonar-fake-plugin-1.0.jar").read_text() == "fake plugin\n"
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_downloaded_analyzers_are_linked_with_a_junction_on_windows(
+    tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    junctions: list[tuple[str, str]] = []
+
+    def create_junction(target: str, link: str) -> None:
+        junctions.append((target, link))
+        os.symlink(target, link, target_is_directory=True)
+
+    monkeypatch.setitem(sys.modules, "_winapi", types.SimpleNamespace(CreateJunction=create_junction))
+    plugins = tmp_path / "plugins"
+    with AnalysisSession(FakeServer(root=tmp_path, java=Path("java"), plugins=plugins), tmp_path):
+        pass
+    assert [target for target, link in junctions] == [str(plugins)]
+    assert (plugins / "fake" / "1.0" / "sonar-fake-plugin-1.0.jar").is_file()
     assert list(temp_dir.iterdir()) == []
 
 

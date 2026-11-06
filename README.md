@@ -345,8 +345,10 @@ from `JAVA_HOME`, the `PATH`, or `--java`.
 
 - Each run gives the language server its own temporary state directory and
   deletes it afterwards, so exolot doesn't touch `~/.sonarlint` and concurrent
-  runs don't race on its database. If you set `SONARLINT_USER_HOME`, the server
-  uses that directory instead, and exolot leaves it in place.
+  runs don't race on its database. The C/C++ and C# analyzers it downloads are
+  kept next to the server in exolot's cache (`exolot cache-dir`) for later
+  runs. If you set `SONARLINT_USER_HOME`, the server uses that directory
+  instead, and exolot leaves it in place.
 - Telemetry is disabled.
 - C/C++ and C# analyzers are not included in the VSIX; the server tries to
   download them from `binaries.sonarsource.com` when it starts. If it can't,

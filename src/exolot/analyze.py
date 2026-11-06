@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -232,6 +234,11 @@ class AnalysisSession:
             # all but one fail to initialize, so give each its own home.
             self._home = Path(tempfile.mkdtemp(prefix="exolot-sonarlint-"))
             env = {**os.environ, "SONARLINT_USER_HOME": str(self._home)}
+            if self.server.plugins is not None:
+                # Keep the analyzers it downloads (about 160 MB) for later runs.
+                # It downloads each to a temporary file and moves it into place,
+                # so concurrent servers can share them.
+                _link_dir(self._home / "storage" / "ondemand-plugins", self.server.plugins)
         self._proc = subprocess.Popen(
             cmd,
             env=env,
@@ -555,6 +562,18 @@ class AnalysisSession:
             if self._home is not None:
                 shutil.rmtree(self._home, ignore_errors=True)
                 self._home = None
+
+
+def _link_dir(link: Path, target: Path) -> None:
+    """Make link a link to the directory target, creating target if need be:
+    a junction on Windows, where symlinks need extra privileges."""
+    target.mkdir(parents=True, exist_ok=True)
+    link.parent.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        # Imported here, as _winapi exists only on Windows.
+        importlib.import_module("_winapi").CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
 
 
 def _to_issue(path: Path, diagnostic: dict[str, Any]) -> Issue:

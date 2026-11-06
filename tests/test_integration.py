@@ -90,7 +90,8 @@ def test_rule_parameter_sets_the_complexity_threshold(tmp_path: Path, threshold:
 
 def test_concurrent_sessions_all_start(tmp_path: Path) -> None:
     # Servers sharing one SONARLINT_USER_HOME race on its database's lock,
-    # and the losers fail to initialize (issue #100).
+    # and the losers fail to initialize (issue #100). Several JVMs starting at
+    # once can be slow on a small CI runner, so allow a long stall.
     server = ensure_server(progress=False)
 
     def analyze(n: int) -> set[str]:
@@ -99,7 +100,7 @@ def test_concurrent_sessions_all_start(tmp_path: Path) -> None:
         source = workspace / "bad.py"
         source.write_text("def f(x):\n    if x == x:\n        pass\n")
         with AnalysisSession(server, workspace) as session:
-            return {i.rule for i in session.analyze([source], timeout=300)}
+            return {i.rule for i in session.analyze([source], stall=300, timeout=300)}
 
     with ThreadPoolExecutor(4) as pool:
         found = list(pool.map(analyze, range(4)))

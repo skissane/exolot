@@ -102,6 +102,9 @@ def asset_name(tag: str, plat: str) -> str:
 class Server:
     root: Path  # the extracted "extension" directory
     java: Path
+    # Where the server keeps the analyzers it downloads when it starts (C/C++
+    # and C#), across runs, or None to download them again every run.
+    plugins: Path | None = None
 
     @property
     def jar(self) -> Path:
@@ -136,7 +139,7 @@ def ensure_server(
     if not (install_dir / COMPLETE_MARKER).exists():
         _install(tag, plat, install_dir, progress)
     root = install_dir / "extension"
-    return Server(root=root, java=_find_java(root, java))
+    return Server(root=root, java=_find_java(root, java), plugins=install_dir / "ondemand-plugins")
 
 
 def _install(tag: str, plat: str, install_dir: Path, progress: bool) -> None:
