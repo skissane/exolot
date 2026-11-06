@@ -547,6 +547,10 @@ class AnalysisSession:
                 self._proc.wait()
             if self._client is not None:
                 self._client.close()
+            else:  # LspClient never took the pipes
+                assert self._proc.stdin is not None and self._proc.stdout is not None
+                self._proc.stdin.close()
+                self._proc.stdout.close()
         finally:
             if self._home is not None:
                 shutil.rmtree(self._home, ignore_errors=True)

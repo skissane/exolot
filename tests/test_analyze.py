@@ -14,7 +14,7 @@ from typing import Any, NoReturn
 import pytest
 from _pytest.capture import CaptureResult  # not exported as pytest.CaptureResult
 
-from exolot import cli, clone
+from exolot import analyze, cli, clone
 from exolot.analyze import AnalysisSession, collect_files, language_id
 from exolot.config import Config
 from exolot.exclude import Exclude
@@ -347,6 +347,22 @@ def test_home_is_removed_if_the_server_fails_to_start(tmp_path: Path, temp_dir: 
     session = AnalysisSession(_MissingServer(root=tmp_path, java=Path("java")), tmp_path)
     with pytest.raises(OSError):
         session.__enter__()
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_server_pipes_and_home_are_cleaned_up_if_the_client_fails_to_start(
+    tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail(proc: subprocess.Popen[bytes]) -> NoReturn:
+        raise RuntimeError("no client")
+
+    monkeypatch.setattr(analyze, "LspClient", fail)
+    session = AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path)
+    with pytest.raises(RuntimeError, match="no client"):
+        session.__enter__()
+    assert session._proc is not None
+    assert session._proc.returncode is not None
+    _assert_server_gone(session._proc)
     assert list(temp_dir.iterdir()) == []
 
 
