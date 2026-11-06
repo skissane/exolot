@@ -5,6 +5,7 @@ EXOLOT_INTEGRATION=1.
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -85,3 +86,21 @@ def test_rule_parameter_sets_the_complexity_threshold(tmp_path: Path, threshold:
     with AnalysisSession(ensure_server(progress=False), tmp_path, rules=rule_settings) as session:
         issues = session.analyze([source], timeout=300)
     assert {lines[i.line] for i in issues if i.rule == "python:S3776"} == expected
+
+
+def test_concurrent_sessions_all_start(tmp_path: Path) -> None:
+    # Servers sharing one SONARLINT_USER_HOME race on its database's lock,
+    # and the losers fail to initialize (issue #100).
+    server = ensure_server(progress=False)
+
+    def analyze(n: int) -> set[str]:
+        workspace = tmp_path / f"w{n}"
+        workspace.mkdir()
+        source = workspace / "bad.py"
+        source.write_text("def f(x):\n    if x == x:\n        pass\n")
+        with AnalysisSession(server, workspace) as session:
+            return {i.rule for i in session.analyze([source], timeout=300)}
+
+    with ThreadPoolExecutor(4) as pool:
+        found = list(pool.map(analyze, range(4)))
+    assert all("python:S1764" in rules_found for rules_found in found)
