@@ -416,6 +416,16 @@ def test_server_uses_the_users_sonarlint_user_home(
     assert list(temp_dir.iterdir()) == []
 
 
+def test_an_empty_sonarlint_user_home_counts_as_unset(
+    tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SONARLINT_USER_HOME", "")
+    with AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path) as session:
+        assert session._home is not None
+        assert (session._home / "storage" / "state").is_file()
+    assert list(temp_dir.iterdir()) == []
+
+
 def test_closing_an_unstarted_session_does_nothing(tmp_path: Path) -> None:
     AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path).close()
 

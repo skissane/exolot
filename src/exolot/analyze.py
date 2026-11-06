@@ -229,7 +229,7 @@ class AnalysisSession:
         cmd = self.server.command(self.jvm_args)
         log.debug("starting %s", cmd)
         env = None
-        if "SONARLINT_USER_HOME" not in os.environ:
+        if not os.environ.get("SONARLINT_USER_HOME"):
             # Servers sharing ~/.sonarlint race on its H2 database's lock, and
             # all but one fail to initialize, so give each its own home.
             self._home = Path(tempfile.mkdtemp(prefix="exolot-sonarlint-"))
