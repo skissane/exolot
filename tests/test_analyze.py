@@ -5,7 +5,9 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
+import types
 import urllib.parse
 from pathlib import Path
 from typing import Any, NoReturn
@@ -13,7 +15,7 @@ from typing import Any, NoReturn
 import pytest
 from _pytest.capture import CaptureResult  # not exported as pytest.CaptureResult
 
-from exolot import cli, clone
+from exolot import analyze, cli, clone
 from exolot.analyze import AnalysisSession, collect_files, language_id
 from exolot.config import Config
 from exolot.exclude import Exclude
@@ -304,6 +306,124 @@ def test_exit_on_sigterm_does_nothing_outside_main_thread() -> None:
     thread.start()
     thread.join()
     assert seen == [before]
+
+
+@pytest.fixture
+def temp_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty directory that tempfile makes its temporary files and directories in."""
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp))
+    monkeypatch.delenv("SONARLINT_USER_HOME", raising=False)
+    return temp
+
+
+def test_each_server_gets_its_own_temporary_home(tmp_path: Path, temp_dir: Path) -> None:
+    server = FakeServer(root=tmp_path, java=Path("java"))
+    with AnalysisSession(server, tmp_path) as one, AnalysisSession(server, tmp_path) as two:
+        assert one._home is not None
+        assert two._home is not None
+        homes = [one._home, two._home]
+        assert homes[0] != homes[1]
+        assert sorted(temp_dir.iterdir()) == sorted(homes)
+        for home in homes:
+            assert (home / "storage" / "state").is_file()
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_killed_server_home_is_removed(tmp_path: Path, temp_dir: Path) -> None:
+    session = AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path).__enter__()
+    assert list(temp_dir.iterdir()) != []
+    session._kill()
+    _assert_server_gone(session._proc)
+    assert list(temp_dir.iterdir()) == []
+
+
+class _MissingServer(Server):
+    def command(self, jvm_args: list[str] | None = None) -> list[str]:
+        return [str(Path(__file__).with_name("no-such-server"))]
+
+
+def test_home_is_removed_if_the_server_fails_to_start(tmp_path: Path, temp_dir: Path) -> None:
+    session = AnalysisSession(_MissingServer(root=tmp_path, java=Path("java")), tmp_path)
+    with pytest.raises(OSError):
+        session.__enter__()
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_server_pipes_and_home_are_cleaned_up_if_the_client_fails_to_start(
+    tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail(proc: subprocess.Popen[bytes]) -> NoReturn:
+        raise RuntimeError("no client")
+
+    monkeypatch.setattr(analyze, "LspClient", fail)
+    session = AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path)
+    with pytest.raises(RuntimeError, match="no client"):
+        session.__enter__()
+    assert session._proc is not None
+    assert session._proc.returncode is not None
+    _assert_server_gone(session._proc)
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_downloaded_analyzers_are_kept_for_later_runs(tmp_path: Path, temp_dir: Path) -> None:
+    plugins = tmp_path / "cache" / "plugins"
+    server = FakeServer(root=tmp_path, java=Path("java"), plugins=plugins)
+    with AnalysisSession(server, tmp_path), AnalysisSession(server, tmp_path):
+        pass
+    assert (plugins / "fake" / "1.0" / "sonar-fake-plugin-1.0.jar").read_text() == "fake plugin\n"
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_downloaded_analyzers_are_kept_in_a_relative_plugins_dir(
+    tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    with AnalysisSession(FakeServer(root=tmp_path, java=Path("java"), plugins=Path("plugins")), tmp_path):
+        pass
+    assert (tmp_path / "plugins" / "fake" / "1.0" / "sonar-fake-plugin-1.0.jar").is_file()
+
+
+def test_downloaded_analyzers_are_linked_with_a_junction_on_windows(
+    tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    junctions: list[tuple[str, str]] = []
+
+    def create_junction(target: str, link: str) -> None:
+        junctions.append((target, link))
+        os.symlink(target, link, target_is_directory=True)
+
+    monkeypatch.setitem(sys.modules, "_winapi", types.SimpleNamespace(CreateJunction=create_junction))
+    plugins = tmp_path / "plugins"
+    with AnalysisSession(FakeServer(root=tmp_path, java=Path("java"), plugins=plugins), tmp_path):
+        pass
+    assert [target for target, link in junctions] == [str(plugins)]
+    assert (plugins / "fake" / "1.0" / "sonar-fake-plugin-1.0.jar").is_file()
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_server_uses_the_users_sonarlint_user_home(
+    tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("SONARLINT_USER_HOME", str(home))
+    with AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path) as session:
+        assert session._home is None
+    assert (home / "storage" / "state").is_file()
+    assert list(temp_dir.iterdir()) == []
+
+
+def test_an_empty_sonarlint_user_home_counts_as_unset(
+    tmp_path: Path, temp_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SONARLINT_USER_HOME", "")
+    with AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path) as session:
+        assert session._home is not None
+        assert (session._home / "storage" / "state").is_file()
+    assert list(temp_dir.iterdir()) == []
 
 
 def test_closing_an_unstarted_session_does_nothing(tmp_path: Path) -> None:

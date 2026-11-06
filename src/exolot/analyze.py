@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import re
 import shutil
 import subprocess
+import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -196,6 +199,7 @@ class AnalysisSession:
         self._last_event = time.monotonic()
         self._folder_configured = threading.Event()
         self._proc: subprocess.Popen[bytes] | None = None
+        self._home: Path | None = None  # the server's temporary SONARLINT_USER_HOME
         self._client: LspClient | None = None
         # What the server has said about analyzers that couldn't analyze:
         # the sensors that failed, with the reason if known, in order.
@@ -224,8 +228,20 @@ class AnalysisSession:
     def _start(self) -> None:
         cmd = self.server.command(self.jvm_args)
         log.debug("starting %s", cmd)
+        env = None
+        if not os.environ.get("SONARLINT_USER_HOME"):
+            # Servers sharing ~/.sonarlint race on its H2 database's lock, and
+            # all but one fail to initialize, so give each its own home.
+            self._home = Path(tempfile.mkdtemp(prefix="exolot-sonarlint-"))
+            env = {**os.environ, "SONARLINT_USER_HOME": str(self._home)}
+            if self.server.plugins is not None:
+                # Keep the analyzers it downloads (about 160 MB) for later runs.
+                # It downloads each to a temporary file and moves it into place,
+                # so concurrent servers can share them.
+                _link_dir(self._home / "storage" / "ondemand-plugins", self.server.plugins)
         self._proc = subprocess.Popen(
             cmd,
+            env=env,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=None if self.log_level is not None else subprocess.DEVNULL,
@@ -530,13 +546,36 @@ class AnalysisSession:
             self._kill()
 
     def _kill(self) -> None:
-        if self._proc is None:
-            return
-        if self._proc.poll() is None:
-            self._proc.kill()
-            self._proc.wait()
-        if self._client is not None:
-            self._client.close()
+        try:
+            if self._proc is None:
+                return
+            if self._proc.poll() is None:
+                self._proc.kill()
+                self._proc.wait()
+            if self._client is not None:
+                self._client.close()
+            else:  # LspClient never took the pipes
+                assert self._proc.stdin is not None and self._proc.stdout is not None
+                self._proc.stdin.close()
+                self._proc.stdout.close()
+        finally:
+            if self._home is not None:
+                shutil.rmtree(self._home, ignore_errors=True)
+                self._home = None
+
+
+def _link_dir(link: Path, target: Path) -> None:
+    """Make link a link to the directory target, creating target if need be:
+    a junction on Windows, where symlinks need extra privileges."""
+    # A relative symlink target would be relative to link's directory.
+    target = target.absolute()
+    target.mkdir(parents=True, exist_ok=True)
+    link.parent.mkdir(parents=True, exist_ok=True)
+    if sys.platform == "win32":
+        # Imported here, as _winapi exists only on Windows.
+        importlib.import_module("_winapi").CreateJunction(str(target), str(link))
+    else:
+        link.symlink_to(target, target_is_directory=True)
 
 
 def _to_issue(path: Path, diagnostic: dict[str, Any]) -> Issue:

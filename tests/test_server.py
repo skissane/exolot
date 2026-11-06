@@ -109,6 +109,7 @@ def test_ensure_server_installs_then_uses_the_cache(tmp_path: Path, monkeypatch:
     s = server.ensure_server("1.0", "linux-x64", java="myjava")
     install = tmp_path / "cache" / "servers" / "1.0-linux-x64"
     assert s.root == install / "extension"
+    assert s.plugins == install / "ondemand-plugins"
     assert s.jar.read_bytes() == b"jar"
     assert not (s.root / "images").exists()
     assert (install / server.COMPLETE_MARKER).read_text() == f"1.0 linux-x64 {digest}\n"

@@ -63,6 +63,14 @@ while (msg := read()) is not None:
         log("[Fancy - 01:02:03.004] a message at an unknown level")
         log("a message with no level")
         print("fake server stderr", file=sys.stderr, flush=True)
+        if home := os.environ.get("SONARLINT_USER_HOME"):
+            # Like the real server, keep state in its home (but never in ~/.sonarlint).
+            (Path(home) / "storage").mkdir(exist_ok=True)
+            (Path(home) / "storage" / "state").write_text("fake server state\n")
+            # And an analyzer it downloaded.
+            plugin = Path(home) / "storage" / "ondemand-plugins" / "fake" / "1.0"
+            plugin.mkdir(parents=True, exist_ok=True)
+            (plugin / "sonar-fake-plugin-1.0.jar").write_text("fake plugin\n")
         send(
             {
                 "jsonrpc": "2.0",
