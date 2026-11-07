@@ -61,7 +61,7 @@ def test_link_quotes_the_path_and_defaults_the_end() -> None:
     assert link("{path}#L{end_line}:{end_column}", f) == "a%29%20%5Bx%5D%28https%3A//evil.example%29.py#L3:5"
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Windows file names are always Unicode")
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX names are bytes; Windows names are 16-bit units")
 def test_link_quotes_a_path_that_is_not_utf8_as_its_bytes() -> None:
     assert link("{path}", finding(path=os.fsdecode(b"bad\xff.py"))) == "bad%FF.py"
 

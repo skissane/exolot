@@ -18,7 +18,7 @@ def test_display_path_on_another_drive_is_unchanged(monkeypatch: pytest.MonkeyPa
     assert report.display_path(path) == str(path)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Windows file names are always Unicode")
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX names are bytes; Windows names are 16-bit units")
 def test_artifact_location_quotes_a_path_that_is_not_utf8_as_its_bytes(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     path = tmp_path / os.fsdecode(b"bad\xff.py")

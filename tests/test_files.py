@@ -100,7 +100,7 @@ def test_collect_files_skips_files_it_cannot_read(tmp_path: Path, monkeypatch: p
     assert collect_files([tmp_path]) == []
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Windows file names are always Unicode")
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX names are bytes; Windows names are 16-bit units")
 def test_collect_files_finds_files_whose_names_are_not_utf8(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     path = tmp_path / os.fsdecode(b"bad\xff.py")
