@@ -91,6 +91,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="report only the issues of these rules (e.g. python:S1764), turning them on even if the rule "
         "settings turn them off or they're off by default; repeat or separate with commas to select more",
     )
+    analysis_opts.add_argument(
+        "--rule-param",
+        action="append",
+        default=[],
+        type=_rule_param,
+        metavar="RULE.NAME=VALUE",
+        help="set a rule's parameter (e.g. python:S107.max=5), on top of the rule settings; it doesn't turn "
+        "the rule on, which --select or the rule settings do; repeat to set more",
+    )
     analysis_opts.add_argument("--node", help="Node.js executable for JavaScript/TypeScript analysis")
     analysis_opts.add_argument(
         "--exclude",
@@ -428,6 +437,8 @@ def _load_inputs(args: argparse.Namespace) -> _Inputs:
     rule_settings = _rule_settings(args, settings)
     if args.select:
         rule_settings = rules.select(rule_settings, args.select)
+    if args.rule_param:
+        rule_settings = rules.set_params(rule_settings, args.rule_param)
     changes = gitdiff.changes_since(args.diff_base) if args.diff_base is not None else None
     if changes is not None and args.changed_only:
         changed_files = changes.files()
@@ -456,6 +467,14 @@ def _rule_keys(value: str) -> list[str]:
     """--select's argument: the rule keys in a comma-separated list."""
     try:
         return rules.parse_keys(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+
+
+def _rule_param(value: str) -> tuple[str, str, str]:
+    """--rule-param's argument: a rule key, parameter name and value."""
+    try:
+        return rules.parse_param(value)
     except ValueError as e:
         raise argparse.ArgumentTypeError(str(e)) from None
 

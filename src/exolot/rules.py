@@ -2,7 +2,7 @@
 format of VS Code's `sonarlint.rules` setting, e.g.
 `{"python:S1764": {"level": "off"}, "python:S107": {"level": "on", "parameters": {"max": "5"}}}`.
 They come from --rules, or the config file's `rules` or `rules-file`, and
---select turns on the rules it selects."""
+--select turns on the rules it selects, and --rule-param sets parameters."""
 
 from __future__ import annotations
 
@@ -94,3 +94,30 @@ def select(settings: dict[str, Any] | None, keys: list[str]) -> dict[str, Any]:
     for key in keys:
         selected[key] = {**selected.get(key, {}), "level": "on"}
     return selected
+
+
+def parse_param(value: str) -> tuple[str, str, str]:
+    """The rule key, parameter name and value in value, a parameter setting
+    such as "python:S107.max=5". The name follows the key's last `.`, and the
+    value, which may be empty, follows the first `=`. Raises ValueError if
+    value is malformed."""
+    target, equals, param_value = value.partition("=")
+    key, dot, name = target.rpartition(".")
+    if not equals or not dot or not name.strip():
+        raise ValueError(f"{value!r} should look like RULE.NAME=VALUE, e.g. 'python:S107.max=5'")
+    key, name = key.strip(), name.strip()
+    if not RULE_KEY.fullmatch(key):
+        raise ValueError(f"{key!r} isn't a rule key; rule keys look like 'python:S1764'")
+    return key, name, param_value
+
+
+def set_params(settings: dict[str, Any] | None, params: list[tuple[str, str, str]]) -> dict[str, Any]:
+    """settings with each (rule key, name, value) in params setting that
+    parameter, the last one winning if a parameter is set more than once. It
+    leaves each rule's level and other parameters as they are, so a parameter
+    doesn't turn its rule on."""
+    updated = dict(settings or {})
+    for key, name, value in params:
+        setting = updated.get(key, {})
+        updated[key] = {**setting, "parameters": {**setting.get("parameters", {}), name: value}}
+    return updated

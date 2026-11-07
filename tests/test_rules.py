@@ -220,3 +220,62 @@ def test_cli_rejects_malformed_select(used_rules: list[dict[str, Any]], capsys: 
     assert exc.value.code == 2
     assert "argument --select: 'S1764' isn't a rule key" in capsys.readouterr().err
     assert used_rules == []
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("python:S107.max=5", ("python:S107", "max", "5")),
+        ("python:S107.max=", ("python:S107", "max", "")),
+        (" python:S107 . max =a=b ", ("python:S107", "max", "a=b ")),
+        ("python:S100.format=^[a-z_][a-z0-9_.]*$", ("python:S100", "format", "^[a-z_][a-z0-9_.]*$")),
+        ("repo.x:S1.name=v", ("repo.x:S1", "name", "v")),
+    ],
+)
+def test_parse_param(value: str, expected: tuple[str, str, str]) -> None:
+    assert rules.parse_param(value) == expected
+
+
+@pytest.mark.parametrize("value", ["python:S107.max", "python:S107=5", "python:S107.=5", "python:S107. =5", "=5"])
+def test_parse_param_rejects_malformed_settings(value: str) -> None:
+    with pytest.raises(ValueError, match=r"should look like RULE\.NAME=VALUE"):
+        rules.parse_param(value)
+
+
+@pytest.mark.parametrize("value", ["S107.max=5", ".max=5", "a:b:c.max=5"])
+def test_parse_param_rejects_malformed_rule_keys(value: str) -> None:
+    with pytest.raises(ValueError, match="rule keys look like 'python:S1764'"):
+        rules.parse_param(value)
+
+
+def test_set_params_keeps_levels_and_other_parameters() -> None:
+    settings = {
+        "python:S1764": {"level": "off"},
+        "python:S107": {"level": "on", "parameters": {"max": "1", "other": "x"}},
+    }
+    params = [("python:S107", "max", "2"), ("python:S1764", "p", "1"), ("python:S3776", "threshold", "5")]
+    assert rules.set_params(settings, [*params, ("python:S107", "max", "3")]) == {
+        "python:S1764": {"level": "off", "parameters": {"p": "1"}},
+        "python:S107": {"level": "on", "parameters": {"max": "3", "other": "x"}},
+        "python:S3776": {"parameters": {"threshold": "5"}},
+    }
+    assert settings["python:S107"] == {"level": "on", "parameters": {"max": "1", "other": "x"}}  # unchanged
+    assert rules.set_params(None, [("python:S107", "max", "2")]) == {"python:S107": {"parameters": {"max": "2"}}}
+
+
+def test_cli_rule_param_layers_on_the_rule_settings(used_rules: list[dict[str, Any]], tmp_path: Path) -> None:
+    (tmp_path / ".exolot.toml").write_text('[rules]\n"python:S1764" = { level = "off" }\n')
+    cli.main(["--rule-param", "python:S1764.a=1", "--rule-param", "python:S107.max=2", "a.py"])
+    cli.main(["--select", "python:S1764", "--rule-param", "python:S1764.a=1", "a.py"])
+    assert used_rules == [
+        {"python:S1764": {"level": "off", "parameters": {"a": "1"}}, "python:S107": {"parameters": {"max": "2"}}},
+        {"python:S1764": {"level": "on", "parameters": {"a": "1"}}},
+    ]
+
+
+def test_cli_rejects_malformed_rule_param(used_rules: list[dict[str, Any]], capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--rule-param", "python:S107=5", "a.py"])
+    assert exc.value.code == 2
+    assert "argument --rule-param: 'python:S107=5' should look like RULE.NAME=VALUE" in capsys.readouterr().err
+    assert used_rules == []

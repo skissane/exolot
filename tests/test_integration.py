@@ -118,13 +118,15 @@ def test_concurrent_sessions_all_start(tmp_path: Path) -> None:
     assert all("python:S1764" in rules_found for rules_found in found)
 
 
-def test_select_turns_on_rules_and_reports_only_them(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_select_and_rule_param(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     source = tmp_path / "bad.py"
     source.write_text("def f(x, y):\n    if x == x:\n        pass\n")
     rules_file = tmp_path / "rules.json"
-    rules_file.write_text('{"python:S1764": {"level": "off"}, "python:S107": {"parameters": {"max": 1}}}')
-    # S1764 is on by default but off in the settings, and S107 (too many parameters) is off by default.
-    args = ["--rules", str(rules_file), "--select", "python:S1764,python:S107", "--format", "json", str(source)]
+    rules_file.write_text('{"python:S1764": {"level": "off"}}')
+    # S1764 is on by default but off in the settings, and S107 (too many parameters) allows 13
+    # parameters unless --rule-param lowers its max.
+    args = ["--rules", str(rules_file), "--select", "python:S1764,python:S107", "--rule-param", "python:S107.max=1"]
+    args += ["--format", "json", str(source)]
     assert cli.main(args) == 1
     captured = capsys.readouterr()
     assert sorted(issue["rule"] for issue in json.loads(captured.out)) == ["python:S107", "python:S1764"]

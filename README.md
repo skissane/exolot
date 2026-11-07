@@ -41,6 +41,7 @@ uvx exolot --format sarif .    # SARIF 2.1.0, e.g. for GitHub code scanning
 uvx exolot --annotations .     # also show the issues as GitHub Actions annotations
 uvx exolot --statistics .      # count issues per rule, most common first
 uvx exolot --select python:S1764 . # only the issues of these rules
+uvx exolot --rule-param python:S107.max=5 . # set a rule's parameter
 uvx exolot --diff-base origin/main --changed-only  # only issues on lines your branch changes
 uvx exolot analyze-repo https://github.com/psf/requests  # analyze someone else's code
 uvx exolot install             # just download and unpack the server
@@ -164,6 +165,16 @@ status 2 if the repository or REF can't be fetched.
   the exit status. A malformed rule key is an error (exit status 2), and a
   rule the server doesn't know gets a warning, as it's likely a typo (unless
   the server can't list its rules).
+- `--rule-param RULE.NAME=VALUE` sets one of a rule's parameters, e.g.
+  `--rule-param python:S107.max=5`; repeat it to set more. It applies on top
+  of the rule settings (`--rules`, or the config file's `rules` or
+  `rules-file`), leaving the rule's level and other parameters as they are,
+  so it doesn't turn a rule on: use `--select` or the rule settings for that,
+  e.g. `--select python:S107 --rule-param python:S107.max=1`. The parameter's
+  name follows the rule key's last `.`, and its value (which may be empty)
+  follows the first `=`. A malformed argument is an error (exit status 2).
+  The server doesn't say which parameters a rule has, so a misspelt name is
+  silently ignored.
 - `--statistics` prints one line per rule instead of the issues: the number of
   issues, the rule key and the rule's name, most common rule first (ties in
   rule key order), like `ruff check --statistics`. The name is left blank if
