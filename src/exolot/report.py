@@ -227,7 +227,7 @@ def _artifact_location(path: Path) -> dict[str, str]:
     root = _repo_root(path.parent)
     if root is None:
         return {"uri": path.as_uri()}
-    return {"uri": urllib.parse.quote(path.relative_to(root).as_posix()), "uriBaseId": "%SRCROOT%"}
+    return {"uri": urllib.parse.quote(os.fsencode(path.relative_to(root).as_posix())), "uriBaseId": "%SRCROOT%"}
 
 
 def _actions_urls() -> tuple[str, str | None] | None:
