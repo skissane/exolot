@@ -442,7 +442,7 @@ class _Inputs:
 
     def to_analyze(self) -> list[Path]:
         """The files to send to the server."""
-        skipped = set(self.skipped.files) if self.skipped else set()
+        skipped: set[Path] = set(self.skipped.files) if self.skipped else set()
         return [f for f in self.files if f not in skipped]
 
 

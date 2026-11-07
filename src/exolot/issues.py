@@ -8,6 +8,8 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
+from .jsontypes import is_json_object
+
 SEVERITY_NAMES = {1: "error", 2: "warning", 3: "info", 4: "hint"}
 
 
@@ -34,7 +36,7 @@ class Issue:
     message: str
     severity: str
     raw: dict[str, Any] = field(repr=False)
-    related: list[Location] = field(default_factory=list)
+    related: list[Location] = field(default_factory=list[Location])
 
 
 def from_diagnostic(path: Path, diagnostic: dict[str, Any]) -> Issue:
@@ -58,10 +60,14 @@ def flow_locations(path: Path, action: dict[str, Any]) -> list[Location]:
     action is some other code action. path is the issue's file, for locations
     that don't name theirs."""
     command = action.get("command")
-    if not isinstance(command, dict) or command.get("command") != "SonarLint.ShowAllLocations":
+    if not is_json_object(command):
         return []
-    flows = [flow for arg in command.get("arguments") or [] for flow in arg.get("flows") or []]
-    locations = [_location(path, loc) for flow in flows for loc in flow.get("locations") or []]
+    command_name: str | None = command.get("command")
+    if command_name != "SonarLint.ShowAllLocations":
+        return []
+    arguments: list[dict[str, Any]] = command.get("arguments") or []
+    flows: list[dict[str, Any]] = [flow for arg in arguments for flow in arg.get("flows") or ()]
+    locations = [_location(path, loc) for flow in flows for loc in flow.get("locations") or ()]
     return [loc for loc in locations if loc is not None]
 
 
@@ -71,7 +77,7 @@ def _location(path: Path, loc: dict[str, Any]) -> Location | None:
     if not text_range:
         return None
     # Not its filePath, which on Windows the server gives as /C:/...
-    uri = loc.get("uri")
+    uri: str | None = loc.get("uri")
     return Location(
         path=Path(url2pathname(urlparse(uri).path)) if uri else path,
         line=text_range["startLine"],

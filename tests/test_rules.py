@@ -11,7 +11,7 @@ from tests.test_analyze import FakeServer
 
 
 def test_check_keeps_valid_settings() -> None:
-    value = {
+    value: dict[str, dict[str, Any]] = {
         "python:S1764": {"level": "off"},
         "python:S107": {"level": "on", "parameters": {"max": "5"}},
         "javascript:S103": {"parameters": {}},

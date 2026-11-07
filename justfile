@@ -135,6 +135,10 @@ fmt-check:
 mypy:
     uv run --group dev mypy
 
+# Type-check src, scripts and tests with pyright (strict; see pyproject.toml's [tool.pyright])
+pyright:
+    uv run --group dev pyright
+
 # Lint the GitHub Actions workflows with jactionlint
 lint-workflows:
     uv run --group dev jactionlint
@@ -147,13 +151,18 @@ check-pins:
 check-checkout-credentials:
     uv run --no-project python -m scripts.check_checkout_credentials
 
+# Leaves out `just pyright`, a second-opinion type checker that CI deliberately doesn't run (yet).
+
 # Run all checks, without fixing anything or running tests
 check: lint fmt-check mypy lint-workflows check-pins check-checkout-credentials
 
-# Reformat code and autofix lint issues. Formatting first fixes the long lines it
-# can, so lint-fix stops only on findings that need a hand edit.
+# Formatting first fixes the long lines it can, so lint-fix stops only on
+# findings that need a hand edit.
+
+# Reformat code and autofix lint issues
 fix: fmt lint-fix
 
 # Leaves out CI's integration job (`just integration`), which downloads the language server.
+
 # Run everything CI's build, test and coverage jobs run (except the PR-only patch coverage), on this machine's Python and OS
 ci: lock-check sync check coverage build smoke

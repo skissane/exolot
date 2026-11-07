@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from email.message import Message
-from typing import IO, Any
+from typing import IO, Any, override
 
 API_URL = "https://api.github.com"
 
@@ -17,13 +17,14 @@ class _NoRedirects(urllib.request.HTTPRedirectHandler):
     """Leaves every redirect to request(), which urlopen's default handler
     would follow for a GET with the token still attached, even to another host."""
 
+    @override
     def redirect_request(
         self, req: urllib.request.Request, fp: IO[bytes], code: int, msg: str, headers: Message, newurl: str
     ) -> urllib.request.Request | None:
         return None
 
 
-_opener = urllib.request.build_opener(_NoRedirects)
+no_redirect_opener = urllib.request.build_opener(_NoRedirects)
 
 
 def request(
@@ -52,7 +53,7 @@ def request(
         if (parts.scheme, parts.hostname) == origin:
             req.add_header("Authorization", f"Bearer {token}")
         try:
-            with _opener.open(req, timeout=60) as response:
+            with no_redirect_opener.open(req, timeout=60) as response:
                 payload = response.read()
             return json.loads(payload) if payload else None
         except urllib.error.HTTPError as e:
@@ -76,7 +77,7 @@ def pr_head(repo: str, pr: int, token: str) -> str:
 
 def marked_comments(repo: str, pr: int, author: str, marker: str, token: str) -> list[dict[str, Any]]:
     """The comments author has posted on pr whose body starts with marker, oldest first."""
-    comments = []
+    comments: list[dict[str, Any]] = []
     page = 1
     while True:
         batch = request(

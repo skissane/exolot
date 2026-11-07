@@ -50,7 +50,7 @@ class FakeGitHub:
         return {"data": {"repository": {"pullRequest": {"comments": comments}}}}
 
     def hidden(self) -> list[str]:
-        return [b["variables"]["id"] for m, u, b in self.calls if b and "minimizeComment" in b.get("query", "")]
+        return [b["variables"]["id"] for _m, _u, b in self.calls if b and "minimizeComment" in b.get("query", "")]
 
 
 def comment(
@@ -96,7 +96,7 @@ def test_post_skips_a_stale_commit(
     gh = FakeGitHub([])
     monkeypatch.setattr(github_comments, "request", gh)
     assert main(["--repo", "o/r", "7", str(report), "--commit", "def"]) == 0
-    assert [m for m, u, b in gh.calls] == ["GET"]
+    assert [m for m, _u, _b in gh.calls] == ["GET"]
     assert "Not posting" in capsys.readouterr().out
 
 

@@ -34,13 +34,21 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from typing import Any, TypeGuard, cast
 
-from scripts.github_comments import _opener as github_opener
+from scripts.github_comments import no_redirect_opener
 
 CODECOV_API = "https://api.codecov.io/api/v2/github"
 GITHUB_API = "https://api.github.com"
 
 _REQUEST_ERRORS = (urllib.error.URLError, OSError, http.client.HTTPException)
+
+
+def _is_json_object(value: object) -> TypeGuard[dict[str, Any]]:
+    """Whether value, parsed from JSON, is an object, whose keys are always
+    strings. (A copy of exolot.jsontypes.is_json_object, as this runs without
+    exolot installed.)"""
+    return isinstance(value, dict)
 
 
 def _get_json(
@@ -74,8 +82,8 @@ def codecov_coverage(repo: str, sha: str, timeout: float) -> tuple[bool, str]:
         return False, "no report yet"
     if status != 200:
         return False, f"HTTP {status}"
-    totals = body.get("totals") if isinstance(body, dict) else None
-    if not isinstance(totals, dict) or totals.get("coverage") is None:
+    totals = body.get("totals") if _is_json_object(body) else None
+    if not _is_json_object(totals) or totals.get("coverage") is None:
         return False, "no coverage in report"
     return True, f"coverage {totals['coverage']}%"
 
@@ -94,14 +102,15 @@ def base_ci_state(repo: str, sha: str, check_name: str, token: str | None, timeo
         headers["Authorization"] = f"Bearer {token}"
     try:
         # Doesn't follow redirects, which would take the token along, even to another host.
-        status, body = _get_json(url, headers, timeout, github_opener)
+        status, body = _get_json(url, headers, timeout, no_redirect_opener)
     except _REQUEST_ERRORS as e:
         return "running", f"request failed: {getattr(e, 'reason', e)}"
-    runs = body.get("check_runs") if status == 200 and isinstance(body, dict) else None
+    runs = body.get("check_runs") if status == 200 and _is_json_object(body) else None
     if not isinstance(runs, list):
         return "running", f"HTTP {status}"
     if not runs:
         return "none", f"no {check_name} check run"
+    runs = cast(list[dict[str, Any]], runs)
     # filter=latest keeps one run per name; take the newest in case of more.
     run = max(runs, key=lambda r: r.get("id", 0))
     if run.get("status") != "completed":
@@ -116,6 +125,7 @@ def main(
     clock: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> None:
+    assert __doc__ is not None
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("repo", help="the repository, as owner/name")
     parser.add_argument("sha", help="the PR's base commit")

@@ -21,7 +21,7 @@ def problems(root: Path) -> tuple[list[str], int]:
     """Each checkout step that doesn't set persist-credentials to true or false,
     and how many checkout steps there are. No checkout step at all is a problem
     too, as it more likely means they're no longer recognized."""
-    found = []
+    found: list[str] = []
     count = 0
     for path in workflow_files(root):
         for value in pins(path.read_text(), CHECKOUT, KEY):

@@ -11,6 +11,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .jsontypes import is_json_object
+
 # A rule key, `repository:key`, as the setting's schema has it.
 RULE_KEY = re.compile(r"[^:]+:[^:]+")
 LEVELS = ("on", "off")
@@ -32,7 +34,7 @@ def check(value: object, where: str) -> dict[str, Any]:
     string, as the setting's schema has them. Raises ValueError if they're malformed:
     not an object of rule keys to objects with only a `level` of "on" or
     "off" and `parameters` of scalar values."""
-    if not isinstance(value, dict):
+    if not is_json_object(value):
         raise ValueError(f"{where}: rules should be an object of rule keys to settings")
     checked: dict[str, Any] = {}
     for key, setting in value.items():
@@ -43,7 +45,7 @@ def check(value: object, where: str) -> dict[str, Any]:
 def _check_rule(key: str, setting: object, where: str) -> dict[str, Any]:
     if not RULE_KEY.fullmatch(key):
         raise ValueError(f"{where}: rule keys look like 'python:S1764'")
-    if not isinstance(setting, dict):
+    if not is_json_object(setting):
         raise ValueError(f'{where}: should be an object, e.g. {{"level": "off"}}')
     unknown = set(setting) - {"level", "parameters"}
     if unknown:
@@ -59,7 +61,7 @@ def _check_rule(key: str, setting: object, where: str) -> dict[str, Any]:
 
 
 def _check_parameters(parameters: object, where: str) -> dict[str, str]:
-    if not isinstance(parameters, dict):
+    if not is_json_object(parameters):
         raise ValueError(f"{where}: parameters should be an object")
     checked: dict[str, str] = {}
     for name, value in parameters.items():

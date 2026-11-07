@@ -38,6 +38,7 @@ def _post(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str]) -> int:
+    assert __doc__ is not None
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
         epilog="Comments with $GITHUB_TOKEN, defaulting to `gh auth token`.",

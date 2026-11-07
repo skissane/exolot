@@ -76,7 +76,7 @@ class Problem:
     reason: str  # a few words for the summary line, e.g. "analyzer failed"
     label: str | None = None  # the languages, e.g. "C#", or None if unknown
     languages: tuple[str, ...] = ()  # the VS Code language ids of the files it affects
-    files: list[Path] = field(default_factory=list)
+    files: list[Path] = field(default_factory=list[Path])
     # False for a message the server showed, which may not be about analysis.
     may_affect_files: bool = True
     # False if the server's log has nothing more to say about it, e.g. when
@@ -124,7 +124,7 @@ def find(
     for language in dict.fromkeys(files.values()):
         if language in PLUGINS:
             by_plugin.setdefault(PLUGINS[language], []).append(language)
-    problems = []
+    problems: list[Problem] = []
     for plugin, plugin_languages in by_plugin.items():
         state = plugin_states.get(plugin)
         if state in PLUGIN_STATE_CAUSES:

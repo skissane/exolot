@@ -10,6 +10,8 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
+from exolot.jsontypes import is_json_object
+
 RULES_FAIL = os.environ.get("FAKE_SERVER_RULES_FAIL") == "1"
 CODE_ACTIONS_FAIL = os.environ.get("FAKE_SERVER_CODE_ACTIONS_FAIL") == "1"
 # The plugin states to report, as JSON: {"plugin name": state}, or "fail" to fail.
@@ -25,7 +27,7 @@ SENSOR_FAILURE = [
 ]
 
 
-def read() -> Any:
+def read() -> dict[str, Any] | None:
     length = -1  # read everything if there's no Content-Length
     while True:
         line = sys.stdin.buffer.readline()
@@ -37,7 +39,9 @@ def read() -> Any:
         name, _, value = line.decode().partition(":")
         if name.lower() == "content-length":
             length = int(value)
-    return json.loads(sys.stdin.buffer.read(length))
+    data = json.loads(sys.stdin.buffer.read(length))
+    assert is_json_object(data)
+    return data
 
 
 def send(msg: object) -> None:
@@ -49,6 +53,9 @@ def send(msg: object) -> None:
 def log(message: str) -> None:
     send({"jsonrpc": "2.0", "method": "window/logMessage", "params": {"type": 4, "message": message}})
 
+
+# Set by initialize, which the client always sends before didOpen.
+rules_off: set[str] = set()
 
 while (msg := read()) is not None:
     method = msg.get("method")
@@ -80,10 +87,12 @@ while (msg := read()) is not None:
             }
         )
         reply = read()
+        assert reply is not None
         # Like the real server, report no issues from rules the settings turn
         # off. (Tests of the LSP client alone answer with no settings.)
-        settings = reply["result"][0] if reply["result"] else {}
-        rules_off = {key for key, setting in settings.get("rules", {}).items() if setting.get("level") == "off"}
+        settings: dict[str, Any] = reply["result"][0] if reply["result"] else {}
+        rules: dict[str, dict[str, Any]] = settings.get("rules", {})
+        rules_off = {key for key, setting in rules.items() if setting.get("level") == "off"}
         send({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}, "configReply": reply["result"]}})
     elif method == "textDocument/didOpen":
         doc = msg["params"]["textDocument"]
@@ -181,21 +190,26 @@ while (msg := read()) is not None:
         if RULES_FAIL:
             send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32601, "message": "no such method"}})
         else:
-            rules = {
+            rules_list = {
                 "Fake": [
                     {"key": "fake:S1", "name": "Fake rule one", "activeByDefault": True},
                     {"key": "fake:S2", "name": None},
                     {"bad": 1},
                 ]
             }
-            send({"jsonrpc": "2.0", "id": msg["id"], "result": rules})
+            send({"jsonrpc": "2.0", "id": msg["id"], "result": rules_list})
     elif method == "textDocument/codeAction" and CODE_ACTIONS_FAIL:
         send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32603, "message": "no actions"}})
     elif method == "textDocument/codeAction":
         params = msg["params"]
-        uri = params["textDocument"]["uri"]
+        uri: str = params["textDocument"]["uri"]
         path = url2pathname(urlparse(uri).path)
-        actions = [{"title": "Deactivate rule", "command": {"command": "SonarLint.DeactivateRule", "arguments": []}}]
+        actions: list[dict[str, Any]] = [
+            {
+                "title": "Deactivate rule",
+                "command": {"command": "SonarLint.DeactivateRule", "arguments": []},
+            }
+        ]
         if "NOLOCATIONS" not in Path(path).read_text(encoding="utf-8", errors="replace"):
             location = {
                 "textRange": {"startLine": 1, "startLineOffset": 4, "endLine": 1, "endLineOffset": 6},

@@ -104,7 +104,7 @@ def problems(root: Path) -> tuple[list[str], dict[tuple[str, str], int]]:
     means steps() or _USES_RE no longer recognize them than that CI stopped
     installing uv or just."""
     want = minimums(root)
-    found = []
+    found: list[str] = []
     counts = dict.fromkeys(want, 0)
     for path in workflow_files(root):
         text = path.read_text()

@@ -10,6 +10,7 @@ from typing import Any
 
 from . import rules
 from .exclude import is_empty
+from .jsontypes import is_json_object
 
 
 class ConfigError(Exception):
@@ -47,7 +48,7 @@ def find(start: Path) -> Path | None:
             return d / ".exolot.toml"
         pyproject = d / PYPROJECT
         tool = _read(pyproject).get("tool") if pyproject.is_file() else None
-        if isinstance(tool, dict) and "exolot" in tool:
+        if is_json_object(tool) and "exolot" in tool:
             return pyproject
         if (d / ".git").exists():
             return None
@@ -61,13 +62,15 @@ def load(start: Path) -> Config:
     path = find(start)
     if path is None:
         return Config()
-    table = _read(path)
+    data = _read(path)
+    table: object
     if path.name == PYPROJECT:
-        table = table["tool"]["exolot"]
+        table = data["tool"]["exolot"]
         where = f"{path} [tool.exolot]"
     else:
+        table = data
         where = f"{path}"
-    if not isinstance(table, dict):
+    if not is_json_object(table):
         raise ConfigError(f"{where}: should be a table")
     for key, value in table.items():
         if key not in SETTINGS:

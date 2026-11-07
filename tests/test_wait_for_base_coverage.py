@@ -115,11 +115,11 @@ def test_codecov_coverage_request_failure() -> None:
 def test_base_ci_state(result: tuple[int, Any], expected: tuple[str, str]) -> None:
     with mock.patch.object(w, "_get_json", return_value=result) as get:
         assert w.base_ci_state("o/r", "abc", "coverage", "tok", 5) == expected
-    url, headers, timeout, opener = get.call_args.args
+    url, headers, _timeout, opener = get.call_args.args
     assert url == "https://api.github.com/repos/o/r/commits/abc/check-runs?check_name=coverage&filter=latest"
     assert headers["Authorization"] == "Bearer tok"
     # GitHub requests carry the token, so mustn't follow redirects.
-    assert opener is github_comments._opener
+    assert opener is github_comments.no_redirect_opener
 
 
 def test_base_ci_state_without_token() -> None:
