@@ -85,10 +85,15 @@ def detect_platform() -> str:
 def cache_dir() -> Path:
     if env := os.environ.get("EXOLOT_CACHE_DIR"):
         return Path(env)
-    if sys.platform == "win32":
+    # Assign sys.platform to a variable to prevent type checkers from
+    # special-casing the comparison. A direct check on sys.platform
+    # triggers false reachability warnings in mypy due to limitations
+    # in its platform-narrowing logic.
+    sys_platform = sys.platform
+    if sys_platform == "win32":
         base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
         return base / "exolot" / "Cache"
-    if sys.platform == "darwin":
+    if sys_platform == "darwin":
         return Path.home() / "Library" / "Caches" / "exolot"
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "exolot"
 
@@ -145,7 +150,8 @@ def ensure_server(
 def _install(tag: str, plat: str, install_dir: Path, progress: bool) -> None:
     asset = asset_name(tag, plat)
     url = RELEASE_URL.format(tag=tag.replace("+", "%2B"), asset=asset)
-    expected = KNOWN_DIGESTS.get(tag, {}).get(plat)
+    tag_platforms = KNOWN_DIGESTS.get(tag, {})
+    expected = tag_platforms.get(plat)
     install_dir.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=install_dir.parent, prefix=".download-") as tmp:
         vsix = Path(tmp) / asset

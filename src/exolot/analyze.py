@@ -201,7 +201,8 @@ class AnalysisSession:
             self._touch()
 
     def _on_progress(self, params: dict[str, Any]) -> None:
-        kind = params.get("value", {}).get("kind")
+        value: dict[str, Any] = params.get("value", {})
+        kind = value.get("kind")
         with self._cond:
             if kind == "begin":
                 self._active_progress.add(params["token"])
@@ -402,7 +403,7 @@ class AnalysisSession:
                         "context": {"diagnostics": [issue.raw]},
                     },
                 ).result(timeout=remaining)
-                issue.related = [loc for action in actions or [] for loc in flow_locations(issue.path, action)]
+                issue.related = [loc for action in actions or () for loc in flow_locations(issue.path, action)]
             except Exception:
                 log.debug("could not get the locations of %s", issue, exc_info=True)
             if issue.related and not keep_message:

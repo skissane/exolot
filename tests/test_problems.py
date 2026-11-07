@@ -138,7 +138,7 @@ def test_summary() -> None:
 
 
 def _session_files(tmp_path: Path) -> list[Path]:
-    files = []
+    files: list[Path] = []
     for name, text in [("a.py", "SENSORFAIL NEEDCDB SHOWMSG\n"), ("b.cs", "x\n"), ("c.c", "x\n"), ("d.js", "x\n")]:
         (tmp_path / name).write_text(text)
         files.append(tmp_path / name)

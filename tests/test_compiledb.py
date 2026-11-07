@@ -1,5 +1,6 @@
 import json
 import logging
+from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
@@ -229,7 +230,12 @@ def test_analyze_repo_takes_the_database_from_the_current_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     seen: dict[str, object] = {}
-    monkeypatch.setattr(cli, "_clone_and_analyze", lambda args: seen.setdefault("path", args.compile_commands) and 0)
+
+    def clone_and_analyze(args: Namespace) -> int:
+        seen["path"] = args.compile_commands
+        return 0
+
+    monkeypatch.setattr(cli, "_clone_and_analyze", clone_and_analyze)
     monkeypatch.chdir(tmp_path)
     cli.main(["analyze-repo", "https://example.com/repo", "--compile-commands", "db.json"])
     assert seen["path"] == tmp_path / "db.json"

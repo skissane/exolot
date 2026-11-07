@@ -27,7 +27,7 @@ def problems(dist: Path) -> tuple[list[str], int]:
     files = distributions(dist)
     if not files:
         return [f"No distributions found in {dist.as_posix()}/"], 0
-    found = []
+    found: list[str] = []
     for file in files:
         attestation = file.with_name(file.name + SUFFIX)
         if not attestation.is_file():

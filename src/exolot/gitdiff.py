@@ -24,8 +24,8 @@ class Changes:
     """The changed lines of each file, by absolute (resolved) path. A file
     git doesn't track yet is new, so all of its lines count as changed."""
 
-    lines: dict[Path, set[int]] = field(default_factory=dict)
-    new_files: set[Path] = field(default_factory=set)
+    lines: dict[Path, set[int]] = field(default_factory=dict[Path, set[int]])
+    new_files: set[Path] = field(default_factory=set[Path])
 
     def touches(self, path: Path, line: int, end_line: int | None = None) -> bool:
         """Whether any of the lines from line to end_line (default: just line)

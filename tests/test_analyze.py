@@ -9,8 +9,9 @@ import tempfile
 import threading
 import types
 import urllib.parse
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, override
 
 import pytest
 from _pytest.capture import CaptureResult  # not exported as pytest.CaptureResult
@@ -20,6 +21,7 @@ from exolot.analyze import AnalysisSession
 from exolot.config import Config
 from exolot.exclude import Exclude
 from exolot.files import collect_files
+from exolot.issues import Issue
 from exolot.markdown import escape
 from exolot.server import Server, ServerError
 from tests.conftest import git
@@ -28,6 +30,7 @@ FAKE_SERVER = Path(__file__).with_name("fake_server.py")
 
 
 class FakeServer(Server):
+    @override
     def command(self, jvm_args: list[str] | None = None) -> list[str]:
         return [sys.executable, str(FAKE_SERVER)]
 
@@ -74,11 +77,13 @@ def test_session_waits_while_the_server_reports_progress(tmp_path: Path) -> None
             session.analyze([a], settle=0.1, stall=0.1, timeout=1)
 
 
-def _analyze_or_kill(session: AnalysisSession, files: list[Path], within: float, **kwargs: Any) -> object:
+def _analyze_or_kill(
+    session: AnalysisSession, files: list[Path], within: float, **kwargs: Any
+) -> list[Issue] | Exception:
     """Run session.analyze(files, **kwargs) and return its issues or the
     exception it raised, killing the server and failing if it takes longer than
     within seconds (so a deadlock fails the test rather than hanging it)."""
-    outcome: list[object] = []
+    outcome: list[list[Issue] | Exception] = []
 
     def run() -> None:
         try:
@@ -101,7 +106,7 @@ def test_session_keeps_reading_the_server_while_it_sends_files(tmp_path: Path) -
     # Many big files, each making the server write a request and a big log
     # message without reading: this deadlocked when sending a file blocked the
     # thread that reads the server's output and answers its requests (#73).
-    files = []
+    files: list[Path] = []
     for n in range(100):
         f = tmp_path / f"f{n}.py"
         f.write_text("CHATTY\n" + "# padding\n" * 5_000)
@@ -116,7 +121,7 @@ def test_session_keeps_reading_the_server_while_it_sends_files(tmp_path: Path) -
 def test_session_times_out_while_the_server_is_not_reading(tmp_path: Path) -> None:
     # Enough to fill the pipe to the server, which stops reading after the
     # first file: this hung when analyze() waited for each file to be sent (#73).
-    files = []
+    files: list[Path] = []
     for n in range(40):
         f = tmp_path / f"f{n}.py"
         f.write_text(("DEAF\n" if n == 0 else "") + "# padding\n" * 2_000)
@@ -296,6 +301,7 @@ def test_killed_server_home_is_removed(tmp_path: Path, temp_dir: Path) -> None:
 
 
 class _MissingServer(Server):
+    @override
     def command(self, jvm_args: list[str] | None = None) -> list[str]:
         return [str(Path(__file__).with_name("no-such-server"))]
 
@@ -355,7 +361,7 @@ def test_downloaded_analyzers_are_linked_with_a_junction_on_windows(
     plugins = tmp_path / "plugins"
     with AnalysisSession(FakeServer(root=tmp_path, java=Path("java"), plugins=plugins), tmp_path):
         pass
-    assert [target for target, link in junctions] == [str(plugins)]
+    assert [target for target, _link in junctions] == [str(plugins)]
     assert (plugins / "fake" / "1.0" / "sonar-fake-plugin-1.0.jar").is_file()
     assert list(temp_dir.iterdir()) == []
 
@@ -663,7 +669,7 @@ def test_cli_annotations_put_changed_lines_first(
     (repo / "sub" / "b.py").write_text("changed\n")
     monkeypatch.chdir(repo)
     args = ["--diff-base", "master", "--annotations", "--workspace", str(repo), str(repo)]
-    cases = [
+    cases: list[tuple[list[str], str]] = [
         ([], "python issue (changed)"),
         (["--format", "github-comment"], "### On changed lines (1)"),
         (["--statistics"], "fake:S1"),
@@ -966,7 +972,7 @@ def test_cli_github_comment_without_git(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _fake_server(tmp_path, monkeypatch)
-    real_run = subprocess.run
+    real_run: Callable[..., subprocess.CompletedProcess[Any]] = subprocess.run
 
     def run(cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[Any]:
         if cmd[0] == "git":

@@ -62,7 +62,7 @@ def _summary_table(matches: list[re.Match[str]]) -> list[str]:
 
 def _demote_headings(lines: list[str]) -> list[str]:
     """lines with each ATX heading outside a code block one level deeper."""
-    demoted = []
+    demoted: list[str] = []
     in_code = False
     for line in lines:
         if line.startswith("```"):
@@ -103,6 +103,10 @@ class _Lines:
         self.pos += m is not None
         return m
 
+    def at_end(self) -> bool:
+        """Whether the whole report has been read."""
+        return self.pos >= len(self.lines)
+
     def skip_blank(self) -> None:
         while self.line == "":
             self.pos += 1
@@ -124,10 +128,10 @@ def _reformat(report: str) -> tuple[str, list[str]]:
     if lines.line == NO_LINES:
         lines.pos += 1
         lines.skip_blank()
-        if lines.line is not None:
+        if not lines.at_end():
             lines.fail("nothing more")
         return title, out + [NO_LINES]
-    files = []
+    files: list[re.Match[str]] = []
     while m := lines.match(_FILE_RE):
         files.append(m)
     if not files:
@@ -137,7 +141,7 @@ def _reformat(report: str) -> tuple[str, list[str]]:
     lines.take(lines.line == "## Summary", "'## Summary'")
     out += ["### Summary", ""]
     lines.skip_blank()
-    summary = []
+    summary: list[re.Match[str]] = []
     for name in ("Total", "Missing", "Coverage"):
         m = _SUMMARY_RE.match(lines.line or "")
         if m is None or m["name"] != name:

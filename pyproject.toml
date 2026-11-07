@@ -31,6 +31,7 @@ dev = [
     "jactionlint>=2.4.0",
     "jsonschema>=4.23",
     "mypy>=2.4.1",
+    "pyright>=1.1.414",
     "pytest>=8",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
@@ -65,6 +66,33 @@ strict = true
 # (so mypy would treat it as untyped), and `scripts`/`tests` from the repo root.
 mypy_path = "src"
 explicit_package_bases = true
+# Beyond --strict, to come closer to pyright's strict mode (see [tool.pyright]):
+# pyright reports unnecessary isinstance checks and comparisons, possibly unbound
+# names, deprecated APIs and non-exhaustive matches, all off by default in mypy.
+# Explicit Any stays allowed, as pyright's strict mode only rejects implicit Any.
+warn_unreachable = true
+disallow_any_unimported = true
+disallow_any_decorated = true
+enable_error_code = [
+    "deprecated",
+    "exhaustive-match",
+    "ignore-without-code",
+    "mutable-override",
+    "possibly-undefined",
+    "redundant-expr",
+    "redundant-self",
+    "truthy-bool",
+    "truthy-iterable",
+    "unused-awaitable",
+    # Matches pyright's reportImplicitOverride.
+    "explicit-override",
+]
+
+# Tests are relaxed, as for pyright: pytest.mark.parametrize leaves a test that
+# takes an Any-typed parameter untyped after decoration.
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_any_decorated = false
 
 # The repo root, so tests can import the stdlib-only CI scripts in scripts/.
 [tool.pytest.ini_options]
@@ -82,3 +110,17 @@ skip_empty = true
 
 [tool.coverage.xml]
 output = "coverage.xml"
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+# Not part of strict; matches mypy's explicit-override error code.
+reportImplicitOverride = "error"
+extraPaths = ["src"]
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+extraPaths = [".", "src"]
+reportPrivateUsage = false
+reportUnknownLambdaType = false
+reportUnknownArgumentType = false

@@ -40,7 +40,7 @@ def log(
         if rule_names.get(rule):
             descriptor["shortDescription"] = {"text": rule_names[rule]}
         rules.append(descriptor)
-    results = []
+    results: list[dict[str, Any]] = []
     for issue in issues:
         result: dict[str, Any] = {
             "ruleId": issue.rule,
