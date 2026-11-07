@@ -7,6 +7,7 @@ EXOLOT_INTEGRATION=1.
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+from functools import partialmethod
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,16 @@ from exolot.analyze import AnalysisSession
 from exolot.server import ensure_server
 
 pytestmark = pytest.mark.skipif(os.environ.get("EXOLOT_INTEGRATION") != "1", reason="set EXOLOT_INTEGRATION=1")
+
+
+@pytest.fixture(autouse=True)
+def patient_analysis(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the server 300 quiet seconds rather than 30 before deciding it
+    will never report a file's results. The tests run in parallel, each
+    starting its own server (test_concurrent_sessions_all_start four), and
+    on a small CI runner that many JVMs starting at once can keep a server
+    quiet for longer than 30 seconds."""
+    monkeypatch.setattr(AnalysisSession, "analyze", partialmethod(AnalysisSession.analyze, stall=300))
 
 
 def test_finds_python_issue(tmp_path: Path) -> None:
@@ -91,8 +102,7 @@ def test_rule_parameter_sets_the_complexity_threshold(tmp_path: Path, threshold:
 
 def test_concurrent_sessions_all_start(tmp_path: Path) -> None:
     # Servers sharing one SONARLINT_USER_HOME race on its database's lock,
-    # and the losers fail to initialize (issue #100). Several JVMs starting at
-    # once can be slow on a small CI runner, so allow a long stall.
+    # and the losers fail to initialize (issue #100).
     server = ensure_server(progress=False)
 
     def analyze(n: int) -> set[str]:
@@ -101,7 +111,7 @@ def test_concurrent_sessions_all_start(tmp_path: Path) -> None:
         source = workspace / "bad.py"
         source.write_text("def f(x):\n    if x == x:\n        pass\n")
         with AnalysisSession(server, workspace) as session:
-            return {i.rule for i in session.analyze([source], stall=300, timeout=300)}
+            return {i.rule for i in session.analyze([source], timeout=300)}
 
     with ThreadPoolExecutor(4) as pool:
         found = list(pool.map(analyze, range(4)))
