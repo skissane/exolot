@@ -1,3 +1,4 @@
+import io
 import os
 import shutil
 import subprocess
@@ -7,7 +8,7 @@ from typing import NoReturn
 
 import pytest
 
-from exolot import files
+from exolot import cli, files
 from exolot.exclude import Exclude
 from exolot.files import collect_files, language_id
 
@@ -108,3 +109,22 @@ def test_collect_files_finds_files_whose_names_are_not_utf8(tmp_path: Path) -> N
     except OSError:  # e.g. EILSEQ on macOS
         pytest.skip("this filesystem only allows UTF-8 file names")
     assert collect_files([tmp_path]) == [path.resolve()]
+
+
+def test_cli_prints_file_names_that_are_not_utf8_as_their_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    buffer = io.BytesIO()
+    stdout = io.TextIOWrapper(buffer, encoding="utf-8", errors="strict")
+    monkeypatch.setattr(sys, "stdout", stdout)
+    with cli._file_names_as_bytes():
+        print("bad\udcff.py")
+    stdout.flush()
+    assert buffer.getvalue() == b"bad\xff.py\n"
+    assert stdout.errors == "strict"
+
+
+def test_cli_leaves_other_stdouts_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    stdout = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", stdout)
+    with cli._file_names_as_bytes():
+        print("ok")
+    assert stdout.getvalue() == "ok\n"
