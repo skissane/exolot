@@ -82,6 +82,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="JSON file of rule settings, in the same format as VS Code's sonarlint.rules setting",
     )
+    analysis_opts.add_argument(
+        "--select",
+        action="extend",
+        default=[],
+        type=_rule_keys,
+        metavar="RULE[,RULE...]",
+        help="report only the issues of these rules (e.g. python:S1764), turning them on even if the rule "
+        "settings turn them off or they're off by default; repeat or separate with commas to select more",
+    )
     analysis_opts.add_argument("--node", help="Node.js executable for JavaScript/TypeScript analysis")
     analysis_opts.add_argument(
         "--exclude",
@@ -417,6 +426,8 @@ def _load_inputs(args: argparse.Namespace) -> _Inputs:
     settings = config.load(Path.cwd())
     files = collect_files(args.paths, exclude=_exclude_patterns(args, settings))
     rule_settings = _rule_settings(args, settings)
+    if args.select:
+        rule_settings = rules.select(rule_settings, args.select)
     changes = gitdiff.changes_since(args.diff_base) if args.diff_base is not None else None
     if changes is not None and args.changed_only:
         changed_files = changes.files()
@@ -439,6 +450,14 @@ def _rule_settings(args: argparse.Namespace, settings: config.Config) -> dict[st
                 f"can't read rules-file {settings.rules_file} (from {settings.path}): {e.strerror or e}"
             ) from None
     return settings.rules
+
+
+def _rule_keys(value: str) -> list[str]:
+    """--select's argument: the rule keys in a comma-separated list."""
+    try:
+        return rules.parse_keys(value)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
 
 
 def _exclude_glob(value: str) -> str:
@@ -519,6 +538,8 @@ def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[
             for message in session.messages:
                 print(f"exolot: warning: {message}", file=sys.stderr)
             raise
+        if args.select:
+            issues = _selected(session, issues, args.select)
         if args.format == "sarif" and issues:
             session.add_related_locations(issues)
         elif changes is not None and (args.changed_only or args.annotations or not args.statistics):
@@ -534,6 +555,18 @@ def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[
         # Report before the server shuts down, which can take a few seconds.
         _report_any(session, issues, args, inputs, unanalyzed)
     return issues
+
+
+def _selected(session: AnalysisSession, issues: list[Issue], select: list[str]) -> list[Issue]:
+    """The issues of the --select rules, after warning about any of those the
+    server doesn't know, which is likely a typo (unless it can't list its
+    rules)."""
+    names = session.rule_names()
+    if names:
+        for key in sorted(set(select) - names.keys()):
+            print(f"exolot: warning: --select {key}: the server has no such rule", file=sys.stderr)
+    selected = set(select)
+    return [i for i in issues if i.rule in selected]
 
 
 def _report_any(

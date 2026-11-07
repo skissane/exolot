@@ -1,7 +1,8 @@
 """Rule settings: which rules to turn on or off, and their parameters, in the
 format of VS Code's `sonarlint.rules` setting, e.g.
 `{"python:S1764": {"level": "off"}, "python:S107": {"level": "on", "parameters": {"max": "5"}}}`.
-They come from --rules, or the config file's `rules` or `rules-file`."""
+They come from --rules, or the config file's `rules` or `rules-file`, and
+--select turns on the rules it selects."""
 
 from __future__ import annotations
 
@@ -73,3 +74,23 @@ def _parameter_string(value: str | int | float | bool) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+def parse_keys(value: str) -> list[str]:
+    """The rule keys in value, a comma-separated list such as
+    "python:S1764,python:S107". Raises ValueError if one is malformed."""
+    keys = [key.strip() for key in value.split(",")]
+    for key in keys:
+        if not RULE_KEY.fullmatch(key):
+            raise ValueError(f"{key!r} isn't a rule key; rule keys look like 'python:S1764'")
+    return keys
+
+
+def select(settings: dict[str, Any] | None, keys: list[str]) -> dict[str, Any]:
+    """settings with each of the rules keys turned on, keeping any parameters
+    they set, so the selected rules are on even if settings turn them off or
+    they're off by default."""
+    selected = dict(settings or {})
+    for key in keys:
+        selected[key] = {**selected.get(key, {}), "level": "on"}
+    return selected

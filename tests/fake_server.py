@@ -80,6 +80,10 @@ while (msg := read()) is not None:
             }
         )
         reply = read()
+        # Like the real server, report no issues from rules the settings turn
+        # off. (Tests of the LSP client alone answer with no settings.)
+        settings = reply["result"][0] if reply["result"] else {}
+        rules_off = {key for key, setting in settings.get("rules", {}).items() if setting.get("level") == "off"}
         send({"jsonrpc": "2.0", "id": msg["id"], "result": {"capabilities": {}, "configReply": reply["result"]}})
     elif method == "textDocument/didOpen":
         doc = msg["params"]["textDocument"]
@@ -138,33 +142,37 @@ while (msg := read()) is not None:
                 "params": {
                     "uri": doc["uri"],
                     "diagnostics": [
-                        {
-                            "range": {"start": {"line": 0, "character": 2}, "end": {"line": 0, "character": 5}},
-                            "severity": 2,
-                            "code": "fake:S1",
-                            "message": f"{doc['languageId']} issue",
-                        }
-                    ]
-                    # One more issue for each "TWO" in the file, from a second rule.
-                    + [
-                        {
-                            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
-                            "severity": 3,
-                            "code": "fake:S2",
-                            "message": "another issue",
-                        }
-                    ]
-                    * doc["text"].count("TWO")
-                    # And one with a secondary location for each "FLOW".
-                    + [
-                        {
-                            "range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 3}},
-                            "severity": 1,
-                            "code": "fake:S3",
-                            "message": "flow issue [+1 location]",
-                        }
-                    ]
-                    * doc["text"].count("FLOW"),
+                        diagnostic
+                        for diagnostic in [
+                            {
+                                "range": {"start": {"line": 0, "character": 2}, "end": {"line": 0, "character": 5}},
+                                "severity": 2,
+                                "code": "fake:S1",
+                                "message": f"{doc['languageId']} issue",
+                            }
+                        ]
+                        # One more issue for each "TWO" in the file, from a second rule.
+                        + [
+                            {
+                                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                                "severity": 3,
+                                "code": "fake:S2",
+                                "message": "another issue",
+                            }
+                        ]
+                        * doc["text"].count("TWO")
+                        # And one with a secondary location for each "FLOW".
+                        + [
+                            {
+                                "range": {"start": {"line": 0, "character": 1}, "end": {"line": 0, "character": 3}},
+                                "severity": 1,
+                                "code": "fake:S3",
+                                "message": "flow issue [+1 location]",
+                            }
+                        ]
+                        * doc["text"].count("FLOW")
+                        if diagnostic["code"] not in rules_off
+                    ],
                 },
             }
         )

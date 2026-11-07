@@ -198,6 +198,7 @@ class AnalysisSession:
         self._active_progress: set[Any] = set()
         self._last_event = time.monotonic()
         self._folder_configured = threading.Event()
+        self._rule_names: dict[str, str] | None = None
         self._proc: subprocess.Popen[bytes] | None = None
         self._home: Path | None = None  # the server's temporary SONARLINT_USER_HOME
         self._client: LspClient | None = None
@@ -480,20 +481,25 @@ class AnalysisSession:
         """Map each rule key the server knows, e.g. python:S1764, to its title.
 
         Best effort: returns what it can, or an empty dict if the server
-        doesn't answer, since names only make the output friendlier.
+        doesn't answer, since names only make the output friendlier. The
+        server is only asked once.
         """
         assert self._client is not None
+        if self._rule_names is not None:
+            return self._rule_names
         try:
             by_language = self._client.request("sonarlint/listAllRules").result(timeout=timeout)
-            return {
+            self._rule_names = {
                 str(rule["key"]): str(rule.get("name") or "")
                 for rules in by_language.values()
                 for rule in rules
                 if "key" in rule
             }
+            return self._rule_names
         except Exception:
             log.debug("could not list the server's rules", exc_info=True)
-            return {}
+            self._rule_names = {}
+            return self._rule_names
 
     def add_related_locations(self, issues: list[Issue], timeout: float = 10, *, keep_message: bool = False) -> None:
         """Fill in the secondary locations of each issue whose message says it
