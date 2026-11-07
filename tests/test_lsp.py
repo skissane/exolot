@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import sys
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -96,3 +97,46 @@ def test_losing_the_connection_leaves_cancelled_requests_cancelled(client: LspCl
     assert future.cancel()
     client._connection_lost()
     assert future.cancelled()
+
+
+# close() waits for the reader thread only if it's still running, which in the
+# other tests depends on timing. These two tests pin down each case.
+
+
+def test_close_waits_for_a_reader_still_handling_a_message(client: LspClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    handling = threading.Event()
+    release = threading.Event()
+
+    def block(params: object) -> None:
+        handling.set()
+        release.wait(timeout=60)  # the timeout is only a safeguard against hanging
+
+    client.on_notification("$/progress", block)
+    client.start()
+    client.request("slow")
+    assert handling.wait(timeout=10)
+    client._proc.kill()
+    client._proc.wait()
+
+    # Release the reader only once close() has found it alive, so it must join.
+    is_alive = client._reader.is_alive
+    seen: list[bool] = []
+
+    def is_alive_then_release() -> bool:
+        seen.append(is_alive())
+        release.set()
+        return seen[-1]
+
+    monkeypatch.setattr(client._reader, "is_alive", is_alive_then_release)
+    client.close()
+    assert seen == [True]
+    assert not is_alive()
+
+
+def test_close_after_the_reader_has_stopped(client: LspClient) -> None:
+    client.start()
+    client.notify("exit")
+    client._reader.join(timeout=10)  # it stops when the server closes its output
+    assert not client._reader.is_alive()
+    client.close()
+    assert client._stdout.closed
