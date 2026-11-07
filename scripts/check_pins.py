@@ -46,10 +46,13 @@ def inputs(step: list[str]) -> list[str]:
     that a key in another of the step's mappings (`env:`), or a line of a
     multi-line value (`sparse-checkout: |`), isn't taken for an input."""
     lines = [line for line in step if line.strip() and not line.strip().startswith("#")]
+    # The step's own keys sit just past its `- `, so a `with:` line deeper in
+    # (in a `run: |` script, say) isn't taken for the step's.
+    key_depth = _depth(lines[0]) + 2 if lines else 0
     for i, line in enumerate(lines):
         stripped = line.strip()
-        if _WITH_RE.match(stripped):
-            indent = _depth(line) + (2 if stripped.startswith("- ") else 0)
+        indent = _depth(line) + (2 if stripped.startswith("- ") else 0)
+        if indent == key_depth and _WITH_RE.match(stripped):
             mapping = list(itertools.takewhile(lambda body: _depth(body) > indent, lines[i + 1 :]))
             return [key for key in mapping if _depth(key) == _depth(mapping[0])]
     return []
