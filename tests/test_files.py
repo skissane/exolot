@@ -1,9 +1,12 @@
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 
+from exolot import files
 from exolot.exclude import Exclude
 from exolot.files import collect_files, language_id
 
@@ -68,3 +71,28 @@ def test_collect_files_excludes_symlinks_by_their_listed_path(tmp_path: Path, mo
     monkeypatch.chdir(tmp_path / "proj")
     files = collect_files([Path()], [Exclude("vendor/**", tmp_path / "proj")])
     assert files == [(tmp_path / "proj" / "kept.py").resolve()]
+
+
+def test_collect_files_walks_directories_without_git(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    for skipped in (".hidden", "node_modules"):
+        (tmp_path / skipped).mkdir()
+        (tmp_path / skipped / "b.py").write_text("x = 1\n")
+    assert collect_files([tmp_path]) == [(tmp_path / "a.py").resolve()]
+
+
+def test_collect_files_skips_files_that_are_too_big(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(files, "MAX_FILE_SIZE", 4)
+    (tmp_path / "big.py").write_text("x = 1\n")
+    (tmp_path / "ok.py").write_text("x\n")
+    assert collect_files([tmp_path]) == [(tmp_path / "ok.py").resolve()]
+
+
+def test_collect_files_skips_files_it_cannot_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def unreadable(*args: object, **kwargs: object) -> NoReturn:
+        raise PermissionError("denied")
+
+    (tmp_path / "a.py").write_text("x = 1\n")
+    monkeypatch.setattr(files, "open", unreadable, raising=False)
+    assert collect_files([tmp_path]) == []
