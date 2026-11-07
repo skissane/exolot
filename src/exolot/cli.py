@@ -15,13 +15,13 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__, clone, compiledb, config, gitdiff, markdown, problems, report, rules
-from .analyze import SERVER_LOG_LEVELS, AnalysisSession, Issue, collect_files, language_id
+from .analyze import SERVER_LOG_LEVELS, AnalysisSession
 from .exclude import Exclude, is_empty
+from .files import collect_files
+from .issues import Issue
 from .server import DEFAULT_SERVER_VERSION, Server, ServerError, cache_dir, detect_platform, ensure_server
 
 COMMANDS = ("analyze", "analyze-repo", "install", "cache-dir")
-
-log = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -495,8 +495,7 @@ def _exclude_patterns(args: argparse.Namespace, settings: config.Config) -> list
 
 def _find_compilation_database(args: argparse.Namespace, inputs: _Inputs) -> None:
     """Set inputs' compilation database: --compile-commands, else the config
-    file's, else the one found for the paths. Without one, the C/C++
-    analyzer would fail, so if there are C/C++ files, skip them instead.
+    file's, else the one found for the paths (see compiledb.choose).
     Raises FileNotFoundError if the one given doesn't exist."""
     given = args.compile_commands or inputs.settings.compile_commands
     if given is not None:
@@ -506,33 +505,7 @@ def _find_compilation_database(args: argparse.Namespace, inputs: _Inputs) -> Non
             raise FileNotFoundError(f"no such compilation database: {given} (from {source})")
         inputs.compile_commands = given
         return
-    label, languages = problems.CFAMILY
-    cfamily = [f for f in inputs.files if language_id(f) in languages]
-    if not cfamily:
-        return
-    found = compiledb.find(cfamily)
-    skipped = found.pop(None, [])
-    if len(found) > 1:
-        # The server takes one database for the workspace.
-        skipped = cfamily
-        cause = (
-            f"there's more than one compilation database ({', '.join(map(str, found))}); "
-            "choose one with --compile-commands"
-        )
-    else:
-        # For these files, if another database is used for the others.
-        where = " for some files" if found else ""
-        cause = (
-            f"no compilation database ({compiledb.NAME}) was found{where}; make one, e.g. with bear or CMake, "
-            "or pass --compile-commands"
-        )
-        if found:
-            (inputs.compile_commands,) = found
-            log.info("using the compilation database %s", inputs.compile_commands)
-    if skipped:
-        inputs.skipped = problems.Problem(
-            cause, "no compilation database", label, languages, files=skipped, in_server_log=False
-        )
+    inputs.compile_commands, inputs.skipped = compiledb.choose(inputs.files)
 
 
 def _analyze(server: Server, args: argparse.Namespace, inputs: _Inputs) -> list[Issue]:

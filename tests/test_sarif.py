@@ -7,7 +7,8 @@ import jsonschema
 import pytest
 
 from exolot import __version__, cli, sarif
-from exolot.analyze import AnalysisSession, Issue, Location
+from exolot.analyze import AnalysisSession
+from exolot.issues import Issue, Location
 from tests.test_analyze import FakeServer
 
 # From https://github.com/oasis-tcs/sarif-spec (sarif-2.1/schema), the OASIS standard's schema with its errata.

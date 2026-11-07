@@ -12,14 +12,12 @@ import sys
 import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
-from urllib.request import url2pathname
 
 from . import __version__, problems
-from .exclude import Exclude, is_excluded
+from .files import language_id
+from .issues import Issue, flow_locations, from_diagnostic
 from .lsp import LspClient
 from .server import Server
 
@@ -38,133 +36,8 @@ SERVER_LOG_LEVELS = {
 }
 _SERVER_LOG_PREFIX = re.compile(r"\[(\w+) - ")
 
-# VS Code language ids, which is what the server expects in didOpen.
-LANGUAGE_IDS = {
-    ".py": "python",
-    ".pyi": "python",
-    ".js": "javascript",
-    ".mjs": "javascript",
-    ".cjs": "javascript",
-    ".jsx": "javascriptreact",
-    ".ts": "typescript",
-    ".mts": "typescript",
-    ".cts": "typescript",
-    ".tsx": "typescriptreact",
-    ".vue": "vue",
-    ".css": "css",
-    ".scss": "scss",
-    ".less": "less",
-    ".html": "html",
-    ".htm": "html",
-    ".xml": "xml",
-    ".java": "java",
-    ".php": "php",
-    ".go": "go",
-    ".cs": "csharp",
-    ".c": "c",
-    ".h": "c",
-    ".cpp": "cpp",
-    ".cc": "cpp",
-    ".cxx": "cpp",
-    ".hpp": "cpp",
-    ".m": "objective-c",
-    ".mm": "objective-cpp",
-    ".yaml": "yaml",
-    ".yml": "yaml",
-    ".json": "json",
-    ".tf": "terraform",
-    ".bicep": "bicep",
-    ".sh": "shellscript",
-    ".bash": "shellscript",
-    ".properties": "properties",
-}
-
-SKIP_DIRS = {".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv", ".tox", ".mypy_cache"}
-MAX_FILE_SIZE = 2 * 1024 * 1024
-SEVERITY_NAMES = {1: "error", 2: "warning", 3: "info", 4: "hint"}
 # What the server appends to the message of an issue with secondary locations.
 MORE_LOCATIONS = re.compile(r" \[\+\d+ locations?\]$")
-
-
-@dataclass
-class Location:
-    """A secondary location of an issue, e.g. the other side of a comparison."""
-
-    path: Path
-    line: int  # 1-based
-    column: int  # 1-based
-    end_line: int
-    end_column: int
-    message: str
-
-
-@dataclass
-class Issue:
-    path: Path
-    line: int  # 1-based
-    column: int  # 1-based
-    end_line: int
-    end_column: int
-    rule: str
-    message: str
-    severity: str
-    raw: dict[str, Any] = field(repr=False)
-    related: list[Location] = field(default_factory=list)
-
-
-def language_id(path: Path) -> str:
-    if path.name == "Dockerfile" or path.name.startswith("Dockerfile."):
-        return "dockerfile"
-    return LANGUAGE_IDS.get(path.suffix.lower(), "plaintext")
-
-
-def collect_files(paths: list[Path], exclude: list[Exclude] | tuple[Exclude, ...] = ()) -> list[Path]:
-    """Expand directories into the files under them, skipping ignored and
-    binary files and those that exclude skips, including ones named in paths."""
-    result: list[Path] = []
-    seen: set[Path] = set()
-    for path in paths:
-        if not path.exists():
-            raise FileNotFoundError(f"no such file or directory: {path}")
-        candidates = [path] if path.is_file() else _list_dir(path)
-        for f in candidates:
-            # Match both the path as listed and its target, so that neither
-            # a symlink nor a symlinked directory slips past a glob.
-            listed = f.absolute()
-            f = f.resolve()
-            if f in seen or is_excluded(listed, exclude) or is_excluded(f, exclude):
-                continue
-            if _is_analyzable(f):
-                seen.add(f)
-                result.append(f)
-    return result
-
-
-def _list_dir(directory: Path) -> list[Path]:
-    git = shutil.which("git")
-    if git:
-        proc = subprocess.run(
-            [git, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-            cwd=directory,
-            capture_output=True,
-        )
-        if proc.returncode == 0:
-            return [directory / name for name in proc.stdout.decode().split("\0") if name]
-    files: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(directory):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
-        files.extend(Path(dirpath) / name for name in filenames)
-    return files
-
-
-def _is_analyzable(path: Path) -> bool:
-    try:
-        if not path.is_file() or path.stat().st_size > MAX_FILE_SIZE:
-            return False
-        with open(path, "rb") as f:
-            return b"\0" not in f.read(8192)
-    except OSError:
-        return False
 
 
 class AnalysisSession:
@@ -424,7 +297,7 @@ class AnalysisSession:
                     raise TimeoutError("analysis did not finish in time")
                 self._cond.wait(timeout=0.2)
             published = {uri: self._published.get(uri, []) for uri in uris}
-        return [_to_issue(uris[uri], d) for uri, diags in published.items() for d in diags]
+        return [from_diagnostic(uris[uri], d) for uri, diags in published.items() for d in diags]
 
     def _finished(self, uris: dict[str, Path], settle: float, stall: float) -> bool:
         """Whether the server has finished analyzing the files at uris: every
@@ -529,7 +402,7 @@ class AnalysisSession:
                         "context": {"diagnostics": [issue.raw]},
                     },
                 ).result(timeout=remaining)
-                issue.related = [loc for action in actions or [] for loc in _flow_locations(issue.path, action)]
+                issue.related = [loc for action in actions or [] for loc in flow_locations(issue.path, action)]
             except Exception:
                 log.debug("could not get the locations of %s", issue, exc_info=True)
             if issue.related and not keep_message:
@@ -582,48 +455,3 @@ def _link_dir(link: Path, target: Path) -> None:
         importlib.import_module("_winapi").CreateJunction(str(target), str(link))
     else:
         link.symlink_to(target, target_is_directory=True)
-
-
-def _to_issue(path: Path, diagnostic: dict[str, Any]) -> Issue:
-    start = diagnostic["range"]["start"]
-    end = diagnostic["range"]["end"]
-    return Issue(
-        path=path,
-        line=start["line"] + 1,
-        column=start["character"] + 1,
-        end_line=end["line"] + 1,
-        end_column=end["character"] + 1,
-        rule=str(diagnostic.get("code", "")),
-        message=diagnostic.get("message", ""),
-        severity=SEVERITY_NAMES.get(diagnostic.get("severity", 2), "warning"),
-        raw=diagnostic,
-    )
-
-
-def _flow_locations(path: Path, action: dict[str, Any]) -> list[Location]:
-    """The locations in a SonarLint.ShowAllLocations code action, or none if
-    action is some other code action. path is the issue's file, for locations
-    that don't name theirs."""
-    command = action.get("command")
-    if not isinstance(command, dict) or command.get("command") != "SonarLint.ShowAllLocations":
-        return []
-    flows = [flow for arg in command.get("arguments") or [] for flow in arg.get("flows") or []]
-    locations = [_location(path, loc) for flow in flows for loc in flow.get("locations") or []]
-    return [loc for loc in locations if loc is not None]
-
-
-def _location(path: Path, loc: dict[str, Any]) -> Location | None:
-    """A flow location from the server as a Location, or None if it has no range."""
-    text_range = loc.get("textRange")
-    if not text_range:
-        return None
-    # Not its filePath, which on Windows the server gives as /C:/...
-    uri = loc.get("uri")
-    return Location(
-        path=Path(url2pathname(urlparse(uri).path)) if uri else path,
-        line=text_range["startLine"],
-        column=text_range["startLineOffset"] + 1,
-        end_line=text_range["endLine"],
-        end_column=text_range["endLineOffset"] + 1,
-        message=loc.get("message") or "",
-    )
