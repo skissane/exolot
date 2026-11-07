@@ -1,3 +1,5 @@
+import os
+import sys
 from typing import Any
 
 import pytest
@@ -57,6 +59,11 @@ def test_findings_table_with_links() -> None:
 def test_link_quotes_the_path_and_defaults_the_end() -> None:
     f = finding(path="a) [x](https://evil.example).py")
     assert link("{path}#L{end_line}:{end_column}", f) == "a%29%20%5Bx%5D%28https%3A//evil.example%29.py#L3:5"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows file names are always Unicode")
+def test_link_quotes_a_path_that_is_not_utf8_as_its_bytes() -> None:
+    assert link("{path}", finding(path=os.fsdecode(b"bad\xff.py"))) == "bad%FF.py"
 
 
 @pytest.mark.parametrize(

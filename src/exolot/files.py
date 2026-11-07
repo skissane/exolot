@@ -92,7 +92,8 @@ def _list_dir(directory: Path) -> list[Path]:
             capture_output=True,
         )
         if proc.returncode == 0:
-            return [directory / name for name in proc.stdout.decode().split("\0") if name]
+            # Names as the filesystem has them, which needn't be UTF-8.
+            return [directory / os.fsdecode(name) for name in proc.stdout.split(b"\0") if name]
     files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(directory):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]

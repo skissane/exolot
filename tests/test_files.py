@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import sys
@@ -96,3 +97,13 @@ def test_collect_files_skips_files_it_cannot_read(tmp_path: Path, monkeypatch: p
     (tmp_path / "a.py").write_text("x = 1\n")
     monkeypatch.setattr(files, "open", unreadable, raising=False)
     assert collect_files([tmp_path]) == []
+
+
+def test_collect_files_finds_files_whose_names_are_not_utf8(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    path = tmp_path / os.fsdecode(b"bad\xff.py")
+    try:
+        path.write_text("x = 1\n")
+    except (OSError, UnicodeError):
+        pytest.skip("this filesystem only allows UTF-8 file names")
+    assert collect_files([tmp_path]) == [path.resolve()]

@@ -3,6 +3,7 @@ and findings as a PR comment."""
 
 from __future__ import annotations
 
+import os
 import re
 import urllib.parse
 from collections.abc import Iterable, Mapping, Sequence
@@ -50,7 +51,7 @@ def link(template: str, finding: Mapping[str, Any]) -> str:
     its path URL-quoted so the path can't end the Markdown link early."""
     return template.format_map(
         {
-            "path": urllib.parse.quote(finding["path"]),
+            "path": urllib.parse.quote(os.fsencode(finding["path"])),
             "line": finding["line"],
             "column": finding["column"],
             "end_line": finding.get("endLine", finding["line"]),
