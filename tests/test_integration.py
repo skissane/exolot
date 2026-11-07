@@ -34,7 +34,9 @@ def test_finds_python_issue(tmp_path: Path) -> None:
     source.write_text("def f(x):\n    if x == x:\n        pass\n")
     with AnalysisSession(ensure_server(progress=False), tmp_path) as session:
         issues = session.analyze([source], timeout=300)
-        names = session.rule_names()
+        # The 10 s default isn't always enough on GitHub's Windows runners, and
+        # an empty result there would fail the test rather than test anything.
+        names = session.rule_names(timeout=300)
     assert "python:S1764" in {i.rule for i in issues}
     assert names["python:S1764"] == "Identical expressions should not be used on both sides of a binary operator"
 
