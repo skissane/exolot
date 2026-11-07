@@ -113,7 +113,7 @@ def test_collect_files_finds_files_whose_names_are_not_utf8(tmp_path: Path) -> N
 
 def test_cli_prints_file_names_that_are_not_utf8_as_their_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
     buffer = io.BytesIO()
-    stdout = io.TextIOWrapper(buffer, encoding="utf-8", errors="strict")
+    stdout = io.TextIOWrapper(buffer, encoding="utf-8", errors="strict", newline="\n")
     monkeypatch.setattr(sys, "stdout", stdout)
     with cli._file_names_as_bytes():
         print("bad\udcff.py")
