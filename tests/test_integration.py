@@ -4,13 +4,14 @@ Downloads the server (about 250 MB) on first run, so it only runs when
 EXOLOT_INTEGRATION=1.
 """
 
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
-from exolot import rules
+from exolot import cli, rules
 from exolot.analyze import AnalysisSession
 from exolot.server import ensure_server
 
@@ -105,3 +106,17 @@ def test_concurrent_sessions_all_start(tmp_path: Path) -> None:
     with ThreadPoolExecutor(4) as pool:
         found = list(pool.map(analyze, range(4)))
     assert all("python:S1764" in rules_found for rules_found in found)
+
+
+def test_select_turns_on_rules_and_reports_only_them(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    source = tmp_path / "bad.py"
+    source.write_text("def f(x, y):\n    if x == x:\n        pass\n")
+    rules_file = tmp_path / "rules.json"
+    rules_file.write_text('{"python:S1764": {"level": "off"}, "python:S107": {"parameters": {"max": 1}}}')
+    # S1764 is on by default but off in the settings, and S107 (too many parameters) is off by default.
+    args = ["--rules", str(rules_file), "--select", "python:S1764,python:S107", "--format", "json", str(source)]
+    assert cli.main(args) == 1
+    captured = capsys.readouterr()
+    assert sorted(issue["rule"] for issue in json.loads(captured.out)) == ["python:S107", "python:S1764"]
+    # The server lists every rule, not only those on by default, so --select doesn't warn about them.
+    assert "warning: --select" not in captured.err

@@ -40,6 +40,7 @@ uvx exolot --format github-comment . # a report to post as a PR comment
 uvx exolot --format sarif .    # SARIF 2.1.0, e.g. for GitHub code scanning
 uvx exolot --annotations .     # also show the issues as GitHub Actions annotations
 uvx exolot --statistics .      # count issues per rule, most common first
+uvx exolot --select python:S1764 . # only the issues of these rules
 uvx exolot --diff-base origin/main --changed-only  # only issues on lines your branch changes
 uvx exolot analyze-repo https://github.com/psf/requests  # analyze someone else's code
 uvx exolot install             # just download and unpack the server
@@ -154,6 +155,14 @@ status 2 if the repository or REF can't be fetched.
   Malformed settings are an error (exit status 2). It replaces the config
   file's `rules` or `rules-file` (see [Configuration](#configuration)) rather
   than adding to them.
+- `--select RULE[,RULE...]` reports only the issues of the given rules, like
+  `ruff check --select`, e.g. `--select python:S1764,python:S107`; repeat it
+  to select more. It turns the selected rules on, keeping any parameters the
+  rule settings give them, so a rule shows up even if `--rules` or the config
+  file's `rules` or `rules-file` turn it off, or it's off by default. Other
+  rules are still analyzed, but their issues aren't reported or counted in
+  the exit status. A malformed rule key is an error (exit status 2), and a
+  rule the server doesn't know gets a warning, as it's likely a typo.
 - `--statistics` prints one line per rule instead of the issues: the number of
   issues, the rule key and the rule's name, most common rule first (ties in
   rule key order), like `ruff check --statistics`. The name is left blank if

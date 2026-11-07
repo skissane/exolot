@@ -522,6 +522,57 @@ def test_cli_statistics_without_rule_names(
     assert captured.out == "5\tfake:S2\n3\tfake:S1\n"
 
 
+def test_cli_select_reports_only_the_selected_rules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    status, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--select", "fake:S2")
+    assert status == 1
+    assert captured.out == "5\tfake:S2\n"
+    assert "5 issue(s) in 3 file(s) analyzed" in captured.err
+    assert "warning" not in captured.err
+
+
+def test_cli_select_takes_several_rules(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--select", "fake:S3,fake:S1", "--select", "fake:S1")
+    assert captured.out == "3\tfake:S1\tFake rule one\n"
+
+
+def test_cli_select_overrides_rules_turned_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Outside tmp_path, which is analyzed.
+    rules_file = tmp_path.with_name(f"{tmp_path.name}-rules.json")
+    rules_file.write_text('{"fake:S1": {"level": "off"}, "fake:S2": {"level": "off"}}')
+    _, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--rules", str(rules_file))
+    assert captured.out == ""
+    _, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--rules", str(rules_file), "--select", "fake:S1")
+    assert captured.out == "3\tfake:S1\tFake rule one\n"
+
+
+def test_cli_select_warns_about_rules_the_server_lacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    status, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--select", "fake:S9,fake:S1,fake:S8")
+    assert status == 1
+    assert captured.out == "3\tfake:S1\tFake rule one\n"
+    assert (
+        "exolot: warning: --select fake:S8: the server has no such rule\n"
+        "exolot: warning: --select fake:S9: the server has no such rule\n"
+    ) in captured.err
+
+
+def test_cli_select_without_rule_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("FAKE_SERVER_RULES_FAIL", "1")
+    status, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--select", "fake:S9")
+    assert status == 0
+    assert captured.out == ""
+    assert "warning" not in captured.err
+
+
 def test_cli_statistics_with_no_issues(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -177,3 +177,46 @@ def test_cli_rejects_bad_rules_files(
     )
     assert expected in capsys.readouterr().err
     assert used_rules == []
+
+
+def test_parse_keys() -> None:
+    assert rules.parse_keys("python:S1764") == ["python:S1764"]
+    assert rules.parse_keys("python:S1764, python:S107") == ["python:S1764", "python:S107"]
+
+
+@pytest.mark.parametrize("value", ["S1764", "", "python:S1764,", "a:b:c"])
+def test_parse_keys_rejects_malformed_keys(value: str) -> None:
+    with pytest.raises(ValueError, match="rule keys look like 'python:S1764'"):
+        rules.parse_keys(value)
+
+
+def test_select_turns_the_rules_on_keeping_their_parameters() -> None:
+    settings = {
+        "python:S1764": {"level": "off"},
+        "python:S107": {"level": "off", "parameters": {"max": "1"}},
+        "python:S100": {"level": "off"},
+    }
+    assert rules.select(settings, ["python:S1764", "python:S107", "python:S3776"]) == {
+        "python:S1764": {"level": "on"},
+        "python:S107": {"level": "on", "parameters": {"max": "1"}},
+        "python:S100": {"level": "off"},
+        "python:S3776": {"level": "on"},
+    }
+    assert settings["python:S1764"] == {"level": "off"}  # unchanged
+    assert rules.select(None, ["python:S1764"]) == ON
+
+
+def test_cli_select_turns_on_rules_the_config_turns_off(used_rules: list[dict[str, Any]], tmp_path: Path) -> None:
+    (tmp_path / ".exolot.toml").write_text('[rules]\n"python:S1764" = { level = "off" }\n"python:S1" = {}\n')
+    cli.main(["--select", "python:S1764", "a.py"])
+    (tmp_path / "given.json").write_text(json.dumps(OFF))
+    cli.main(["--rules", "given.json", "--select", "python:S1764,python:S2", "a.py"])
+    assert used_rules == [{**ON, "python:S1": {}}, {**ON, "python:S2": {"level": "on"}}]
+
+
+def test_cli_rejects_malformed_select(used_rules: list[dict[str, Any]], capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--select", "S1764", "a.py"])
+    assert exc.value.code == 2
+    assert "argument --select: 'S1764' isn't a rule key" in capsys.readouterr().err
+    assert used_rules == []
