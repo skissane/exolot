@@ -107,17 +107,26 @@ def parse_diff(diff: str) -> dict[str, set[int]]:
         if in_hunk and line[:1] in ("+", "-"):
             in_hunk -= 1
         elif line.startswith("+++ "):
-            # Git ends the header with a tab when the path has a space in it.
-            target = line[4:]
-            target = _unquote(target) if target.startswith('"') else target.split("\t", 1)[0]
-            path = target[2:] if target.startswith("b/") else None
+            path = _new_path(line[4:])
         elif m := _HUNK_RE.match(line):
-            start = int(m["start"])
-            count = 1 if m["count"] is None else int(m["count"])
-            in_hunk = (1 if m["old"] is None else int(m["old"])) + count
+            start, count = int(m["start"]), _hunk_count(m["count"])
+            in_hunk = _hunk_count(m["old"]) + count
             if path is not None:
                 lines.setdefault(path, set()).update(range(start, start + count))
     return lines
+
+
+def _new_path(target: str) -> str | None:
+    """The path in a "+++ " header's target ("b/path"), or None for a deleted
+    file's "/dev/null"."""
+    # Git ends the header with a tab when the path has a space in it.
+    target = _unquote(target) if target.startswith('"') else target.split("\t", 1)[0]
+    return target[2:] if target.startswith("b/") else None
+
+
+def _hunk_count(count: str | None) -> int:
+    """A hunk header's line count, which git leaves out when it's 1."""
+    return 1 if count is None else int(count)
 
 
 def _unquote(quoted: str) -> str:

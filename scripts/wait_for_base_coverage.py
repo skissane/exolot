@@ -160,12 +160,11 @@ def main(
         if state == "failed":
             print(f"::warning::Codecov has no coverage for base commit {args.sha}, whose CI didn't succeed ({ci})")
             return
-        if state in ("succeeded", "none"):
-            if finished_at is None:
-                finished_at = clock()
-        else:
+        if state == "running":
             # E.g. the base's CI was re-run after finishing.
             finished_at = None
+        elif finished_at is None:
+            finished_at = clock()
         if finished_at is not None and clock() - finished_at >= args.grace:
             print(f"::warning::Codecov has no coverage for base commit {args.sha}, whose CI has finished ({ci})")
             return

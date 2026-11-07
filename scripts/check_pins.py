@@ -2,6 +2,7 @@
 or just pins the version the project requires: pyproject.toml's [tool.uv]
 required-version minimum and the justfile's minimum-version."""
 
+import itertools
 import re
 import sys
 import tomllib
@@ -44,24 +45,18 @@ def inputs(step: list[str]) -> list[str]:
     """The lines of a step's `with:` mapping that start one of its keys, so
     that a key in another of the step's mappings (`env:`), or a line of a
     multi-line value (`sparse-checkout: |`), isn't taken for an input."""
-    found: list[str] = []
-    indent = None  # of the `with:` key, while in its mapping
-    child = None  # of the mapping's keys, once seen
-    for line in step:
+    lines = [line for line in step if line.strip() and not line.strip().startswith("#")]
+    for i, line in enumerate(lines):
         stripped = line.strip()
-        depth = len(line) - len(line.lstrip())
-        if not stripped or stripped.startswith("#"):
-            continue
-        if indent is not None and depth > indent:
-            child = child or depth
-            if depth == child:
-                found.append(line)
-        elif _WITH_RE.match(stripped):
-            indent = depth + (2 if stripped.startswith("- ") else 0)
-            child = None
-        else:
-            indent = None
-    return found
+        if _WITH_RE.match(stripped):
+            indent = _depth(line) + (2 if stripped.startswith("- ") else 0)
+            mapping = list(itertools.takewhile(lambda body: _depth(body) > indent, lines[i + 1 :]))
+            return [key for key in mapping if _depth(key) == _depth(mapping[0])]
+    return []
+
+
+def _depth(line: str) -> int:
+    return len(line) - len(line.lstrip())
 
 
 def pins(text: str, action: str, key: str) -> list[str | None]:
