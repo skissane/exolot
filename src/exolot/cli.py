@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import io
 import logging
 import os
 import shutil
@@ -211,12 +212,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "cache-dir":
         print(cache_dir())
         return 0
-    with _exit_on_sigterm():
+    with _exit_on_sigterm(), _file_names_as_bytes():
         if args.command == "install":
             return _install(args)
         if args.command == "analyze-repo":
             return _run_analyze_repo(args)
         return _run_analyze(args)
+
+
+@contextlib.contextmanager
+def _file_names_as_bytes() -> Generator[None]:
+    """Print the bytes of a file name that isn't valid in the filesystem's
+    encoding (e.g. not UTF-8 on Linux), as ls and git do, rather than fail:
+    Python decodes such a name with surrogate escapes, which stdout can't
+    encode unless its locale is C or POSIX."""
+    stdout = sys.stdout
+    if not isinstance(stdout, io.TextIOWrapper):
+        yield
+        return
+    errors = stdout.errors
+    stdout.reconfigure(errors="surrogateescape")
+    try:
+        yield
+    finally:
+        stdout.reconfigure(errors=errors)
 
 
 @contextlib.contextmanager
