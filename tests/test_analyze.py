@@ -16,9 +16,10 @@ import pytest
 from _pytest.capture import CaptureResult  # not exported as pytest.CaptureResult
 
 from exolot import analyze, cli, clone
-from exolot.analyze import AnalysisSession, collect_files, language_id
+from exolot.analyze import AnalysisSession
 from exolot.config import Config
 from exolot.exclude import Exclude
+from exolot.files import collect_files
 from exolot.markdown import escape
 from exolot.server import Server, ServerError
 from tests.conftest import git
@@ -29,51 +30,6 @@ FAKE_SERVER = Path(__file__).with_name("fake_server.py")
 class FakeServer(Server):
     def command(self, jvm_args: list[str] | None = None) -> list[str]:
         return [sys.executable, str(FAKE_SERVER)]
-
-
-def test_language_id() -> None:
-    assert language_id(Path("a.py")) == "python"
-    assert language_id(Path("A.TSX")) == "typescriptreact"
-    assert language_id(Path("Dockerfile")) == "dockerfile"
-    assert language_id(Path("notes.txt")) == "plaintext"
-
-
-def test_collect_files_skips_binary_and_ignored(tmp_path: Path) -> None:
-    (tmp_path / "a.py").write_text("x = 1\n")
-    (tmp_path / "blob.bin").write_bytes(b"\0\1\2")
-    (tmp_path / "node_modules").mkdir()
-    (tmp_path / "node_modules" / "dep.js").write_text("x\n")
-    files = collect_files([tmp_path])
-    assert files == [(tmp_path / "a.py").resolve()]
-
-
-def test_collect_files_respects_gitignore(tmp_path: Path) -> None:
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    (tmp_path / ".gitignore").write_text("ignored.py\n")
-    (tmp_path / "ignored.py").write_text("x = 1\n")
-    (tmp_path / "kept.py").write_text("x = 1\n")
-    names = {f.name for f in collect_files([tmp_path])}
-    assert names == {".gitignore", "kept.py"}
-
-
-def test_collect_files_excludes_by_filename_glob(tmp_path: Path) -> None:
-    (tmp_path / "a.m").write_text("x = 1\n")
-    (tmp_path / "sub").mkdir()
-    (tmp_path / "sub" / "b.m").write_text("x = 1\n")
-    (tmp_path / "sub" / "kept.py").write_text("x = 1\n")
-    files = collect_files([tmp_path], exclude=[Exclude("*.m", tmp_path)])
-    assert files == [(tmp_path / "sub" / "kept.py").resolve()]
-
-
-def test_collect_files_excludes_by_relative_path_glob(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    (tmp_path / ".git").mkdir()
-    (tmp_path / "gen").mkdir()
-    (tmp_path / "gen" / "skip.py").write_text("x = 1\n")
-    (tmp_path / "sub" / "gen").mkdir(parents=True)
-    (tmp_path / "sub" / "gen" / "keep.py").write_text("x = 1\n")
-    monkeypatch.chdir(tmp_path)
-    files = collect_files([tmp_path], exclude=[Exclude("gen/**", tmp_path)])
-    assert files == [(tmp_path / "sub" / "gen" / "keep.py").resolve()]
 
 
 def test_session_collects_final_diagnostics(tmp_path: Path) -> None:
@@ -428,11 +384,6 @@ def test_an_empty_sonarlint_user_home_counts_as_unset(
 
 def test_closing_an_unstarted_session_does_nothing(tmp_path: Path) -> None:
     AnalysisSession(FakeServer(root=tmp_path, java=Path("java")), tmp_path).close()
-
-
-def test_collect_files_rejects_missing_path(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError):
-        collect_files([tmp_path / "nope"])
 
 
 def test_cli_input_errors_exit_2_without_downloading(
@@ -1212,18 +1163,6 @@ def test_cli_analyze_repo_excludes_relative_to_the_clone(
     monkeypatch.chdir(tmp_path)
     assert cli.main(["analyze-repo", "repo", "--exclude", "sub/*"]) == 1
     assert capsys.readouterr().out == "a.py:1:3: warning [fake:S1] python issue\n"
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
-def test_collect_files_excludes_symlinks_by_their_listed_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    outside = tmp_path / "outside.py"
-    outside.write_text("x = 1\n")
-    (tmp_path / "proj" / "vendor").mkdir(parents=True)
-    (tmp_path / "proj" / "vendor" / "link.py").symlink_to(outside)
-    (tmp_path / "proj" / "kept.py").write_text("x = 1\n")
-    monkeypatch.chdir(tmp_path / "proj")
-    files = collect_files([Path()], [Exclude("vendor/**", tmp_path / "proj")])
-    assert files == [(tmp_path / "proj" / "kept.py").resolve()]
 
 
 def test_cli_config_excludes_are_relative_to_the_config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

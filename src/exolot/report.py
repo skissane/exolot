@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import __version__, gitdiff, markdown, problems, sarif
 from . import annotations as gh_annotations
-from .analyze import Issue, Location
+from .issues import Issue, Location
 
 
 @dataclass

@@ -23,6 +23,35 @@ def _file(path: Path) -> Path:
     return path
 
 
+def test_choose_ignores_files_that_are_not_c_family(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    _database(tmp_path / "compile_commands.json")
+    assert compiledb.choose([_file(tmp_path / "a.py")]) == (None, None)
+
+
+def test_choose_takes_the_one_database_and_skips_files_without_one(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    database = _database(tmp_path / "lib" / "compile_commands.json")
+    found, without = _file(tmp_path / "lib" / "a.c"), _file(tmp_path / "b.c")
+    chosen, skipped = compiledb.choose([found, without, _file(tmp_path / "c.py")])
+    assert chosen == database.resolve()
+    assert skipped is not None
+    assert skipped.files == [without]
+    assert "for some files" in skipped.cause
+
+
+def test_choose_skips_every_file_when_there_is_more_than_one_database(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    _database(tmp_path / "x" / "compile_commands.json")
+    _database(tmp_path / "y" / "compile_commands.json")
+    files = [_file(tmp_path / "x" / "a.c"), _file(tmp_path / "y" / "b.cpp")]
+    chosen, skipped = compiledb.choose(files)
+    assert chosen is None
+    assert skipped is not None
+    assert skipped.files == files
+    assert "more than one compilation database" in skipped.cause
+
+
 def test_find_takes_the_nearest_in_or_above_each_file(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     top = _database(tmp_path / "compile_commands.json")
@@ -119,7 +148,7 @@ def test_cli_skips_c_files_without_a_database(c_project: list[Path | None], caps
 def test_cli_finds_the_database(
     c_project: list[Path | None], tmp_path: Path, capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
 ) -> None:
-    caplog.set_level(logging.INFO, "exolot.cli")
+    caplog.set_level(logging.INFO, "exolot.compiledb")
     database = _database(tmp_path / "build" / "compile_commands.json")
     cli.main([])
     assert f"using the compilation database {database}" in caplog.messages
