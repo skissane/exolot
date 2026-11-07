@@ -70,6 +70,21 @@ def test_pins_reads_each_steps_own_input() -> None:
     assert pins(WORKFLOW, "extractions/setup-just", "just-version") == ["1.58.0"]
 
 
+def test_pins_ignores_with_lines_deeper_in_a_step() -> None:
+    # A `with:` line in a script isn't the step's own `with:` mapping.
+    workflow = """\
+steps:
+  - uses: astral-sh/setup-uv@v6
+    env:
+      SCRIPT: |
+        with:
+          version: "1.0"
+    with:
+      version: "0.13.6"
+"""
+    assert pins(workflow, "astral-sh/setup-uv", "version") == ["0.13.6"]
+
+
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     (tmp_path / "pyproject.toml").write_text('[tool.uv]\nrequired-version = ">=0.13.6"\n')

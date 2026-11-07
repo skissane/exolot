@@ -73,64 +73,80 @@ def _demote_headings(lines: list[str]) -> list[str]:
     return demoted
 
 
+class _Lines:
+    """A report's lines, read in order, failing with UnexpectedReport at the
+    first one that isn't what's expected."""
+
+    def __init__(self, report: str) -> None:
+        self.lines = report.rstrip("\n").split("\n")
+        self.pos = 0
+
+    @property
+    def line(self) -> str | None:
+        """The current line, or None at the end of the report."""
+        return self.lines[self.pos] if self.pos < len(self.lines) else None
+
+    def fail(self, what: str) -> NoReturn:
+        found = "the end of the report" if self.line is None else repr(self.line)
+        raise UnexpectedReport(f"diff-cover report line {self.pos + 1}: expected {what}, found {found}")
+
+    def take(self, ok: bool, what: str) -> str:
+        """The current line, moving past it, if ok; otherwise fail."""
+        if not ok or self.line is None:
+            self.fail(what)
+        self.pos += 1
+        return self.lines[self.pos - 1]
+
+    def match(self, regex: re.Pattern[str]) -> re.Match[str] | None:
+        """regex's match on the current line, moving past it if it matches."""
+        m = regex.match(self.line) if self.line is not None else None
+        self.pos += m is not None
+        return m
+
+    def skip_blank(self) -> None:
+        while self.line == "":
+            self.pos += 1
+
+    def rest(self) -> list[str]:
+        return self.lines[self.pos :]
+
+
 def _reformat(report: str) -> tuple[str, list[str]]:
     """diff-cover's report as its title and the lines after it, with its file
     list and summary as tables and its headings one level deeper, so its
     sections nest under the comment's title. Raises UnexpectedReport if it
     isn't in the shape diff-cover's template writes."""
-    lines = report.rstrip("\n").split("\n")
-    pos = 0
-
-    def fail(what: str) -> NoReturn:
-        found = repr(lines[pos]) if pos < len(lines) else "the end of the report"
-        raise UnexpectedReport(f"diff-cover report line {pos + 1}: expected {what}, found {found}")
-
-    def expect(ok: bool, what: str) -> None:
-        if not ok:
-            fail(what)
-
-    def at(regex: re.Pattern[str]) -> re.Match[str] | None:
-        return regex.match(lines[pos]) if pos < len(lines) else None
-
-    def skip_blank() -> None:
-        nonlocal pos
-        while pos < len(lines) and not lines[pos]:
-            pos += 1
-
-    expect(lines[0] == "# Diff Coverage", "'# Diff Coverage'")
-    title = lines[0]
-    pos = 1
-    expect(pos < len(lines) and lines[pos].startswith("## Diff: "), "'## Diff: ...'")
-    out = ["#" + lines[pos], ""]
-    pos += 1
-    skip_blank()
-    if pos < len(lines) and lines[pos] == NO_LINES:
-        out.append(NO_LINES)
-        pos += 1
-        skip_blank()
-        expect(pos == len(lines), "nothing more")
-        return title, out
+    lines = _Lines(report)
+    title = lines.take(lines.line == "# Diff Coverage", "'# Diff Coverage'")
+    diff = lines.take((lines.line or "").startswith("## Diff: "), "'## Diff: ...'")
+    out = ["#" + diff, ""]
+    lines.skip_blank()
+    if lines.line == NO_LINES:
+        lines.pos += 1
+        lines.skip_blank()
+        if lines.line is not None:
+            lines.fail("nothing more")
+        return title, out + [NO_LINES]
     files = []
-    while m := at(_FILE_RE):
+    while m := lines.match(_FILE_RE):
         files.append(m)
-        pos += 1
-    expect(bool(files), "a file's coverage or " + repr(NO_LINES))
+    if not files:
+        lines.fail("a file's coverage or " + repr(NO_LINES))
     out += _file_table(files) + [""]
-    skip_blank()
-    expect(pos < len(lines) and lines[pos] == "## Summary", "'## Summary'")
+    lines.skip_blank()
+    lines.take(lines.line == "## Summary", "'## Summary'")
     out += ["### Summary", ""]
-    pos += 1
-    skip_blank()
+    lines.skip_blank()
     summary = []
     for name in ("Total", "Missing", "Coverage"):
-        m = at(_SUMMARY_RE)
+        m = _SUMMARY_RE.match(lines.line or "")
         if m is None or m["name"] != name:
-            fail(f"'- **{name}**: ...'")
+            lines.fail(f"'- **{name}**: ...'")
+        lines.pos += 1
         summary.append(m)
-        pos += 1
     out += _summary_table(summary)
     # The rest is each file's snippets of missing lines, kept as they are.
-    return title, out + _demote_headings(lines[pos:])
+    return title, out + _demote_headings(lines.rest())
 
 
 def _build_body(report: str, commit: str | None, run_url: str | None) -> str:
