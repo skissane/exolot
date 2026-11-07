@@ -162,7 +162,8 @@ status 2 if the repository or REF can't be fetched.
   file's `rules` or `rules-file` turn it off, or it's off by default. Other
   rules are still analyzed, but their issues aren't reported or counted in
   the exit status. A malformed rule key is an error (exit status 2), and a
-  rule the server doesn't know gets a warning, as it's likely a typo.
+  rule the server doesn't know gets a warning, as it's likely a typo (unless
+  the server can't list its rules).
 - `--statistics` prints one line per rule instead of the issues: the number of
   issues, the rule key and the rule's name, most common rule first (ties in
   rule key order), like `ruff check --statistics`. The name is left blank if

@@ -535,8 +535,8 @@ def test_cli_select_reports_only_the_selected_rules(
 def test_cli_select_takes_several_rules(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    _, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--select", "fake:S3,fake:S1", "--select", "fake:S1")
-    assert captured.out == "3\tfake:S1\tFake rule one\n"
+    _, captured = _run_statistics(tmp_path, monkeypatch, capsys, "--select", "fake:S3,fake:S1", "--select", "fake:S2")
+    assert captured.out == "5\tfake:S2\n3\tfake:S1\tFake rule one\n"
 
 
 def test_cli_select_overrides_rules_turned_off(
