@@ -22,14 +22,14 @@ integration:
 
 # Run the test suite with coverage, printing a report and writing coverage.xml and junit.xml
 coverage *args:
-    uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy {{args}}
+    uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy {{ args }}
 
 # Run coverage, then report coverage of the lines changed since base
 patch-coverage base='origin/master': coverage (diff-cover base)
 
 # Report coverage of the lines changed since base from an existing coverage.xml (extra args go to diff-cover)
 diff-cover base='origin/master' *args:
-    uv run --group dev diff-cover coverage.xml --compare-branch={{base}} --branch-coverage {{args}}
+    uv run --group dev diff-cover coverage.xml --compare-branch={{ base }} --branch-coverage {{ args }}
 
 # patch-coverage-post's arguments are a PR number and, optionally, --report
 # (default patch-coverage.md, from `just diff-cover origin/master --format
@@ -131,6 +131,14 @@ fmt:
 fmt-check:
     uv run --group dev ruff format --check .
 
+# Format justfile using just's built-in formatter
+just-fmt:
+    {{ quote(just_executable()) }} --justfile {{ quote(justfile()) }} --fmt
+
+# Check that the justfile is formatted according to just's built-in formatter
+just-fmt-check:
+    {{ quote(just_executable()) }} --justfile {{ quote(justfile()) }} --fmt --check
+
 # Type-check src, scripts and tests with mypy (strict; see pyproject.toml's [tool.mypy])
 mypy:
     uv run --group dev mypy
@@ -154,13 +162,13 @@ check-checkout-credentials:
 # Leaves out `just pyright`, a second-opinion type checker that CI deliberately doesn't run (yet).
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check mypy lint-workflows check-pins check-checkout-credentials
+check: lint fmt-check just-fmt-check mypy lint-workflows check-pins check-checkout-credentials
 
 # Formatting first fixes the long lines it can, so lint-fix stops only on
 # findings that need a hand edit.
 
 # Reformat code and autofix lint issues
-fix: fmt lint-fix
+fix: fmt just-fmt lint-fix
 
 # Leaves out CI's integration job (`just integration`), which downloads the language server.
 
