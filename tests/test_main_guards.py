@@ -72,6 +72,12 @@ def test_comment_posters(
     assert "missing.md" in capsys.readouterr().err
 
 
+def test_claude_review_request(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO("@claude review"))
+    assert run_as_main(monkeypatch, "scripts.claude_review_request") == 0
+    assert capsys.readouterr().out == "review\n"
+
+
 def test_check_attestations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
