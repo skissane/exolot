@@ -432,16 +432,6 @@ jobs:
           echo "39deb2fe714dbf74b073d8245fc7f3d50cd0eee18d5c0900e9e849ae933ae17e  $RUNNER_TEMP/gh-actions-lock" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/gh-actions-lock"
 
-      # TEMPORARY: generates actions.lock, as Claude Code sessions can't reach
-      # the GraphQL API it needs. Removed once the lockfile is committed.
-      - name: Generate actions.lock (temporary)
-        run: |
-          "$RUNNER_TEMP/gh-actions-lock" || true
-          echo "----- git diff -----"
-          git diff
-          echo "----- actions.lock -----"
-          cat .github/workflows/actions.lock || true
-
       # Fails if actions.lock is missing an action a workflow uses, or a
       # locked commit no longer verifies upstream. Rerun `gh actions-lock`
       # after changing any `uses:`.
