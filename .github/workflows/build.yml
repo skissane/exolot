@@ -43,8 +43,10 @@ jobs:
       - name: Run tests
         run: just test
 
+  # Needs actions-lock too, so that the required build check also blocks a PR
+  # whose actions.lock doesn't verify.
   build:
-    needs: test
+    needs: [test, actions-lock]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -441,7 +443,7 @@ jobs:
   # Tagging and releasing need a write-capable token, so they run in their own
   # job, only for pushes to master, and never alongside pull request code.
   release:
-    needs: [build, integration, actions-lock]
+    needs: [build, integration]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
