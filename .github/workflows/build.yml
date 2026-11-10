@@ -43,15 +43,27 @@ jobs:
       - name: Run tests
         run: just test
 
-  # Needs actions-lock too, so that the required build check also blocks a PR
-  # whose actions.lock doesn't verify.
+  # build is the required check, so it stands in for test and actions-lock
+  # too. A job skipped because a job it needs failed counts as passing for a
+  # required check, so build runs anyway (unless the run was cancelled) and
+  # fails first thing unless both succeeded.
   build:
     needs: [test, actions-lock]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
+      - name: Check that test and actions-lock succeeded
+        if: ${{ needs.test.result != 'success' || needs.actions-lock.result != 'success' }}
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          ACTIONS_LOCK_RESULT: ${{ needs.actions-lock.result }}
+        run: |
+          echo "::error::test: $TEST_RESULT, actions-lock: $ACTIONS_LOCK_RESULT"
+          exit 1
+
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
