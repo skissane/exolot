@@ -1,5 +1,6 @@
-# Workflows pin actions to commit SHAs with a version comment, which Dependabot
-# updates together. The cooldown skips releases younger than a week, so a
+# Workflows and local actions name actions by version tag, and
+# .github/workflows/actions.lock pins each to a commit; Dependabot updates both
+# together. The cooldown skips releases younger than a week, so a
 # compromised release has time to be noticed and pulled before it lands here.
 version: 2
 updates:

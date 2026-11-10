@@ -1,9 +1,9 @@
-# The correctness profile (what actionlint checks), plus the supply-chain rules
-# from the default profile: actions pinned to a commit SHA with a version
-# comment for Dependabot to update, and a Dependabot cooldown.
+# The correctness profile (what actionlint checks), plus the Dependabot rules
+# from the default profile: a cooldown on every update, and no
+# insecure-external-code-execution. unpinned-uses stays off, as actions are
+# pinned to commits by .github/workflows/actions.lock rather than in the
+# workflows themselves.
 profile: correctness
 rules:
-  unpinned-uses: error
-  missing-version-comment: error
   dependabot-cooldown: error
   dependabot-execution: error
