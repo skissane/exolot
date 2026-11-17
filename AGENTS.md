@@ -41,7 +41,6 @@ The repository checks and CI helpers come from [repoutils](https://github.com/sj
 Recipes that only check run `uv run repoutils <command>`.
 Recipes that CI runs with a write-capable token or `id-token: write` (posting PR comments and commit statuses, `check-attestations`) use the justfile's `repoutils` variable, `uv run --only-group repoutils repoutils`, which installs only repoutils, hash-checked against `uv.lock`, and doesn't build or install exolot.
 The Claude workflows' `route` jobs run `repoutils claude-route` the same way, from a sparse checkout of `pyproject.toml` and `uv.lock`.
-On PRs, the jobs that post comments and commit statuses (`post-patch-coverage`, `post-coverage-status`, `post-self-analysis`) check out the PR's base commit rather than the PR, so a PR's changes to the justfile, `pyproject.toml` or `uv.lock` don't run beside their write-capable token, and take effect only once it merges; the workflow file itself still comes from the PR, as in any `pull_request` run.
 `comment-prefix = "exolot"` keeps the PR comments' hidden markers as they were before repoutils (`<!-- exolot-patch-coverage -->`, `<!-- exolot-self-analysis -->`).
 `[tool.repoutils.secrets]` lists the secrets the workflows use; `just secrets-workflows-check` (part of `just check`) fails if a workflow starts or stops using one without it being updated, and `just variables-workflows-check` does the same for Actions variables.
 
