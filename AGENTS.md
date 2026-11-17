@@ -3,6 +3,9 @@
 Notes for AI coding agents (and humans) working on exolot.
 See `README.md` for what exolot does, how it works, and how to run the tests.
 
+This file is written one sentence per line, not wrapped at a fixed width, and `just sentence-per-line-check` (part of `just check`) enforces it.
+`README.md` is still wrapped, so the check leaves it out for now.
+
 ## Commands
 
 CI (`.github/workflows/build.yml`) calls the `justfile`'s recipes rather than running commands inline, so run `just ci` before opening a PR to run everything CI runs.
@@ -11,7 +14,10 @@ CI (`.github/workflows/build.yml`) calls the `justfile`'s recipes rather than ru
 A method that overrides one in a base class needs `@override` (mypy's `explicit-override`, pyright's `reportImplicitOverride`).
 `just pyright` type-checks the same code with pyright in strict mode (`[tool.pyright]`), as a second opinion; it isn't part of `just check`, so CI doesn't run it: it isn't yet clear that two type checkers in CI are worth it.
 It reports nothing today; running it after changing types is optional, but welcome, as it catches some things mypy doesn't.
-The `pyright` package bundles pyright itself, and its `nodeenv` dependency downloads nothing when installed: `uv sync` fetches no Node.js. Only running `just pyright` might, and only the first time on a machine with no `node` on its `PATH`, in which case it downloads Node.js into `~/.cache/pyright-python/nodeenv` and reuses it after that.
+The `pyright` package bundles pyright itself, and its `nodeenv` dependency downloads nothing when installed: `uv sync` fetches no Node.js.
+Only running `just pyright` might, and only the first time on a machine with no `node` on its `PATH`, in which case it downloads Node.js into `~/.cache/pyright-python/nodeenv` and reuses it after that.
+`just lint` (part of `just check`) runs ruff with `--no-cache` and fails on any warning ruff prints, such as an invalid `noqa` directive, as well as on its findings; ruff itself only prints its warnings, and gives them only for files it reparses.
+`just whitespace-check` (part of `just check`) fails on trailing whitespace, a leading blank line, or a missing or extra final newline in any Git-tracked text file.
 `just lint-workflows` (part of `just check`) runs `jactionlint` over the workflows and `.github/dependabot.yml`, with the rules `.github/jactionlint.yaml` turns on; it shellchecks their `run:` steps only if `shellcheck` is on your `PATH` (it is on GitHub's Ubuntu runners), and otherwise prints a note and skips them.
 Before opening a PR, also run `just patch-coverage`, which runs `just coverage` (tests with a coverage report and `coverage.xml`) and then reports which changed lines since `origin/master` the tests miss; pass another base as its first argument, e.g. `just patch-coverage origin/some-branch`.
 Cover the changed lines it reports where a test is worth it.
@@ -78,10 +84,15 @@ CI's `self-analysis` job runs exolot on its own code (`just self-analyze --exit-
 It shows the findings as annotations on the PR's diff (`--annotations`), lists them in its job summary and, on PRs from this repository other than Dependabot's, posts them as a PR comment (made with `--format github-comment`, which starts it with the policy in `pyproject.toml`'s `[tool.exolot]` `preamble`, and posted by the `post-self-analysis` job with `repoutils post-comment --hide-previous`), with the ones on lines the PR changes first; each run hides the previous run's comment as outdated.
 The findings are for information only: `--exit-zero` means findings never fail the job, though a failed analysis still does.
 
-- Judge each finding on one question: would the change it asks for make the code better (a real bug fixed, or code that's clearer, simpler or safer)? If so, make it; if not, leave it. For metric rules such as cognitive complexity (`python:S3776`), sketch the actual refactor and judge the result: how far the code is over the threshold is not a reason to fix or to ignore it. A refactor that only moves complexity into helpers that don't name a real idea, or splits code that reads best as one piece, makes the code worse, so leave that finding.
-- Pay most attention to findings on lines your PR changes. Don't widen a PR to fix findings elsewhere unless asked.
+- Judge each finding on one question: would the change it asks for make the code better (a real bug fixed, or code that's clearer, simpler or safer)?
+  If so, make it; if not, leave it.
+  For metric rules such as cognitive complexity (`python:S3776`), sketch the actual refactor and judge the result: how far the code is over the threshold is not a reason to fix or to ignore it.
+  A refactor that only moves complexity into helpers that don't name a real idea, or splits code that reads best as one piece, makes the code worse, so leave that finding.
+- Pay most attention to findings on lines your PR changes.
+  Don't widen a PR to fix findings elsewhere unless asked.
 - A finding you've chosen to ignore doesn't block a PR, and needs no reply or explanation.
-- Don't suppress an ignored finding: no `NOSONAR` or `noqa` comments, and no `--rules` file to turn rules off. The comment's list of findings is fine as it is.
+- Don't suppress an ignored finding: no `NOSONAR` or `noqa` comments, and no `--rules` file to turn rules off.
+  The comment's list of findings is fine as it is.
 
 ## Test warnings policy
 
