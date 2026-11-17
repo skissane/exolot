@@ -39,11 +39,22 @@ When you add a step to CI, add it as a recipe and include it in `check`, `fix` o
 
 The repository checks and CI helpers come from [repoutils](https://github.com/sjktools/repoutils), a dev dependency in its own `repoutils` dependency group, configured in `pyproject.toml`'s `[tool.repoutils]`; see its README for each command.
 Recipes that only check run `uv run repoutils <command>`.
-Recipes that CI runs with a write-capable token or `id-token: write` (posting PR comments and commit statuses, `check-attestations`) use the justfile's `repoutils` variable, `uv run --only-group repoutils repoutils`, which installs only repoutils, hash-checked against `uv.lock`, and doesn't build or install exolot.
+Recipes that CI runs with a write-capable token or `id-token: write` (posting PR comments and commit statuses, `check-attestations`) use the justfile's `repoutils` variable, `uv run --project <the justfile's directory> --only-group repoutils repoutils`, which installs only repoutils, hash-checked against `uv.lock`, and doesn't build or install exolot.
 The Claude workflows' `route` jobs run `repoutils claude-route` the same way, from a sparse checkout of `pyproject.toml` and `uv.lock`.
-On PRs, the jobs that post comments and commit statuses (`post-patch-coverage`, `post-coverage-status`, `post-self-analysis`) check out the PR's base commit rather than the PR, so a PR's changes to the justfile, `pyproject.toml` or `uv.lock` don't run beside their write-capable token, and take effect only once it merges; the workflow file itself still comes from the PR, as in any `pull_request` run.
+On PRs, the jobs that post comments and commit statuses (`post-patch-coverage`, `post-coverage-status`, `post-self-analysis`, `long-files`, `added-strings`) check out the PR's base commit rather than the PR, so a PR's changes to the justfile, `pyproject.toml` or `uv.lock` don't run beside their write-capable token, and take effect only once it merges; the workflow file itself still comes from the PR, as in any `pull_request` run.
+`long-files` and `added-strings` report on the PR's head, so they also check it out, into `head/`, as data only, and run the base's `[no-cd]` recipes in it with `just --justfile ../justfile`.
 `comment-prefix = "exolot"` keeps the PR comments' hidden markers as they were before repoutils (`<!-- exolot-patch-coverage -->`, `<!-- exolot-self-analysis -->`).
 `[tool.repoutils.secrets]` lists the secrets the workflows use; `just secrets-workflows-check` (part of `just check`) fails if a workflow starts or stops using one without it being updated, and `just variables-workflows-check` does the same for Actions variables.
+
+## Long files and added suppressions
+
+Two more reports are for information only, and never fail anything.
+CI's `long-files` job lists the Python files over `[tool.repoutils.long-files]`' limit of 500 lines (`just long-files`), with the ones a PR changes first.
+Split a long file only where that makes the code better, as the report's policy says; a long file that is one cohesive unit can stay as it is.
+CI's `added-strings` job lists the `NOSONAR`, `# noqa` and `# type: ignore` comments a PR adds (`just added-strings`; `[tool.repoutils.added-strings]` configures them), so the rule against suppressing findings below shows up on the PR.
+Its regexes match only a comment, not a string or test data naming one, and `tests/test_added_strings.py` checks them.
+Each job writes its report to its job summary and, on PRs from this repository other than Dependabot's, posts it as a PR comment that later runs edit in place; neither posts a first comment while it has nothing to report.
+Keep each added suppression that's actually needed, with no reply or explanation, and remove the rest.
 
 ## Releases and GitHub settings
 
