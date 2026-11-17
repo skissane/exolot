@@ -7,7 +7,7 @@ __pycache__/
 .coverage.*
 coverage.xml
 patch-coverage.md
-junit.xml
+patch-coverage.json
 .exolot-cache/
 self-analysis.json
 self-analysis.md

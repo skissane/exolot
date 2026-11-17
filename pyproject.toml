@@ -25,7 +25,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
+# Repository checks and CI helpers (see AGENTS.md). Its own group, so CI jobs
+# that hold a write-capable token can install it alone, hash-checked against
+# uv.lock, with `uv run --only-group repoutils`.
+repoutils = ["repoutils>=0.2.0"]
 dev = [
+    { include-group = "repoutils" },
     "coverage>=7.17.0",
     "diff-cover>=11.0.0",
     "jactionlint>=2.4.0",
@@ -47,6 +52,17 @@ and there's no need to suppress them with a rules file, `NOSONAR` or `noqa`. \
 See [AGENTS.md](https://github.com/skissane/exolot/blob/master/AGENTS.md) for more.
 """
 
+# Settings for repoutils' commands (see AGENTS.md). The comment prefix keeps
+# the markers the PR comments had before repoutils, e.g.
+# <!-- exolot-patch-coverage -->, so they're still found and edited.
+[tool.repoutils]
+comment-prefix = "exolot"
+default-branch = "master"
+
+# The secrets the workflows use, which `just secrets-workflows-check` checks.
+[tool.repoutils.secrets]
+actions = ["CLAUDE_CODE_OAUTH_TOKEN", "GH_ACTIONS_TOKEN"]
+
 # Refuse uv versions older than CI's, which may resolve or write uv.lock differently.
 # Keep in step with the setup-uv `version` in .github/workflows.
 [tool.uv]
@@ -60,10 +76,10 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "UP", "PLC0415", "RUF100"]
 
 [tool.mypy]
-files = ["src", "scripts", "tests"]
+files = ["src", "tests"]
 strict = true
 # Resolve `exolot` to src rather than the editable install, which has no py.typed
-# (so mypy would treat it as untyped), and `scripts`/`tests` from the repo root.
+# (so mypy would treat it as untyped), and `tests` from the repo root.
 mypy_path = "src"
 explicit_package_bases = true
 # Beyond --strict, to come closer to pyright's strict mode (see [tool.pyright]):
@@ -94,14 +110,14 @@ enable_error_code = [
 module = ["tests.*"]
 disallow_any_decorated = false
 
-# The repo root, so tests can import the stdlib-only CI scripts in scripts/.
+# The repo root, so tests can import each other as tests.<module>.
 [tool.pytest.ini_options]
 pythonpath = ["."]
 filterwarnings = ["error"]
 addopts = "-n auto"
 
 [tool.coverage.run]
-source = ["exolot", "scripts"]
+source = ["exolot"]
 branch = true
 
 [tool.coverage.report]

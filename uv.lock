@@ -280,8 +280,12 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-xdist" },
+    { name = "repoutils" },
     { name = "ruff" },
     { name = "types-jsonschema" },
+]
+repoutils = [
+    { name = "repoutils" },
 ]
 
 [package.metadata]
@@ -297,9 +301,11 @@ dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "repoutils", specifier = ">=0.2.0" },
     { name = "ruff", specifier = ">=0.14" },
     { name = "types-jsonschema", specifier = ">=4.26.0.20261006" },
 ]
+repoutils = [{ name = "repoutils", specifier = ">=0.2.0" }]
 
 [[package]]
 name = "iniconfig"
@@ -752,6 +758,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz", hash = "sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8", size = 78036, upload-time = "2025-10-13T15:30:48.871Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/58/ca301544e1fa93ed4f80d724bf5b194f6e4b945841c5bfd555878eea9fcb/referencing-0.37.0-py3-none-any.whl", hash = "sha256:381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231", size = 26766, upload-time = "2025-10-13T15:30:47.625Z" },
+]
+
+[[package]]
+name = "repoutils"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dd/d2/c2215a82ba9ca74616ab5a422fba238f740d4d8b7e893f7529be61e15c95/repoutils-0.2.0.tar.gz", hash = "sha256:c4ccfe5172df4aa3a991b87099a8200a02b707dde13cc1e7e71bcaa493c2c486", size = 315439, upload-time = "2026-11-17T10:55:21.136Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/34/f7/6dca3976a5d1d906a87533756e0739b12efec6c0e867aff9cc24b3ae8479/repoutils-0.2.0-py3-none-any.whl", hash = "sha256:3d78fd3e4c6c5c4864d77299874509b0c6e2ff5b818898dc7db7a8be13c1b588", size = 170556, upload-time = "2026-11-17T10:55:19.564Z" },
 ]
 
 [[package]]

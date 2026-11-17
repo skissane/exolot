@@ -1,5 +1,11 @@
 set minimum-version := '1.58.0'
 
+# Runs repoutils (see AGENTS.md) with nothing else installed, for recipes CI
+# runs with a write-capable token: --only-group installs only the repoutils
+# group, checking its hashes against uv.lock, and doesn't build or install
+# exolot, whose build backend would otherwise run alongside the token.
+repoutils := "uv run --only-group repoutils repoutils"
+
 # List available recipes
 default:
     @just --list
@@ -20,9 +26,9 @@ test:
 integration:
     EXOLOT_INTEGRATION=1 uv run --group dev pytest -q tests/test_integration.py
 
-# Run the test suite with coverage, printing a report and writing coverage.xml and junit.xml
+# Run the test suite with coverage, printing a report and writing coverage.xml
 coverage *args:
-    uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml --junitxml=junit.xml -o junit_family=legacy {{ args }}
+    uv run --group dev pytest -q --cov --cov-report=term-missing --cov-report=xml {{ args }}
 
 # Run coverage, then report coverage of the lines changed since base
 patch-coverage base='origin/master': coverage (diff-cover base)
@@ -31,27 +37,23 @@ patch-coverage base='origin/master': coverage (diff-cover base)
 diff-cover base='origin/master' *args:
     uv run --group dev diff-cover coverage.xml --compare-branch={{ base }} --branch-coverage {{ args }}
 
-# patch-coverage-post's arguments are a PR number and, optionally, --report
-# (default patch-coverage.md, from `just diff-cover origin/master --format
-# markdown:patch-coverage.md`), --commit and --run-url (see --help for the
-# rest). It comments with $GITHUB_TOKEN (default `gh auth token`, so locally it
-# posts as you), posts nothing unless --commit is still the PR's head, and edits
-# its previous comment rather than posting another. --no-project, as it needs
-# only the standard library: CI runs it with a write-capable token, and nothing
-# should be installed alongside that.
+# The posting recipes run with a write-capable token in CI, so they use the
+# repoutils variable above, installing nothing else.
 
-# Post a patch coverage report to a PR as a comment, or update the existing one
+# Post a patch coverage report (default patch-coverage.md) to a PR as a comment, or update the existing one (--output <file> writes it there instead)
 [positional-arguments]
 patch-coverage-post *args:
-    uv run --no-project python -m scripts.post_patch_coverage "$@"
+    {{ repoutils }} post-patch-coverage "$@"
 
-# CI's coverage job runs this on PRs before uploading to Codecov; it never fails,
-# only warns. --no-project, like patch-coverage-post, as it runs with a token.
+# Post the coverage in coverage.xml (and --patch-report) as commit statuses on a commit (argument: its SHA)
+[positional-arguments]
+coverage-status-post *args:
+    {{ repoutils }} post-coverage-status "$@"
 
-# Wait (up to 10 minutes) for Codecov to have a PR base commit's coverage: arguments are owner/repo and the base SHA
+# Wait (up to 10 minutes) for a PR base commit's coverage/project status: arguments are owner/repo and the base SHA
 [positional-arguments]
 wait-for-base-coverage *args:
-    uv run --no-project python -m scripts.wait_for_base_coverage "$@"
+    {{ repoutils }} wait-for-base-coverage "$@"
 
 # Run exolot on its own code; extra args go to exolot, e.g. --exit-zero. Like
 # `just integration`, it downloads the language server (about 250 MB) on first
@@ -62,26 +64,23 @@ wait-for-base-coverage *args:
 self-analyze *args:
     uv run exolot "$@"
 
-# --no-project, like patch-coverage-post, as CI runs it with a write-capable
-# token; the script uses only the stdlib, so the project isn't installed.
-
 # Post a `just self-analyze --format github-comment` report to a PR, hiding the ones posted before: arguments are the PR number and the report
 [positional-arguments]
 self-analysis-post *args:
-    uv run --no-project python -m scripts.self_analysis "$@"
+    {{ repoutils }} post-comment --name self-analysis --hide-previous "$@"
 
 # Build the sdist and wheel into dist/
 build:
     uv build
 
 # The publish jobs run this between attest-action and uv publish, which would
-# otherwise upload a file without its attestation. --no-project, like
-# patch-coverage-post, as they run it with id-token: write.
+# otherwise upload a file without its attestation. It installs nothing else, as
+# they run it with id-token: write.
 
 # Check that every distribution in dist/ (or the directory given) has a PEP 740 publish attestation
 [positional-arguments]
 check-attestations dist="dist":
-    uv run --no-project python -m scripts.check_attestations "$1"
+    {{ repoutils }} check-attestations "$1"
 
 # Install the wheel `just build` built into a fresh environment and check that it runs
 smoke:
@@ -139,11 +138,11 @@ just-fmt:
 just-fmt-check:
     {{ quote(just_executable()) }} --justfile {{ quote(justfile()) }} --fmt --check
 
-# Type-check src, scripts and tests with mypy (strict; see pyproject.toml's [tool.mypy])
+# Type-check src and tests with mypy (strict; see pyproject.toml's [tool.mypy])
 mypy:
     uv run --group dev mypy
 
-# Type-check src, scripts and tests with pyright (strict; see pyproject.toml's [tool.pyright])
+# Type-check src and tests with pyright (strict; see pyproject.toml's [tool.pyright])
 pyright:
     uv run --group dev pyright
 
@@ -153,16 +152,24 @@ lint-workflows:
 
 # Check that every workflow and local action installs the uv version pyproject.toml requires and the just version the justfile requires
 check-pins:
-    uv run --no-project python -m scripts.check_pins
+    uv run repoutils check-pins
 
 # Check that every actions/checkout step sets persist-credentials, so none keeps its token by default
 check-checkout-credentials:
-    uv run --no-project python -m scripts.check_checkout_credentials
+    uv run repoutils check-checkout-credentials
+
+# Check that the workflows use exactly the secrets pyproject.toml lists
+secrets-workflows-check:
+    uv run repoutils secrets check-workflows
+
+# Check that the workflows use exactly the variables pyproject.toml lists
+variables-workflows-check:
+    uv run repoutils variables check-workflows
 
 # Leaves out `just pyright`, a second-opinion type checker that CI deliberately doesn't run (yet).
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check just-fmt-check mypy lint-workflows check-pins check-checkout-credentials
+check: lint fmt-check just-fmt-check mypy lint-workflows check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check
 
 # Formatting first fixes the long lines it can, so lint-fix stops only on
 # findings that need a hand edit.
