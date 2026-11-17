@@ -26,6 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
+      # For the sparse checkout the failure report needs.
+      contents: read
       pull-requests: write
     # The waits for PR Fixes and PR Fixes Push give up before this, so the report
     # still runs: a job that times out is cancelled, and runs no failure() steps.
