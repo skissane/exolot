@@ -212,6 +212,10 @@ github-settings-check *args:
 github-settings-ensure *args:
     uv run repoutils github-settings ensure {{ args }}
 
+# Run the Inspect Secrets workflow on master and print what it found about each secret (token types, owners, expiry); needs a token with Actions write access
+inspect-secrets *args:
+    uv run repoutils secrets inspect-remote {{ args }}
+
 # Leaves out `just pyright`, a second-opinion type checker that CI deliberately doesn't run (yet).
 
 # Run all checks, without fixing anything or running tests
