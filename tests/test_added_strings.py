@@ -20,6 +20,7 @@ NOT_COMMENTS = [
     "x = '# {}'",
     'x = "a \\" # {}"',
     '"""Docs that mention # {}."""',
+    "x = '''It's # {}, quoted'''",
     "x = 1  # see {} docs",
 ]
 
@@ -32,6 +33,7 @@ NOT_COMMENTS = [
         "x = 1  # nosonar",
         'x = "a#b"  # NOSONAR',
         "x = 1  # type: ignore # NOSONAR",
+        "x = '''it's'''  # NOSONAR",
     ],
 )
 def test_nosonar_matches(line: str) -> None:
@@ -53,6 +55,8 @@ def test_nosonar_does_not_match(line: str) -> None:
         "x = 'it\\'s'  # noqa: E501",
         'x = f"{y}" + "z"  # noqa: E501',
         "import x  # type: ignore # noqa: F401",
+        'x = """Don\'t document this"""  # noqa: E501',
+        'x = """a\'b"c"""  # noqa: E501',
     ],
 )
 def test_noqa_matches(line: str) -> None:
@@ -71,6 +75,7 @@ def test_noqa_does_not_match(line: str) -> None:
         "x: int = f()  # type: ignore[assignment]",
         "x: int = f()  #type:ignore",
         "x: int = f()  # noqa: E501 # type: ignore",
+        'x: str = """say "hi" there"""  # type: ignore',
     ],
 )
 def test_type_ignore_matches(line: str) -> None:
