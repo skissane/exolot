@@ -43,11 +43,14 @@ jobs:
       - name: Run tests
         run: just test
 
-  # build is the required check, so it stands in for test and actions-lock
-  # too. A job skipped because a job it needs failed counts as passing for a
-  # required check, so build runs anyway (unless the run was cancelled) and
-  # fails first thing unless both succeeded.
+  # check-and-build is the required check, so it stands in for test and
+  # actions-lock too. A job skipped because a job it needs failed counts as
+  # passing for a required check, so it runs anyway (unless the run was
+  # cancelled) and fails first thing unless both succeeded.
   build:
+    # Named apart from attestations.yml's build job, as master's ruleset
+    # requires this check by name (see pyproject.toml).
+    name: check-and-build
     needs: [test, actions-lock]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -542,48 +545,69 @@ jobs:
 
   # Tagging and releasing need a write-capable token, so they run in their own
   # job, only for pushes to master, and never alongside pull request code.
+  # Only a deploy key can create a v* tag (the release-tags-create ruleset), and
+  # its private half is RELEASE_DEPLOY_KEY in the release environment, which
+  # only master can deploy to. So no repository secret, and no workflow run from
+  # another branch, can tag a release. A deploy key's push triggers workflows,
+  # so the tag push still starts publish-pypi.yml.
   release:
     needs: [build, integration]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
+    environment: release
     permissions:
+      # For the GitHub release, as the deploy key pushes the tag.
       contents: write
 
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          token: ${{ secrets.GH_ACTIONS_TOKEN }}
-          # The tag push below uses the stored token.
-          persist-credentials: true
+          persist-credentials: false
           fetch-depth: 0
           fetch-tags: true
 
       # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      # No cache, so nothing a cache entry holds runs alongside the deploy key.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.6"
+          enable-cache: false
 
-      - name: Tag and release version
+      - name: Tag version
         run: |
           VERSION="$(uv version --short)"
           TAG="v${VERSION}"
           if git rev-parse "${TAG}" >/dev/null 2>&1; then
             echo "Tag ${TAG} already exists"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag -a "${TAG}" -m "Release ${TAG}"
-            git push origin "${TAG}"
-            echo "Created and pushed tag ${TAG}"
+            exit 0
           fi
-          # Checked separately so a rerun creates the release if an earlier run
-          # pushed the tag but failed to create it.
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          # The key goes to an ssh-agent and never to a file. github.com's
+          # host key is GitHub's published Ed25519 key, so ssh trusts nothing else.
+          eval "$(ssh-agent -s)" >/dev/null
+          trap 'ssh-agent -k >/dev/null' EXIT
+          ssh-add - <<<"${RELEASE_DEPLOY_KEY}"
+          KNOWN_HOSTS="${RUNNER_TEMP}/known_hosts"
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" >"${KNOWN_HOSTS}"
+          export GIT_SSH_COMMAND="ssh -o UserKnownHostsFile=${KNOWN_HOSTS} -o StrictHostKeyChecking=yes -o HostKeyAlgorithms=ssh-ed25519"
+          git push "git@github.com:${GITHUB_REPOSITORY}.git" "refs/tags/${TAG}"
+          echo "Created and pushed tag ${TAG}"
+        env:
+          RELEASE_DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+
+      # Separate from the tag, so a rerun creates the release if an earlier run
+      # pushed the tag but failed to create it.
+      - name: Create GitHub release
+        run: |
+          TAG="v$(uv version --short)"
           if gh release view "${TAG}" >/dev/null 2>&1; then
             echo "Release ${TAG} already exists"
           else
-            gh release create "${TAG}" --title "Release ${TAG}" --generate-notes
+            gh release create "${TAG}" --verify-tag --title "Release ${TAG}" --generate-notes
             echo "Created GitHub release ${TAG}"
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_ACTIONS_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}

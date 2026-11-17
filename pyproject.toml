@@ -59,9 +59,209 @@ See [AGENTS.md](https://github.com/skissane/exolot/blob/master/AGENTS.md) for mo
 comment-prefix = "exolot"
 default-branch = "master"
 
-# The secrets the workflows use, which `just secrets-workflows-check` checks.
+# The secrets the workflows use, which `just secrets-workflows-check` checks,
+# and `just github-settings-check` checks the repository has.
 [tool.repoutils.secrets]
-actions = ["CLAUDE_CODE_OAUTH_TOKEN", "GH_ACTIONS_TOKEN"]
+actions = ["CLAUDE_CODE_OAUTH_TOKEN"]
+# Only master's workflows can reach these: build.yml's release job pushes v*
+# tags with the deploy key, and bump-version.yml uses GH_ACTIONS_TOKEN.
+environments.release = ["GH_ACTIONS_TOKEN", "RELEASE_DEPLOY_KEY"]
+
+# The GitHub settings below are what `just github-settings-check` checks and
+# `just github-settings-ensure` applies (see AGENTS.md's Releases section).
+# Both need a token with administration access, which CI doesn't have.
+
+# The repository settings `repoutils repo-settings` checks or changes.
+[tool.repoutils.repo-settings]
+issues = true
+projects = true
+wiki = true
+discussions = false
+pull-requests = true
+pull-request-creation = "collaborators"
+merge-commit = { allow = false }
+squash-merge = { allow = true, title = "pr-title", message = "blank" }
+rebase-merge = { allow = false }
+allow-auto-merge = true
+allow-update-branch = true
+delete-branch-on-merge = true
+require-web-commit-signoff = false
+
+# The security settings `repoutils security-settings` checks or changes.
+# Immutable releases stop a published release's assets and tag from changing,
+# alongside the v* tag rulesets.
+[tool.repoutils.security-settings]
+private-vulnerability-reporting = false
+dependabot-security-updates = false
+codeql-default-setup = false
+secret-protection = true
+push-protection = true
+immutable-releases = true
+
+# The deployment environments `repoutils environments` checks or creates.
+# Only master can deploy to release, which holds the secrets that can tag a
+# release or push a branch (build.yml's release job and bump-version.yml), so a
+# branch's own copy of a workflow can't read them.
+[tool.repoutils.environments.release]
+deployment-branches = "selected"
+allowed-branches = ["master"]
+allowed-tags = []
+
+# publish-pypi.yml's environments. Only a v* tag (a release) may deploy to
+# pypi, and only once Simon approves, so a run of a PR branch's copy of the
+# workflow (which /testpypi dispatches) can't publish to PyPI through trusted
+# publishing; testpypi stays open for /testpypi.
+[tool.repoutils.environments.pypi]
+deployment-branches = "selected"
+allowed-branches = []
+allowed-tags = ["v*"]
+reviewers = ["skissane"]
+prevent-self-review = false
+can-admins-bypass = false
+
+[tool.repoutils.environments.testpypi]
+deployment-branches = "all"
+
+# The deploy keys `repoutils deploy-keys` checks or creates. build.yml's
+# release job pushes v* tags with release's private half, which only the
+# release environment holds; the release-tags-create ruleset lets only deploy
+# keys create a v* tag, so this must stay the only write-capable one.
+[tool.repoutils.deploy-keys.release]
+write = true
+secret = { environment = "release", name = "RELEASE_DEPLOY_KEY" }
+
+# The rulesets `repoutils rulesets` checks or creates, each giving only what
+# differs from a new ruleset's defaults. master changes only by a squash-merged
+# PR whose check-and-build passed, which stands in for the rest of build.yml's
+# gating jobs (it isn't named build, as attestations.yml has a build job).
+[tool.repoutils.rulesets.main]
+include = ["~DEFAULT_BRANCH"]
+
+[tool.repoutils.rulesets.main.rules]
+deletion = true
+non-fast-forward = true
+
+[tool.repoutils.rulesets.main.rules.pull-request]
+allowed-merge-methods = ["squash"]
+
+[tool.repoutils.rulesets.main.rules.required-status-checks]
+# "Require branches to be up to date before merging", so a PR's checks ran against what it merges into.
+strict-required-status-checks-policy = true
+required-status-checks = [
+    { context = "check-and-build", app = "github-actions" },
+]
+
+# Release tags. Nobody can move or delete a v* tag, admins included: a faulty
+# release is fixed by a new one. Only deploy keys can create one, which is how
+# build.yml's release job tags a release. They're two rulesets because a
+# bypass covers every rule in its ruleset.
+[tool.repoutils.rulesets.release-tags-immutable]
+target = "tag"
+include = ["v*"]
+
+[tool.repoutils.rulesets.release-tags-immutable.rules]
+update = true
+deletion = true
+
+[tool.repoutils.rulesets.release-tags-create]
+target = "tag"
+include = ["v*"]
+bypass = [{ deploy-keys = true }]
+
+[tool.repoutils.rulesets.release-tags-create.rules]
+creation = true
+
+# The issue and PR labels `repoutils labels` checks or creates (see AGENTS.md's
+# Issue labels); .github/dependabot.yml applies two.
+[[tool.repoutils.labels]]
+name = "type:bug"
+color = "d73a4a"
+description = "Something behaves wrongly"
+
+[[tool.repoutils.labels]]
+name = "type:feature"
+color = "0e5a8a"
+description = "New capability"
+
+[[tool.repoutils.labels]]
+name = "type:improvement"
+color = "1d76db"
+description = "Makes something that already works better"
+
+[[tool.repoutils.labels]]
+name = "type:maintenance"
+color = "5319e7"
+description = "Refactors, dead code, CI, dependencies; no visible change"
+
+[[tool.repoutils.labels]]
+name = "type:docs"
+color = "0075ca"
+description = "Documentation only"
+
+[[tool.repoutils.labels]]
+name = "priority:p0"
+color = "b60205"
+description = "Drop everything: a release is broken or reports wrong results"
+
+[[tool.repoutils.labels]]
+name = "priority:p1"
+color = "e99695"
+description = "Do next"
+
+[[tool.repoutils.labels]]
+name = "priority:p2"
+color = "f9d0c4"
+description = "Worth doing when convenient"
+
+[[tool.repoutils.labels]]
+name = "priority:p3"
+color = "ededed"
+description = "Someday/maybe"
+
+[[tool.repoutils.labels]]
+name = "size:s"
+color = "c2e0c6"
+description = "One small PR"
+
+[[tool.repoutils.labels]]
+name = "size:m"
+color = "7fd18b"
+description = "One PR that needs some design"
+
+[[tool.repoutils.labels]]
+name = "size:l"
+color = "0e8a16"
+description = "Several PRs: should become a parent issue with sub-issues"
+
+[[tool.repoutils.labels]]
+name = "concern:security"
+color = "fbca04"
+description = "Security risk or hardening"
+
+[[tool.repoutils.labels]]
+name = "concern:upstream"
+color = "c5def5"
+description = "Depends on SonarSource VSIX or language server behaviour"
+
+[[tool.repoutils.labels]]
+name = "concern:platform"
+color = "bfd4f2"
+description = "Specific to an OS or architecture"
+
+[[tool.repoutils.labels]]
+name = "concern:breaking"
+color = "e4a11b"
+description = "Changes CLI flags, output or exit codes that scripts rely on"
+
+[[tool.repoutils.labels]]
+name = "question"
+color = "d876e3"
+description = "Further information is requested"
+
+[[tool.repoutils.labels]]
+name = "dependencies"
+color = "0366d6"
+description = "Dependabot's dependency updates"
 
 # Refuse uv versions older than CI's, which may resolve or write uv.lock differently.
 # Keep in step with the setup-uv `version` in .github/workflows.

@@ -166,6 +166,14 @@ secrets-workflows-check:
 variables-workflows-check:
     uv run repoutils variables check-workflows
 
+# Check the GitHub settings pyproject.toml declares (labels, repository and security settings, rulesets, environments, secrets, deploy keys); needs an admin token, so CI doesn't run it
+github-settings-check *args:
+    uv run repoutils github-settings check {{ args }}
+
+# Apply the GitHub settings pyproject.toml declares, creating what's missing; needs an admin token
+github-settings-ensure *args:
+    uv run repoutils github-settings ensure {{ args }}
+
 # Leaves out `just pyright`, a second-opinion type checker that CI deliberately doesn't run (yet).
 
 # Run all checks, without fixing anything or running tests

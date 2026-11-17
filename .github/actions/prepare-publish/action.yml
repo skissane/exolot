@@ -17,10 +17,12 @@ runs:
   using: composite
   steps:
     # Keep version in step with pyproject.toml's [tool.uv] required-version.
+    # No cache, so nothing a cache entry holds can reach what this publishes.
     - name: Install uv
       uses: astral-sh/setup-uv@v10.3.3
       with:
         version: "0.13.6"
+        enable-cache: false
 
     # Keep just-version in step with the justfile's minimum-version.
     - name: Install just
