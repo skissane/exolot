@@ -59,6 +59,11 @@ See [AGENTS.md](https://github.com/skissane/exolot/blob/master/AGENTS.md) for mo
 comment-prefix = "exolot"
 default-branch = "master"
 
+# The Markdown files `just sentence-per-line-check` keeps one sentence per line.
+# README.md is left out until it's reflowed from its fixed-width wrapping.
+[tool.repoutils.sentence-per-line]
+files = ["AGENTS.md"]
+
 # The files `just long-files` lists as over the line limit (see AGENTS.md).
 [tool.repoutils.long-files]
 include = ["*.py"]

@@ -131,9 +131,22 @@ check-release version index="https://pypi.org/simple/":
     echo "exolot $1 did not install from $2 and run" >&2
     exit 1
 
-# Lint with ruff
+# Lint with ruff, failing on any warning too, as ruff only warns about such
+# things as an invalid noqa directive. --no-cache, as ruff gives those only for
+# files it reparses. uv's --quiet keeps uv's own warnings out of the check.
 lint:
-    uv run --group dev ruff check .
+    #!/usr/bin/env bash
+    set -euo pipefail
+    stderr="$(mktemp)"
+    trap 'rm -f "$stderr"' EXIT
+    status=0
+    uv run --quiet --group dev ruff check --no-cache . 2>"$stderr" || status=$?
+    cat "$stderr" >&2
+    if grep -q '^warning:' "$stderr"; then
+        echo 'ruff gave a warning (see above)' >&2
+        exit 1
+    fi
+    exit "$status"
 
 # Lint with ruff, applying its autofixes
 lint-fix:
@@ -167,6 +180,14 @@ pyright:
 lint-workflows:
     uv run --group dev jactionlint
 
+# Check Git-tracked text files for trailing whitespace and bad newlines
+whitespace-check:
+    uv run repoutils check-whitespace
+
+# Check the Markdown files pyproject.toml lists stay one sentence per line
+sentence-per-line-check:
+    uv run repoutils check-sentence-per-line
+
 # Check that every workflow and local action installs the uv version pyproject.toml requires and the just version the justfile requires
 check-pins:
     uv run repoutils check-pins
@@ -194,7 +215,7 @@ github-settings-ensure *args:
 # Leaves out `just pyright`, a second-opinion type checker that CI deliberately doesn't run (yet).
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check just-fmt-check mypy lint-workflows check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check
+check: lint fmt-check just-fmt-check mypy lint-workflows whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check
 
 # Formatting first fixes the long lines it can, so lint-fix stops only on
 # findings that need a hand edit.
