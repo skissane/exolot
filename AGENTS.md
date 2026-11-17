@@ -48,12 +48,13 @@ On PRs, the jobs that post comments and commit statuses (`post-patch-coverage`, 
 
 ## Long files and added suppressions
 
-Two more reports are for information only, and never fail anything.
-CI's `long-files` job lists the Python files over `[tool.repoutils.long-files]`' limit of 500 lines (`just long-files`), with the ones a PR changes first.
+Two more reports are for information only: what they find never fails anything, though an error running one (a bad setting, a failed git command or GitHub request) still does.
+`just long-files` lists the Python files over `[tool.repoutils.long-files]`' limit of 500 lines, with the ones changed since `origin/master` first.
 Split a long file only where that makes the code better, as the report's policy says; a long file that is one cohesive unit can stay as it is.
-CI's `added-strings` job lists the `NOSONAR`, `# noqa` and `# type: ignore` comments a PR adds (`just added-strings`; `[tool.repoutils.added-strings]` configures them), so the rule against suppressing findings below shows up on the PR.
+`just added-strings` lists the `NOSONAR`, `# noqa` and `# type: ignore` comments added since `origin/master` (`[tool.repoutils.added-strings]` configures them), so the rule against suppressing findings below is easy to check.
 Its regexes match only a comment, not a string or test data naming one, and `tests/test_added_strings.py` checks them.
-Each job writes its report to its job summary and, on PRs from this repository other than Dependabot's, posts it as a PR comment that later runs edit in place; neither posts a first comment while it has nothing to report.
+Both recipes are `[no-cd]`, reporting on the working tree they're run in, and both take `--post <PR>` to post the report as a PR comment that later runs edit in place.
+CI's `long-files` job (on PRs and `master`) and `added-strings` job (on PRs) write their reports to the job summary and, on PRs from this repository other than Dependabot's, post them as PR comments; neither posts a first comment while it has nothing to report.
 Keep each added suppression that's actually needed, with no reply or explanation, and remove the rest.
 
 ## Releases and GitHub settings
