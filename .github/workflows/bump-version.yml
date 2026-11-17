@@ -16,6 +16,9 @@ on:
 jobs:
   bump-version:
     runs-on: ubuntu-latest
+    # GH_ACTIONS_TOKEN is in the release environment, which only master can
+    # deploy to, so run this workflow from master.
+    environment: release
     permissions:
       contents: write
       pull-requests: write
@@ -31,10 +34,12 @@ jobs:
 
 
       # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      # No cache, so nothing a cache entry holds runs alongside GH_ACTIONS_TOKEN.
       - name: Install uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.6"
+          enable-cache: false
 
       - name: Bump version
         run: uv version --bump=${{ github.event.inputs.bump }}
