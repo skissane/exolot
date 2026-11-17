@@ -76,6 +76,7 @@ jobs:
         env:
           REF: ${{ steps.pr.outputs.ref }}
         run: |
+          trap 'mkdir -p "$RUNNER_TEMP/step-summaries" && cp "$GITHUB_STEP_SUMMARY" "$RUNNER_TEMP/step-summaries/dispatch.md"' EXIT
           # return_run_details makes the API answer with the new run's URL
           # rather than an empty 204.
           response="$(gh api -X POST "repos/${GH_REPO}/actions/workflows/publish-pypi.yml/dispatches" \
@@ -110,3 +111,13 @@ jobs:
               echo "::warning::Couldn't reply with the run's link."
             fi
           fi
+
+      # GitHub's API doesn't serve step summaries, so each step that writes one
+      # copies it to step-summaries/ for this artifact (see AGENTS.md).
+      - name: Upload the step summaries
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: step-summaries-${{ github.job }}
+          path: ${{ runner.temp }}/step-summaries/
+          if-no-files-found: ignore

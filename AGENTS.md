@@ -40,6 +40,12 @@ The `actions-lock` job runs `gh actions-lock --verify` (with `GITHUB_TOKEN`, `co
 It downloads v0.4.1's `linux-amd64` release binary and checks its SHA-256 before running it standalone, rather than `gh extension install --pin`, which takes only a release tag for a precompiled extension; to upgrade it, change the version in the URL, the hash, and the `--pin` version in the install command above together.
 Dependabot bumps the actions weekly, with a 7-day cooldown, and regenerates the lockfile entries in the same PR.
 When you add a step to CI, add it as a recipe and include it in `check`, `fix` or `ci` as fits, so `just ci` keeps matching CI.
+GitHub's API doesn't serve step summaries, so every job that writes one also uploads it as an artifact, which `gh run download <run> --pattern 'step-summaries-*'` fetches.
+A step that writes to `$GITHUB_STEP_SUMMARY`, itself or through a command such as `just patch-coverage-post`, starts with a `trap` that copies that file to `$RUNNER_TEMP/step-summaries/<name>.md` when the step exits.
+The trap copies it even when the step fails, so a failed step's summary is kept as well.
+The job's last step, `Upload the step summaries`, uploads that directory as the artifact `step-summaries-${{ github.job }}`, with `if: always()` and `if-no-files-found: ignore`.
+Copy both from an existing job, such as `long-files` in `build.yml`.
+A matrix job adds its matrix values to the artifact's name, as each artifact in a run needs its own name.
 
 ## repoutils
 
