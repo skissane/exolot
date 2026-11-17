@@ -23,10 +23,12 @@ workflows:
         - 'astral-sh/setup-uv@v10.3.3'
     '.github/workflows/claude-code-review.yml':
         - 'actions/checkout@v7.0.1'
+        - 'actions/upload-artifact@v7.0.2'
         - 'anthropics/claude-code-action@v1.0.269'
         - 'astral-sh/setup-uv@v10.3.3'
     '.github/workflows/claude.yml':
         - 'actions/checkout@v7.0.1'
+        - 'actions/upload-artifact@v7.0.2'
         - 'anthropics/claude-code-action@v1.0.269'
         - 'astral-sh/setup-uv@v10.3.3'
     '.github/workflows/publish-pypi.yml':
@@ -36,7 +38,8 @@ workflows:
         - 'astral-sh/attest-action@v0.0.7'
         - 'astral-sh/setup-uv@v10.3.3'
         - 'extractions/setup-just@v4.0.0'
-    '.github/workflows/testpypi-comment.yml': []
+    '.github/workflows/testpypi-comment.yml':
+        - 'actions/upload-artifact@v7.0.2'
 dependencies:
     'actions/cache@v6.1.0':
         ref: 'v6.1.0'
