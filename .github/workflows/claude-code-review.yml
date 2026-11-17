@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   # Decides whether the comment or review asks for "@claude review" (it must
-  # start with it), by the rule in scripts/claude_review_request.py, which
+  # start with it), by the rule in `repoutils claude-route`, which
   # claude.yml shares, so each request goes to exactly one of the two workflows.
   # Workflow expressions have no regex, hence a job. On a self-test it runs too,
   # with no text, so the self-test covers it.
@@ -55,19 +55,29 @@ jobs:
     outputs:
       kind: ${{ steps.route.outputs.kind }}
     steps:
-      - name: Checkout the routing script
+      # Only what `uv run --only-group repoutils` needs: it installs just
+      # repoutils, hash-checked against uv.lock, and not exolot.
+      - name: Checkout pyproject.toml and uv.lock
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: scripts/claude_review_request.py
+          sparse-checkout: |
+            pyproject.toml
+            uv.lock
           sparse-checkout-cone-mode: false
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.6"
 
       - name: Route
         id: route
         env:
           TEXT: ${{ github.event.comment.body || github.event.review.body }}
         run: |
-          kind=$(printf '%s' "$TEXT" | python3 scripts/claude_review_request.py)
+          kind=$(printf '%s' "$TEXT" | uv run --only-group repoutils repoutils claude-route)
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
 
   claude-review:

@@ -20,7 +20,8 @@ on:
       - .github/workflows/publish-*.yml
       - pyproject.toml
       - justfile
-      - scripts/check_attestations.py
+      # Where the check-attestations command comes from (repoutils).
+      - uv.lock
   workflow_dispatch:
 
 # A new push to the PR cancels the run for the one before, so a superseded
