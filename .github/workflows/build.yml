@@ -280,8 +280,9 @@ jobs:
 
     steps:
       # The base commit's justfile, pyproject.toml and uv.lock, not the PR's,
-      # so a PR can't change what runs beside this job's write-capable token.
-      # (A PR's own changes to them take effect once it merges.)
+      # so a PR's changes to those files don't run beside this job's
+      # write-capable token (they take effect once it merges). The workflow
+      # file itself still comes from the PR, as in any pull_request run.
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
@@ -344,9 +345,9 @@ jobs:
 
     steps:
       # On a PR, the base commit's justfile, pyproject.toml and uv.lock, not
-      # the PR's, so a PR can't change what runs beside this job's
-      # write-capable token. On master, the commit itself, two commits deep
-      # for its parent.
+      # the PR's, so a PR's changes to those files don't run beside this job's
+      # write-capable token (the workflow file itself still comes from the
+      # PR). On master, the commit itself, two commits deep for its parent.
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
@@ -476,8 +477,9 @@ jobs:
 
     steps:
       # The base commit's justfile, pyproject.toml and uv.lock, not the PR's,
-      # so a PR can't change what runs beside this job's write-capable token.
-      # (A PR's own changes to them take effect once it merges.)
+      # so a PR's changes to those files don't run beside this job's
+      # write-capable token (they take effect once it merges). The workflow
+      # file itself still comes from the PR, as in any pull_request run.
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
