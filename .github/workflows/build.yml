@@ -262,8 +262,9 @@ jobs:
   # Only for PRs from this repo: on a fork's or Dependabot's PR, GITHUB_TOKEN
   # is read-only. Queued per PR, and posts only if HEAD_SHA is still the PR's
   # head, so an older commit's run that finishes last can't overwrite a newer
-  # report. Needs no secrets, and installs nothing but repoutils alongside its
-  # token (`uv run --only-group repoutils`).
+  # report. Needs no secrets, runs the base commit's justfile rather than the
+  # PR's, and installs nothing but repoutils alongside its token
+  # (`uv run --only-group repoutils`).
   post-patch-coverage:
     needs: coverage
     if: ${{ !cancelled() && needs.coverage.outputs.patch-report == 'success' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
@@ -278,9 +279,13 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      # The base commit's justfile, pyproject.toml and uv.lock, not the PR's,
+      # so a PR can't change what runs beside this job's write-capable token.
+      # (A PR's own changes to them take effect once it merges.)
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
 
       # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
@@ -327,7 +332,8 @@ jobs:
   # coverage that PRs compare with. Only where GITHUB_TOKEN can post them, so
   # not on a fork's or Dependabot's PR. A token with statuses: write can post a
   # status named like any required check, so, like post-patch-coverage, this
-  # job installs nothing but repoutils.
+  # job runs the base commit's justfile on PRs and installs nothing but
+  # repoutils.
   post-coverage-status:
     needs: coverage
     if: ${{ !cancelled() && needs.coverage.outputs.coverage-report == 'success' && (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
@@ -337,11 +343,15 @@ jobs:
       statuses: write
 
     steps:
-      # Two commits deep on master, for the commit's parent.
+      # On a PR, the base commit's justfile, pyproject.toml and uv.lock, not
+      # the PR's, so a PR can't change what runs beside this job's
+      # write-capable token. On master, the commit itself, two commits deep
+      # for its parent.
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 2
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
 
       # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
@@ -451,7 +461,8 @@ jobs:
   # comment, and hides the ones earlier runs posted as outdated, as the Claude
   # self-tests do. The same conditions and precautions as post-patch-coverage:
   # only same-repo, non-Dependabot PRs; queued per PR; posts only if HEAD_SHA
-  # is still the PR's head; installs nothing but repoutils beside its token.
+  # is still the PR's head; runs the base commit's justfile, installing
+  # nothing but repoutils beside its token.
   post-self-analysis:
     needs: self-analysis
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
@@ -464,9 +475,13 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      # The base commit's justfile, pyproject.toml and uv.lock, not the PR's,
+      # so a PR can't change what runs beside this job's write-capable token.
+      # (A PR's own changes to them take effect once it merges.)
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
 
       # Keep version in step with pyproject.toml's [tool.uv] required-version.
       - name: Install uv
