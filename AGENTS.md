@@ -47,7 +47,7 @@ On PRs, the jobs that post comments and commit statuses (`post-patch-coverage`, 
 
 ## Long files and added suppressions
 
-Two more reports are for information only, and never fail anything.
+Two more reports are for information only: what they find never fails anything, though an error running one (a bad setting, a failed git command or GitHub request) still does.
 `just long-files` lists the Python files over `[tool.repoutils.long-files]`' limit of 500 lines, with the ones changed since `origin/master` first.
 Split a long file only where that makes the code better, as the report's policy says; a long file that is one cohesive unit can stay as it is.
 `just added-strings` lists the `NOSONAR`, `# noqa` and `# type: ignore` comments added since `origin/master` (`[tool.repoutils.added-strings]` configures them), so the rule against suppressing findings below is easy to check.
