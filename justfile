@@ -4,7 +4,9 @@ set minimum-version := '1.58.0'
 # runs with a write-capable token: --only-group installs only the repoutils
 # group, checking its hashes against uv.lock, and doesn't build or install
 # exolot, whose build backend would otherwise run alongside the token.
-repoutils := "uv run --only-group repoutils repoutils"
+# --project names this justfile's project, so a [no-cd] recipe run in another
+# checkout (as CI's long-files and added-strings jobs do) still uses it.
+repoutils := "uv run --project " + quote(justfile_directory()) + " --only-group repoutils repoutils"
 
 # List available recipes
 default:
@@ -54,6 +56,21 @@ coverage-status-post *args:
 [positional-arguments]
 wait-for-base-coverage *args:
     {{ repoutils }} wait-for-base-coverage "$@"
+
+# These two report on the working tree they're run in ([no-cd]), so CI can run
+# this justfile, from the PR's base, on a checkout of the PR's head beside it.
+
+# List the files over pyproject.toml's line limit as Markdown, changed files first, or post that to a PR (--post <PR>)
+[no-cd]
+[positional-arguments]
+long-files *args:
+    {{ repoutils }} long-files "$@"
+
+# List the suppression comments (NOSONAR, noqa, type: ignore) added since a base as Markdown, or post that to a PR (--post <PR>)
+[no-cd]
+[positional-arguments]
+added-strings *args:
+    {{ repoutils }} added-strings "$@"
 
 # Run exolot on its own code; extra args go to exolot, e.g. --exit-zero. Like
 # `just integration`, it downloads the language server (about 250 MB) on first
