@@ -102,6 +102,8 @@ actions = ["CLAUDE_CODE_OAUTH_TOKEN"]
 # Only master's workflows can reach these: build.yml's release job pushes v*
 # tags with the deploy key, and bump-version.yml uses GH_ACTIONS_TOKEN.
 environments.release = ["GH_ACTIONS_TOKEN", "RELEASE_DEPLOY_KEY"]
+# fix-push.yml pushes /autofix's commits to a PR's branch with this.
+environments.autofix = ["AUTOFIX_TOKEN"]
 
 # The GitHub settings below are what `just github-settings-check` checks and
 # `just github-settings-ensure` applies (see AGENTS.md's Releases section).
@@ -139,6 +141,14 @@ immutable-releases = true
 # release or push a branch (build.yml's release job and bump-version.yml), so a
 # branch's own copy of a workflow can't read them.
 [tool.repoutils.environments.release]
+deployment-branches = "selected"
+allowed-branches = ["master"]
+allowed-tags = []
+
+# Only master can deploy to autofix either, which holds AUTOFIX_TOKEN for
+# fix-push.yml. It's apart from release, so the job that pushes a PR's
+# branch can't read the release deploy key.
+[tool.repoutils.environments.autofix]
 deployment-branches = "selected"
 allowed-branches = ["master"]
 allowed-tags = []

@@ -69,6 +69,18 @@ Both recipes are `[no-cd]`, reporting on the working tree they're run in, and bo
 CI's `long-files` job (on PRs and `master`) and `added-strings` job (on PRs) write their reports to the job summary and, on PRs from this repository other than Dependabot's, post them as PR comments; neither posts a first comment while it has nothing to report.
 Keep each added suppression that's actually needed, with no reply or explanation, and remove the rest.
 
+## `/autofix`
+
+A PR comment that is just `/autofix`, from the repository's owner, runs `just fix` on the PR's branch and pushes the result (with the `AUTOFIX_TOKEN` secret); it works only on an open PR from this repository.
+`autofix-comment.yml` dispatches `fix.yml` (PR Fixes) on the PR's branch, which merges the base branch in, runs `just fix` with no secrets and a read-only `GITHUB_TOKEN`, and uploads its commits as a Git bundle.
+Then `fix-push.yml` (PR Fixes Push), which always runs from `master` and runs no code from the branch, checks that the bundle only adds commits to the branch, and pushes them.
+`autofix-comment.yml` waits for the fix run and dispatches `fix-push.yml` itself, as a run dispatched with a `GITHUB_TOKEN` starts no `workflow_run` workflow; a `workflow_run` trigger covers a fix run that a person starts by hand (Actions → PR Fixes → Run workflow, on the PR's branch).
+If either run fails, or either can't start, the PR gets one comment saying so, which later runs edit, so a success replaces an earlier failure.
+The fix runs on the branch rather than on `master` because code in a run can write to the Actions cache of the run's branch, which `master`'s jobs would restore.
+`AUTOFIX_TOKEN` is a fine-grained token with only contents write on this repository (not workflows, so a bundle can't change a workflow), so that its push, unlike a `GITHUB_TOKEN` push, triggers CI.
+It lives in the `autofix` environment, which only `master` can deploy to, as with `release`.
+A branch that predates `fix.yml` has to merge `master` in before `/autofix` can run on it.
+
 ## Releases and GitHub settings
 
 Releases are cut from `master`.
