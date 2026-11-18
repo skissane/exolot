@@ -131,14 +131,21 @@ jobs:
           START_SHA: ${{ steps.read-run.outputs.start_sha }}
         run: |
           # A fork's PR can have a head branch of the same name, so only PRs
-          # from this repository count.
-          head_sha=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
+          # from this repository count. fix.yml refuses a branch with more than
+          # one, and so does this, as the branch could have gained one since.
+          heads=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
             --json headRefOid,isCrossRepository \
-            --jq '[.[] | select(.isCrossRepository | not)][0].headRefOid // empty')
-          if [ -z "$head_sha" ]; then
+            --jq '[.[] | select(.isCrossRepository | not) | .headRefOid]')
+          count=$(jq length <<< "$heads")
+          if [ "$count" = 0 ]; then
             echo "::error::Branch $BRANCH has no open pull request in this repository."
             exit 1
           fi
+          if [ "$count" != 1 ]; then
+            echo "::error::Branch $BRANCH has $count open pull requests in this repository; PR Fixes needs exactly one."
+            exit 1
+          fi
+          head_sha=$(jq -r '.[0]' <<< "$heads")
           if [ "$head_sha" != "$START_SHA" ]; then
             echo "::error::Branch $BRANCH is at $head_sha, not $START_SHA, where PR Fixes started; it has moved on, so run PR Fixes again."
             exit 1
@@ -265,13 +272,22 @@ jobs:
           PUSH_RESULT: ${{ needs.push.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          number=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
+          # With more than one open PR from the branch, there's no telling which
+          # to report to, so this fails, and autofix-comment.yml reports on the
+          # PR it was asked on instead.
+          numbers=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
             --json number,isCrossRepository \
-            --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')
-          if [ -z "$number" ]; then
+            --jq '[.[] | select(.isCrossRepository | not) | .number]')
+          count=$(jq length <<< "$numbers")
+          if [ "$count" = 0 ]; then
             echo "Branch $BRANCH has no open pull request in this repository to report to."
             exit 0
           fi
+          if [ "$count" != 1 ]; then
+            echo "::error::Branch $BRANCH has $count open pull requests in this repository, so there's no telling which to report to."
+            exit 1
+          fi
+          number=$(jq -r '.[0]' <<< "$numbers")
           body="$RUNNER_TEMP/autofix.md"
           update_only=()
           # Push is skipped only when resolve found no bundle; any other result

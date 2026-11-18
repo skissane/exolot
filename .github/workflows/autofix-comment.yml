@@ -71,6 +71,14 @@ jobs:
             echo "::error::Pull request #$NUMBER's branch is $DEFAULT_BRANCH, which PR Fixes doesn't push to."
             exit 1
           fi
+          # PR Fixes finds the PR from the branch, so it refuses a branch with
+          # more than one open PR; fail here first, with a clearer message.
+          count=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open \
+            --json isCrossRepository --jq '[.[] | select(.isCrossRepository | not)] | length')
+          if [ "$count" != 1 ]; then
+            echo "::error::Branch $branch has $count open pull requests in this repository; PR Fixes needs exactly one."
+            exit 1
+          fi
           # The head SHA makes PR Fixes fail if the branch moves on before it
           # starts, rather than fix commits pushed after the comment.
           # The run is the branch's own copy of fix.yml, so a branch that predates

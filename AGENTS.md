@@ -71,7 +71,7 @@ Keep each added suppression that's actually needed, with no reply or explanation
 
 ## `/autofix`
 
-A PR comment that is just `/autofix`, from the repository's owner (or, were it an organization's, a member), runs `just fix` on the PR's branch and pushes the result (with the `AUTOFIX_TOKEN` secret); it works only on an open PR from this repository.
+A PR comment that is just `/autofix`, from the repository's owner (or, were it an organization's, a member), runs `just fix` on the PR's branch and pushes the result (with the `AUTOFIX_TOKEN` secret); it works only on an open PR from this repository, and only when that PR is the only open one from its branch.
 `autofix-comment.yml` dispatches `fix.yml` (PR Fixes) on the PR's branch, which merges the base branch in, runs `just fix` with no secrets and a read-only `GITHUB_TOKEN`, and uploads its commits as a Git bundle.
 Then `fix-push.yml` (PR Fixes Push), which always runs from `master` and runs no code from the branch, checks that the bundle only adds commits to the branch, and pushes them.
 `autofix-comment.yml` waits for the fix run and dispatches `fix-push.yml` itself, as a run dispatched with a `GITHUB_TOKEN` starts no `workflow_run` workflow; a `workflow_run` trigger covers a fix run that a person starts by hand (Actions → PR Fixes → Run workflow, on the PR's branch).

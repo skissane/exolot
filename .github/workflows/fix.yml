@@ -63,14 +63,21 @@ jobs:
             exit 1
           fi
           # A fork's PR can have a head branch of the same name, so only PRs
-          # from this repository count.
-          base_branch=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" --state open \
+          # from this repository count. Two open PRs from one branch may have
+          # different bases, and nothing says which one to fix, so that fails.
+          bases=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" --state open \
             --json baseRefName,isCrossRepository \
-            --jq '[.[] | select(.isCrossRepository | not)][0].baseRefName // empty')
-          if [ -z "$base_branch" ]; then
+            --jq '[.[] | select(.isCrossRepository | not) | .baseRefName]')
+          count=$(jq length <<< "$bases")
+          if [ "$count" = 0 ]; then
             echo "::error::Branch $GITHUB_REF_NAME has no open pull request in this repository."
             exit 1
           fi
+          if [ "$count" != 1 ]; then
+            echo "::error::Branch $GITHUB_REF_NAME has $count open pull requests in this repository; PR Fixes needs exactly one."
+            exit 1
+          fi
+          base_branch=$(jq -r '.[0]' <<< "$bases")
           echo "base_branch=$base_branch" >> "$GITHUB_OUTPUT"
 
       # No credentials are kept, as the steps after this run the branch's own
