@@ -126,10 +126,13 @@ require-web-commit-signoff = false
 # The security settings `repoutils security-settings` checks or changes.
 # Immutable releases stop a published release's assets and tag from changing,
 # alongside the v* tag rulesets.
+# CodeQL default setup raises code scanning alerts, which we dismiss where
+# they don't apply. Its CodeQL check fails on a new alert of high or higher
+# severity, but no ruleset requires that check.
 [tool.repoutils.security-settings]
 private-vulnerability-reporting = false
-dependabot-security-updates = false
-codeql-default-setup = false
+dependabot-security-updates = true
+codeql-default-setup = true
 secret-protection = true
 push-protection = true
 immutable-releases = true
