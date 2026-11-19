@@ -59,7 +59,7 @@ wait-for-base-coverage *args:
 
 # Re-lock a Dependabot branch's uv.lock with this uv, from the merge base's uv.lock, upgrading only the packages Dependabot bumped (argument: the PR's base branch, already fetched, e.g. origin/master)
 dependabot-relock base:
-    {{ repoutils }} dependabot-relock {{ base }}
+    {{ repoutils }} dependabot-relock {{ quote(base) }}
 
 # These two report on the working tree they're run in ([no-cd]), so CI can run
 # this justfile, from the PR's base, on a checkout of the PR's head beside it.
