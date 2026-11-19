@@ -10,6 +10,7 @@ import pytest
 
 from exolot import server
 from exolot.server import ServerError, _extract, _publish, asset_name
+from exolot.upstream import Pins
 
 
 def _add(z: zipfile.ZipFile, name: str, data: bytes, mode: int) -> None:
@@ -103,9 +104,15 @@ def _fake_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tag: str = "1
     return server._sha256(release / asset)
 
 
+def _pin(monkeypatch: pytest.MonkeyPatch, digest: str) -> None:
+    """Pin the linux-x64 VSIX of release 1.0 to digest."""
+    pins = Pins(current="1.0", releases={"1.0": {asset_name("1.0", "linux-x64"): digest}})
+    monkeypatch.setattr(server, "PINS", pins)
+
+
 def test_ensure_server_installs_then_uses_the_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     digest = _fake_release(tmp_path, monkeypatch)
-    monkeypatch.setitem(server.KNOWN_DIGESTS, "1.0", {"linux-x64": digest})
+    _pin(monkeypatch, "sha256:" + digest)
     s = server.ensure_server("1.0", "linux-x64", java="myjava")
     install = tmp_path / "cache" / "servers" / "1.0-linux-x64"
     assert s.root == install / "extension"
@@ -122,7 +129,7 @@ def test_ensure_server_installs_then_uses_the_cache(tmp_path: Path, monkeypatch:
 
 def test_ensure_server_rejects_a_digest_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_release(tmp_path, monkeypatch)
-    monkeypatch.setitem(server.KNOWN_DIGESTS, "1.0", {"linux-x64": "0" * 64})
+    _pin(monkeypatch, "sha256:" + "0" * 64)
     with pytest.raises(ServerError, match="sha256 mismatch"):
         server.ensure_server("1.0", "linux-x64", java="myjava")
     assert not (tmp_path / "cache" / "servers" / "1.0-linux-x64").exists()
