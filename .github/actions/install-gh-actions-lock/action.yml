@@ -3,7 +3,7 @@ description: >-
   Installs the github/gh-actions-lock gh extension from its release binary,
   checked against its SHA-256, so `gh actions-lock` runs.
 
-# build.yml's actions-lock job runs this so `just actions-lock-check` can verify
+# build.yml's check-and-build job runs this so `just check` can verify
 # actions.lock, and fix.yml's fix job runs it so `just fix` can regenerate it,
 # so the version and its hash live in one place. `gh extension install --pin`
 # takes only a release tag for a precompiled extension, so a moved tag or a

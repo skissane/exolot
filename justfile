@@ -219,7 +219,7 @@ inspect-secrets *args:
 # Leaves out `just pyright`, a second-opinion type checker that CI deliberately doesn't run (yet).
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check just-fmt-check mypy lint-workflows whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check
+check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check
 
 # Formatting first fixes the long lines it can, so lint-fix stops only on
 # findings that need a hand edit.
