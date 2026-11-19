@@ -1,0 +1,308 @@
+name: PR Fixes Push
+
+# Pushes the fixes a PR Fixes run (fix.yml) made to its PR's branch, once that
+# run succeeds. Only master's copy can push, as only master can deploy to the
+# autofix environment that holds AUTOFIX_TOKEN.
+#
+# Two things start it:
+#
+# - autofix-comment.yml dispatches it on master, with the fix run's ID, once the
+#   fix run it started for a `/autofix` comment has finished. That fix run was
+#   dispatched with a GITHUB_TOKEN, so its completion starts no workflow_run
+#   workflow, as GitHub starts no run for an event a GITHUB_TOKEN causes.
+# - A workflow_run trigger, for a fix run a person started by hand. That always
+#   runs the default branch's copy, so a branch can't change it.
+#
+# It runs no code from the branch and restores no cache. It trusts nothing the
+# fix run did: it reads the run's branch and the commit it started from from
+# GitHub's API, checks them against the branch's open PR, and pushes the
+# bundle's commits only if they descend from that commit and the branch is
+# still there.
+#
+# Its report job then tells the PR how it went, in one comment that each run
+# edits (see post-comment). A failure posts it; a success only edits one an
+# earlier failure posted, so a PR that never failed gets no comment.
+on:
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: The ID of the PR Fixes run whose fixes to push
+        required: true
+        type: string
+  workflow_run:
+    workflows: [PR Fixes]
+    types: [completed]
+
+concurrency:
+  group: fix-push-${{ github.event.workflow_run.head_branch || inputs.run-id }}
+
+permissions: {}
+
+jobs:
+  # Checks the fix run and finds its PR, without the autofix environment, so a
+  # run with nothing to push never enters it. It skips a workflow_run event for
+  # a fix run that autofix-comment.yml started, which dispatches this workflow
+  # itself, so the fixes aren't pushed twice should GitHub ever start both.
+  resolve:
+    if: >-
+      github.event_name == 'workflow_dispatch' || (
+        github.event.workflow_run.event == 'workflow_dispatch' &&
+        github.event.workflow_run.triggering_actor.login != 'github-actions[bot]'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: read
+    timeout-minutes: 5
+    outputs:
+      run_id: ${{ steps.read-run.outputs.run_id }}
+      branch: ${{ steps.read-run.outputs.branch }}
+      start_sha: ${{ steps.read-run.outputs.start_sha }}
+      conclusion: ${{ steps.read-run.outputs.conclusion }}
+      url: ${{ steps.read-run.outputs.url }}
+      fixes: ${{ steps.check-pr.outputs.fixes }}
+
+    steps:
+      # Everything about the run comes from the API, which GitHub sets, rather
+      # than from the event or the input, as both events can then be checked
+      # the same way.
+      - name: Read the fix run
+        id: read-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run-id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # A branch's copy of this workflow can't deploy to autofix, so this
+          # only fails early with a clearer message.
+          if [ "$GITHUB_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::Run this workflow on $DEFAULT_BRANCH, not on $GITHUB_REF."
+            exit 1
+          fi
+          if ! [[ $RUN_ID =~ ^[0-9]+$ ]]; then
+            echo "::error::$RUN_ID isn't a workflow run ID."
+            exit 1
+          fi
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+            --jq '"\(.workflow_id) \(.head_repository.full_name) \(.event) \(.status) \(.conclusion) \(.head_sha) \(.html_url) \(.head_branch)"')
+          read -r workflow_id head_repository event status conclusion start_sha url branch <<< "$run"
+          # A branch could add another workflow named PR Fixes; only fix.yml's
+          # runs count, though nothing here trusts them more for it.
+          fix_workflow_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/fix.yml" --jq .id)
+          if [ "$workflow_id" != "$fix_workflow_id" ]; then
+            echo "::error::Run $RUN_ID isn't a run of fix.yml."
+            exit 1
+          fi
+          if [ "$head_repository" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::Run $RUN_ID ran on $head_repository, not this repository."
+            exit 1
+          fi
+          if [ "$event" != workflow_dispatch ]; then
+            echo "::error::Run $RUN_ID was started by $event, not workflow_dispatch."
+            exit 1
+          fi
+          if [ "$status" != completed ]; then
+            echo "::error::Run $RUN_ID hasn't finished; it's $status."
+            exit 1
+          fi
+          if ! git check-ref-format --branch "$branch" > /dev/null 2>&1 || [[ $branch == -* ]]; then
+            echo "::error::$branch isn't a valid branch name."
+            exit 1
+          fi
+          if [ "$branch" = "$DEFAULT_BRANCH" ]; then
+            echo "::error::PR Fixes doesn't push to $DEFAULT_BRANCH."
+            exit 1
+          fi
+          {
+            echo "run_id=$RUN_ID"
+            echo "branch=$branch"
+            echo "start_sha=$start_sha"
+            echo "conclusion=$conclusion"
+            echo "url=$url"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check the pull request and find the fixes
+        id: check-pr
+        if: steps.read-run.outputs.conclusion == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.read-run.outputs.run_id }}
+          BRANCH: ${{ steps.read-run.outputs.branch }}
+          START_SHA: ${{ steps.read-run.outputs.start_sha }}
+        run: |
+          # A fork's PR can have a head branch of the same name, so only PRs
+          # from this repository count. fix.yml refuses a branch with more than
+          # one, and so does this, as the branch could have gained one since.
+          heads=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
+            --json headRefOid,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not) | .headRefOid]')
+          count=$(jq length <<< "$heads")
+          if [ "$count" = 0 ]; then
+            echo "::error::Branch $BRANCH has no open pull request in this repository."
+            exit 1
+          fi
+          if [ "$count" != 1 ]; then
+            echo "::error::Branch $BRANCH has $count open pull requests in this repository; PR Fixes needs exactly one."
+            exit 1
+          fi
+          head_sha=$(jq -r '.[0]' <<< "$heads")
+          if [ "$head_sha" != "$START_SHA" ]; then
+            echo "::error::Branch $BRANCH is at $head_sha, not $START_SHA, where PR Fixes started; it has moved on, so run PR Fixes again."
+            exit 1
+          fi
+          fixes=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" \
+            --jq '[.artifacts[] | select(.name == "fixes" and (.expired | not))] | length')
+          if [ "$fixes" = 0 ]; then
+            echo "PR Fixes found nothing to push to $BRANCH."
+          fi
+          echo "fixes=$([ "$fixes" = 0 ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+
+  # A fresh runner: it checks out the commit the fix run started from, fetches
+  # the bundled commits onto it and pushes them. AUTOFIX_TOKEN needs only
+  # contents write, without the workflows permission, so a bundle can't change
+  # the workflows either.
+  push:
+    needs: resolve
+    if: needs.resolve.outputs.fixes == 'true'
+    runs-on: ubuntu-latest
+    environment: autofix
+    permissions:
+      # To download the bundle from the fix run.
+      actions: read
+      contents: read
+    timeout-minutes: 5
+
+    steps:
+      - name: Check token configuration
+        env:
+          AUTOFIX_TOKEN: ${{ secrets.AUTOFIX_TOKEN }}
+        run: |
+          if [ -z "$AUTOFIX_TOKEN" ]; then
+            echo "::error::AUTOFIX_TOKEN secret is not set"
+            exit 1
+          fi
+
+      # Full history: the bundle holds what the merge brought in from the base
+      # branch, but assumes the commits where the two branches diverged, which
+      # may be far back in this branch's history. Nothing from the checkout
+      # runs.
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.start_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download the fixes
+        uses: actions/download-artifact@v8.0.2
+        with:
+          name: fixes
+          path: ${{ runner.temp }}/fixes
+          run-id: ${{ needs.resolve.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      # Pushes with AUTOFIX_TOKEN, not GITHUB_TOKEN, so the push triggers CI.
+      # The lease makes the push fail unless the branch is still at the commit
+      # the fix run started from: a plain push would also succeed if the branch
+      # had since been reset to an ancestor, and restore the commits removed.
+      # No hooks run, as core.hooksPath is empty.
+      - name: Push the fixes
+        env:
+          AUTOFIX_TOKEN: ${{ secrets.AUTOFIX_TOKEN }}
+          BRANCH: ${{ needs.resolve.outputs.branch }}
+          START_SHA: ${{ needs.resolve.outputs.start_sha }}
+        run: |
+          bundle="$RUNNER_TEMP/fixes/fixes.bundle"
+          git bundle verify "$bundle"
+          git fetch --no-tags "$bundle" HEAD
+          head_sha=$(git rev-parse FETCH_HEAD)
+          # The lease makes the push a forced one, so check it only adds commits.
+          if [ "$head_sha" = "$START_SHA" ] || ! git merge-base --is-ancestor "$START_SHA" "$head_sha"; then
+            echo "::error::The bundle's head doesn't add commits to $START_SHA, where PR Fixes started."
+            exit 1
+          fi
+          git -c core.hooksPath=/dev/null push \
+            "--force-with-lease=refs/heads/${BRANCH}:${START_SHA}" \
+            "https://x-access-token:${AUTOFIX_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "${head_sha}:refs/heads/${BRANCH}"
+          echo "Pushed $head_sha to $BRANCH."
+
+  # Runs master's repoutils with `uv run --only-group repoutils`, from a sparse
+  # checkout of pyproject.toml and uv.lock, like claude.yml's route job. It
+  # reports only when resolve could read the run's branch, as it finds the PR
+  # from that.
+  report:
+    needs: [resolve, push]
+    if: >-
+      always() &&
+      needs.resolve.outputs.branch != '' &&
+      contains(fromJSON('["success", "failure", "timed_out"]'), needs.resolve.outputs.conclusion)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout pyproject.toml and uv.lock
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            pyproject.toml
+            uv.lock
+          sparse-checkout-cone-mode: false
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      # No cache, so nothing a cache entry holds runs beside the write token.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: false
+
+      - name: Report on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          BRANCH: ${{ needs.resolve.outputs.branch }}
+          START_SHA: ${{ needs.resolve.outputs.start_sha }}
+          FIX_CONCLUSION: ${{ needs.resolve.outputs.conclusion }}
+          FIX_URL: ${{ needs.resolve.outputs.url }}
+          RESOLVE_RESULT: ${{ needs.resolve.result }}
+          PUSH_RESULT: ${{ needs.push.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # With more than one open PR from the branch, there's no telling which
+          # to report to, so this fails, and autofix-comment.yml reports on the
+          # PR it was asked on instead.
+          numbers=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
+            --json number,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not) | .number]')
+          count=$(jq length <<< "$numbers")
+          if [ "$count" = 0 ]; then
+            echo "Branch $BRANCH has no open pull request in this repository to report to."
+            exit 0
+          fi
+          if [ "$count" != 1 ]; then
+            echo "::error::Branch $BRANCH has $count open pull requests in this repository, so there's no telling which to report to."
+            exit 1
+          fi
+          number=$(jq -r '.[0]' <<< "$numbers")
+          body="$RUNNER_TEMP/autofix.md"
+          update_only=()
+          # Push is skipped only when resolve found no bundle; any other result
+          # means the fixes weren't pushed, whether a check refused them (the
+          # branch moved on, say) or something failed.
+          if [ "$FIX_CONCLUSION" != success ]; then
+            echo "PR Fixes [failed]($FIX_URL) on $START_SHA, so nothing was pushed." > "$body"
+          elif [ "$RESOLVE_RESULT" = success ] && [ "$PUSH_RESULT" = success ]; then
+            echo "PR Fixes [pushed its fixes]($RUN_URL) on top of $START_SHA." > "$body"
+            update_only=(--update-only)
+          elif [ "$RESOLVE_RESULT" = success ] && [ "$PUSH_RESULT" = skipped ]; then
+            echo "PR Fixes [found nothing to fix]($FIX_URL) on $START_SHA." > "$body"
+            update_only=(--update-only)
+          else
+            echo "PR Fixes ran on $START_SHA, but [didn't push its fixes]($RUN_URL)." > "$body"
+          fi
+          uv run --only-group repoutils repoutils post-comment "$number" "$body" \
+            --name autofix --author "github-actions[bot]" "${update_only[@]}"

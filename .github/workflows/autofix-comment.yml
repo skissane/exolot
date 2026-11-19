@@ -1,0 +1,227 @@
+name: PR Fixes on comment
+
+# A PR comment from the repo owner (or, in an organization, a member) that is
+# just `/autofix` (whitespace aside) runs the PR Fixes workflow (fix.yml) on the
+# PR's branch, as running it by hand would. This runs no code from the branch.
+# The dispatched run is the branch's copy of fix.yml, which holds no secrets;
+# master's copy of fix-push.yml checks what it made before pushing it.
+#
+# It waits for that run to finish and then dispatches fix-push.yml on master
+# itself. A run dispatched with a GITHUB_TOKEN starts no workflow_run workflow
+# when it completes, so fix-push.yml's own trigger never fires for it.
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  dispatch:
+    # A cheap pre-filter; the exact match is checked below, as expressions
+    # can't trim whitespace.
+    # OWNER is a user-owned repository's owner; in an organization's
+    # repository its members, owners included, are MEMBER.
+    if: >-
+      github.event.issue.pull_request &&
+      contains(fromJSON('["OWNER", "MEMBER"]'), github.event.comment.author_association) &&
+      contains(github.event.comment.body, '/autofix')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      # For the sparse checkout the failure report needs.
+      contents: read
+      pull-requests: write
+    # The waits for PR Fixes and PR Fixes Push give up before this, so the report
+    # still runs: a job that times out is cancelled, and runs no failure() steps.
+    timeout-minutes: 45
+
+    steps:
+      - name: Check the comment is only /autofix
+        id: check-comment
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          if [[ $BODY =~ ^[[:space:]]*/autofix[[:space:]]*$ ]]; then
+            echo "matched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Comment has more than /autofix in it; not running PR Fixes."
+          fi
+
+      - name: Run PR Fixes on the PR's branch
+        id: start-fix
+        if: steps.check-comment.outputs.matched == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # Not read from a process substitution, whose failure wouldn't stop the step.
+          pr=$(gh pr view "$NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json state,isCrossRepository,headRefName,headRefOid \
+            --jq '"\(.state) \(.isCrossRepository) \(.headRefOid) \(.headRefName)"')
+          read -r state cross_repo head_sha branch <<< "$pr"
+          if [ "$state" != OPEN ]; then
+            echo "::error::Pull request #$NUMBER is not open."
+            exit 1
+          fi
+          if [ "$cross_repo" != false ]; then
+            echo "::error::Pull request #$NUMBER is from a fork, which PR Fixes can't push to."
+            exit 1
+          fi
+          if [ "$branch" = "$DEFAULT_BRANCH" ]; then
+            echo "::error::Pull request #$NUMBER's branch is $DEFAULT_BRANCH, which PR Fixes doesn't push to."
+            exit 1
+          fi
+          # PR Fixes finds the PR from the branch, so it refuses a branch with
+          # more than one open PR; fail here first, with a clearer message.
+          count=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state open \
+            --json isCrossRepository --jq '[.[] | select(.isCrossRepository | not)] | length')
+          if [ "$count" != 1 ]; then
+            echo "::error::Branch $branch has $count open pull requests in this repository; PR Fixes needs exactly one."
+            exit 1
+          fi
+          # The head SHA makes PR Fixes fail if the branch moves on before it
+          # starts, rather than fix commits pushed after the comment.
+          # The run is the branch's own copy of fix.yml, so a branch that predates
+          # fix.yml must merge the base first.
+          # return_run_details makes GitHub answer with the new run's ID.
+          if ! run_id=$(gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/fix.yml/dispatches" \
+            -f ref="$branch" -f "inputs[head-sha]=$head_sha" -F return_run_details=true \
+            --jq .workflow_run_id); then
+            echo "::error::Couldn't start PR Fixes on $branch. If the branch has no fix.yml, merge $DEFAULT_BRANCH into it first."
+            exit 1
+          fi
+          if ! [[ $run_id =~ ^[0-9]+$ ]]; then
+            echo "::error::Started PR Fixes on $branch, but GitHub didn't give its run ID."
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          # PR Fixes has started, so a failed reaction only warns: a red run would
+          # suggest commenting again.
+          if ! gh api --method POST "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" \
+            -f content=rocket > /dev/null; then
+            echo "::warning::Couldn't react to the comment."
+          fi
+          echo "Started PR Fixes on $branch: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run_id"
+
+      # A run waits for an earlier one on the same branch (fix.yml's
+      # concurrency), and its job may wait for a runner, so this allows far
+      # longer than the job's 10 minutes.
+      - name: Wait for PR Fixes to finish
+        if: steps.start-fix.outputs.run_id
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.start-fix.outputs.run_id }}
+        run: |
+          deadline=$((SECONDS + 30 * 60))
+          while true; do
+            # A failed request is retried, as is any other status.
+            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .status) || status=unknown
+            if [ "$status" = completed ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::PR Fixes run $RUN_ID still hasn't finished; it's $status."
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "PR Fixes run $RUN_ID has finished."
+
+      # fix-push.yml reports on the PR itself, whether the fix run failed,
+      # found nothing to fix, or made fixes.
+      - name: Push the fixes
+        id: start-push
+        if: steps.start-fix.outputs.run_id
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.start-fix.outputs.run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if ! push_run_id=$(gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/fix-push.yml/dispatches" \
+            -f ref="$DEFAULT_BRANCH" -f "inputs[run-id]=$RUN_ID" -F return_run_details=true \
+            --jq .workflow_run_id); then
+            echo "::error::Couldn't start PR Fixes Push for PR Fixes run $RUN_ID."
+            exit 1
+          fi
+          if ! [[ $push_run_id =~ ^[0-9]+$ ]]; then
+            echo "::error::Started PR Fixes Push, but GitHub didn't give its run ID."
+            exit 1
+          fi
+          echo "run_id=$push_run_id" >> "$GITHUB_OUTPUT"
+          echo "Started PR Fixes Push: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$push_run_id"
+
+      # fix-push.yml can report only once it has read the fix run's branch, so
+      # if its report job doesn't succeed, this reports instead, as it knows
+      # the PR from the comment.
+      - name: Wait for PR Fixes Push to report
+        id: wait-push
+        if: steps.start-push.outputs.run_id
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.start-push.outputs.run_id }}
+        run: |
+          deadline=$((SECONDS + 10 * 60))
+          while true; do
+            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .status) || status=unknown
+            if [ "$status" = completed ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::PR Fixes Push run $RUN_ID still hasn't finished; it's $status."
+              exit 1
+            fi
+            sleep 10
+          done
+          report=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs" \
+            --jq '[.jobs[] | select(.name == "report")][0].conclusion // "missing"')
+          if [ "$report" != success ]; then
+            echo "::error::PR Fixes Push run $RUN_ID didn't report on the pull request (its report job: $report)."
+            exit 1
+          fi
+
+      # If PR Fixes didn't start (the PR isn't one it can fix, or the dispatch
+      # failed), its fixes couldn't be handed to fix-push.yml, or fix-push.yml
+      # didn't report, say so on the PR, in the comment fix-push.yml reports in.
+      - name: Checkout pyproject.toml and uv.lock
+        if: failure() && steps.check-comment.outputs.matched == 'true'
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            pyproject.toml
+            uv.lock
+          sparse-checkout-cone-mode: false
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      # No cache, so nothing a cache entry holds runs beside the write token.
+      - name: Install uv
+        if: failure() && steps.check-comment.outputs.matched == 'true'
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: false
+
+      - name: Report on the pull request
+        if: failure() && steps.check-comment.outputs.matched == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          START_RESULT: ${{ steps.start-fix.outcome }}
+          FIX_RUN_ID: ${{ steps.start-fix.outputs.run_id }}
+          PUSH_RUN_ID: ${{ steps.start-push.outputs.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="$RUNNER_TEMP/autofix.md"
+          if [ "$START_RESULT" != success ]; then
+            echo "/autofix [couldn't start PR Fixes]($RUN_URL)." > "$body"
+          else
+            fix_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$FIX_RUN_ID"
+            if [ -z "$PUSH_RUN_ID" ]; then
+              echo "/autofix started [PR Fixes]($fix_url), but [couldn't start pushing its fixes]($RUN_URL)." > "$body"
+            else
+              push_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$PUSH_RUN_ID"
+              echo "/autofix started [PR Fixes]($fix_url), but [PR Fixes Push]($push_url) didn't report whether it pushed the fixes." > "$body"
+            fi
+          fi
+          uv run --only-group repoutils repoutils post-comment "$NUMBER" "$body" \
+            --name autofix --author "github-actions[bot]"

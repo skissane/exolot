@@ -1,0 +1,150 @@
+name: PR Fixes
+
+# Merges an open PR's base branch into its branch, runs `just fix`, and uploads
+# the result as a Git bundle. Run it on the PR's branch (Actions → PR Fixes →
+# Run workflow, with Use workflow from: the PR's branch). autofix-comment.yml
+# also runs it when the owner comments `/autofix` on a PR.
+#
+# It pushes nothing and uses no secrets. When it succeeds, master's copy of
+# fix-push.yml checks its bundle and pushes it with AUTOFIX_TOKEN, which lives
+# in the autofix environment that only master can deploy to.
+#
+# It runs on the branch, not on master, because it runs the branch's own justfile
+# and dev dependencies (on a Dependabot PR, at their bumped, untrusted
+# versions). Any code in a job can write to the Actions cache of the run's ref,
+# so in a run on master that code could plant entries that master's other jobs
+# restore. On the branch, it can only write to the branch's own cache.
+#
+# A branch can change its copy of this workflow, but that gains it nothing:
+# the run holds no secret and only a read-only GITHUB_TOKEN, and fix-push.yml
+# trusts nothing it produces except as commits to check and push.
+on:
+  workflow_dispatch:
+    inputs:
+      head-sha:
+        description: >-
+          The commit the branch is expected to be at (optional): the run fails
+          if the branch has moved on, rather than fix commits nobody looked at
+        required: false
+        type: string
+
+# A second run on the same branch waits for the first rather than cancelling
+# it. If the first one's fixes get pushed, the second one's push then fails, as
+# the branch has moved on from the commit it started from.
+concurrency:
+  group: fix-${{ github.ref }}
+
+permissions: {}
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    timeout-minutes: 10
+
+    steps:
+      # The run is checked again by fix-push.yml, which trusts nothing this job
+      # does; these checks only fail early with a clearer message.
+      - name: Find the branch's pull request
+        id: check-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ inputs.head-sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ $GITHUB_REF != refs/heads/* ]] || [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]; then
+            echo "::error::Run this workflow on a pull request's branch (Use workflow from), not on $GITHUB_REF."
+            exit 1
+          fi
+          if [ -n "$EXPECTED_SHA" ] && [ "$EXPECTED_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Branch $GITHUB_REF_NAME is at $GITHUB_SHA, not $EXPECTED_SHA as expected; it has moved on, so run PR Fixes again."
+            exit 1
+          fi
+          # A fork's PR can have a head branch of the same name, so only PRs
+          # from this repository count. Two open PRs from one branch may have
+          # different bases, and nothing says which one to fix, so that fails.
+          bases=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" --state open \
+            --json baseRefName,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not) | .baseRefName]')
+          count=$(jq length <<< "$bases")
+          if [ "$count" = 0 ]; then
+            echo "::error::Branch $GITHUB_REF_NAME has no open pull request in this repository."
+            exit 1
+          fi
+          if [ "$count" != 1 ]; then
+            echo "::error::Branch $GITHUB_REF_NAME has $count open pull requests in this repository; PR Fixes needs exactly one."
+            exit 1
+          fi
+          base_branch=$(jq -r '.[0]' <<< "$bases")
+          echo "base_branch=$base_branch" >> "$GITHUB_OUTPUT"
+
+      # No credentials are kept, as the steps after this run the branch's own
+      # justfile and dependencies. The run's own commit, which fix-push.yml
+      # takes from the event, not the branch's head now.
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge base branch
+        env:
+          BASE_BRANCH: ${{ steps.check-pr.outputs.base_branch }}
+        run: |
+          if ! git merge "origin/$BASE_BRANCH" --no-edit; then
+            echo "::error::Merge conflict with base branch $BASE_BRANCH. Please resolve conflicts manually."
+            exit 1
+          fi
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      # The cache is the branch's own, as this run is on the branch.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.6"
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: "1.58.0"
+
+      - name: Install dependencies
+        run: just sync
+
+      - name: Run fixes
+        run: just fix
+
+      # Bundles the merge commit even if `just fix` changed nothing. With
+      # nothing to bundle, it uploads nothing, and fix-push.yml stops there.
+      - name: Commit changes
+        id: commit
+        run: |
+          git add -u
+          if git diff --staged --quiet; then
+            echo "No fixes to commit"
+          else
+            git commit -m "chore: apply automated fixes"
+          fi
+          if [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ]; then
+            echo "Branch is up to date and needs no fixes"
+          else
+            git bundle create "$RUNNER_TEMP/fixes.bundle" "$GITHUB_SHA..HEAD"
+            echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload the fixes
+        if: steps.commit.outputs.head
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: fixes
+          path: ${{ runner.temp }}/fixes.bundle
+          retention-days: 1
+          if-no-files-found: error
