@@ -14,10 +14,12 @@ name: PR Fixes Push
 #   runs the default branch's copy, so a branch can't change it.
 #
 # It runs no code from the branch and restores no cache. It trusts nothing the
-# fix run did: it reads the run's branch and the commit it started from from
-# GitHub's API, checks them against the branch's open PR, and pushes the
-# bundle's commits only if they descend from that commit and the branch is
-# still there.
+# fix run did: it reads the run's branch, the commit it started from and its
+# name from GitHub's API, checks them against the PR, and pushes the bundle's
+# commits only if they descend from that commit and the branch is still there.
+# The PR is the one the run's name gives (fix.yml puts its pr-number input
+# there), or else the branch's only open PR. A branch can rename its own runs,
+# but only to another PR from the same branch, which this checks.
 #
 # Its report job then tells the PR how it went, in one comment that each run
 # edits (see post-comment). A failure posts it; a success only edits one an
@@ -60,8 +62,9 @@ jobs:
       start_sha: ${{ steps.read-run.outputs.start_sha }}
       conclusion: ${{ steps.read-run.outputs.conclusion }}
       url: ${{ steps.read-run.outputs.url }}
+      number: ${{ steps.find-pr.outputs.number }}
+      base_branch: ${{ steps.find-pr.outputs.base_branch }}
       fixes: ${{ steps.check-pr.outputs.fixes }}
-      base_branch: ${{ steps.check-pr.outputs.base_branch }}
 
     steps:
       # Everything about the run comes from the API, which GitHub sets, rather
@@ -85,8 +88,9 @@ jobs:
             exit 1
           fi
           run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
-            --jq '"\(.workflow_id) \(.head_repository.full_name) \(.event) \(.status) \(.conclusion) \(.head_sha) \(.html_url) \(.head_branch)"')
-          read -r workflow_id head_repository event status conclusion start_sha url branch <<< "$run"
+            --jq '"\(.workflow_id) \(.head_repository.full_name) \(.event) \(.status) \(.conclusion) \(.head_sha) \(.html_url) \(.head_branch) \(.display_title)"')
+          # The name, which can have spaces, comes last, so read gives it the rest.
+          read -r workflow_id head_repository event status conclusion start_sha url branch title <<< "$run"
           # A branch could add another workflow named PR Fixes; only fix.yml's
           # runs count, though nothing here trusts them more for it.
           fix_workflow_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/fix.yml" --jq .id)
@@ -114,12 +118,70 @@ jobs:
             echo "::error::PR Fixes doesn't push to $DEFAULT_BRANCH."
             exit 1
           fi
+          # fix.yml's run-name: "PR Fixes #<number>", or "PR Fixes" without one.
+          if [[ $title =~ ^PR\ Fixes\ \#([0-9]+)$ ]]; then
+            pr_number=${BASH_REMATCH[1]}
+          elif [ "$title" = "PR Fixes" ]; then
+            pr_number=
+          else
+            echo "::error::Run $RUN_ID's name, $title, doesn't give a pull request."
+            exit 1
+          fi
           {
             echo "run_id=$RUN_ID"
+            echo "pr_number=$pr_number"
             echo "branch=$branch"
             echo "start_sha=$start_sha"
             echo "conclusion=$conclusion"
             echo "url=$url"
+          } >> "$GITHUB_OUTPUT"
+
+      # Runs whatever the fix run's conclusion, so the report job knows which
+      # PR to report to.
+      - name: Find the pull request
+        id: find-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.read-run.outputs.run_id }}
+          BRANCH: ${{ steps.read-run.outputs.branch }}
+          PR_NUMBER: ${{ steps.read-run.outputs.pr_number }}
+        run: |
+          if [ -n "$PR_NUMBER" ]; then
+            pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
+              --jq '"\(.state) \(.head.repo.full_name) \(.head.sha) \(.base.ref) \(.head.ref)"')
+            read -r state head_repository head_sha base_branch head_branch <<< "$pr"
+            if [ "$state" != open ]; then
+              echo "::error::Pull request #$PR_NUMBER is not open."
+              exit 1
+            fi
+            if [ "$head_repository" != "$GITHUB_REPOSITORY" ] || [ "$head_branch" != "$BRANCH" ]; then
+              echo "::error::Pull request #$PR_NUMBER isn't from branch $BRANCH of this repository."
+              exit 1
+            fi
+            number=$PR_NUMBER
+          else
+            # Without a number, the branch must have exactly one open PR, as in
+            # fix.yml, as the branch could have gained one since. A fork's PR
+            # can have a head branch of the same name, so only PRs from this
+            # repository count, and every page is read.
+            prs=$(gh api --method GET --paginate "repos/$GITHUB_REPOSITORY/pulls" \
+              -f state=open -f head="$GITHUB_REPOSITORY_OWNER:$BRANCH" -F per_page=100 \
+              --jq '.[] | select(.head.repo.full_name == env.GITHUB_REPOSITORY) | "\(.number) \(.head.sha) \(.base.ref)"')
+            count=$(grep -c . <<< "$prs" || true)
+            if [ "$count" = 0 ]; then
+              echo "::error::Branch $BRANCH has no open pull request in this repository."
+              exit 1
+            fi
+            if [ "$count" != 1 ]; then
+              echo "::error::Branch $BRANCH has $count open pull requests in this repository, and run $RUN_ID doesn't say which one it was for."
+              exit 1
+            fi
+            read -r number head_sha base_branch <<< "$prs"
+          fi
+          {
+            echo "number=$number"
+            echo "head_sha=$head_sha"
+            echo "base_branch=$base_branch"
           } >> "$GITHUB_OUTPUT"
 
       - name: Check the pull request and find the fixes
@@ -130,27 +192,10 @@ jobs:
           RUN_ID: ${{ steps.read-run.outputs.run_id }}
           BRANCH: ${{ steps.read-run.outputs.branch }}
           START_SHA: ${{ steps.read-run.outputs.start_sha }}
+          HEAD_SHA: ${{ steps.find-pr.outputs.head_sha }}
         run: |
-          # A fork's PR can have a head branch of the same name, so only PRs
-          # from this repository count. fix.yml refuses a branch with more than
-          # one, and so does this, as the branch could have gained one since.
-          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
-            --json headRefOid,baseRefName,isCrossRepository \
-            --jq '[.[] | select(.isCrossRepository | not)]')
-          heads=$(jq '[.[].headRefOid]' <<< "$prs")
-          count=$(jq length <<< "$heads")
-          if [ "$count" = 0 ]; then
-            echo "::error::Branch $BRANCH has no open pull request in this repository."
-            exit 1
-          fi
-          if [ "$count" != 1 ]; then
-            echo "::error::Branch $BRANCH has $count open pull requests in this repository; PR Fixes needs exactly one."
-            exit 1
-          fi
-          head_sha=$(jq -r '.[0]' <<< "$heads")
-          echo "base_branch=$(jq -r '.[0].baseRefName' <<< "$prs")" >> "$GITHUB_OUTPUT"
-          if [ "$head_sha" != "$START_SHA" ]; then
-            echo "::error::Branch $BRANCH is at $head_sha, not $START_SHA, where PR Fixes started; it has moved on, so run PR Fixes again."
+          if [ "$HEAD_SHA" != "$START_SHA" ]; then
+            echo "::error::Branch $BRANCH is at $HEAD_SHA, not $START_SHA, where PR Fixes started; it has moved on, so run PR Fixes again."
             exit 1
           fi
           fixes=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts" \
@@ -272,8 +317,8 @@ jobs:
 
   # Runs master's repoutils with `uv run --only-group repoutils`, from a sparse
   # checkout of pyproject.toml and uv.lock, like claude.yml's route job. It
-  # reports only when resolve could read the run's branch, as it finds the PR
-  # from that.
+  # reports only when resolve could read the run, to the PR resolve found, or
+  # fails if it found none.
   report:
     needs: [resolve, push]
     if: >-
@@ -306,32 +351,22 @@ jobs:
 
       - name: Report on the pull request
         env:
-          GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
           BRANCH: ${{ needs.resolve.outputs.branch }}
           START_SHA: ${{ needs.resolve.outputs.start_sha }}
           FIX_CONCLUSION: ${{ needs.resolve.outputs.conclusion }}
           FIX_URL: ${{ needs.resolve.outputs.url }}
+          NUMBER: ${{ needs.resolve.outputs.number }}
           RESOLVE_RESULT: ${{ needs.resolve.result }}
           PUSH_RESULT: ${{ needs.push.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          # With more than one open PR from the branch, there's no telling which
-          # to report to, so this fails, and autofix-comment.yml reports on the
-          # PR it was asked on instead.
-          numbers=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
-            --json number,isCrossRepository \
-            --jq '[.[] | select(.isCrossRepository | not) | .number]')
-          count=$(jq length <<< "$numbers")
-          if [ "$count" = 0 ]; then
-            echo "Branch $BRANCH has no open pull request in this repository to report to."
-            exit 0
-          fi
-          if [ "$count" != 1 ]; then
-            echo "::error::Branch $BRANCH has $count open pull requests in this repository, so there's no telling which to report to."
+          # The resolve job couldn't tell which PR the fix run was for. Failing
+          # lets autofix-comment.yml report on the PR that was commented on.
+          if [ -z "$NUMBER" ]; then
+            echo "::error::Couldn't tell which pull request to report to on branch $BRANCH."
             exit 1
           fi
-          number=$(jq -r '.[0]' <<< "$numbers")
           body="$RUNNER_TEMP/autofix.md"
           update_only=()
           # Push is skipped only when resolve found no bundle; any other result
@@ -348,5 +383,5 @@ jobs:
           else
             echo "PR Fixes ran on $START_SHA, but [didn't push its fixes]($RUN_URL)." > "$body"
           fi
-          uv run --only-group repoutils repoutils post-comment "$number" "$body" \
+          uv run --only-group repoutils repoutils post-comment "$NUMBER" "$body" \
             --name autofix --author "github-actions[bot]" "${update_only[@]}"
