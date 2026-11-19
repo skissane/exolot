@@ -20,23 +20,16 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import upstream
+
 log = logging.getLogger(__name__)
 
-DEFAULT_SERVER_VERSION = "6.2.0+91200"
+# The pinned releases and their digests, from the bundled upstream.toml.
+PINS = upstream.load()
+
+DEFAULT_SERVER_VERSION = PINS.current
 
 RELEASE_URL = "https://github.com/SonarSource/sonarlint-vscode/releases/download/{tag}/{asset}"
-
-# sha256 of each release asset, keyed by tag then platform ("" = universal).
-# Taken from the GitHub release metadata and checked against the downloads.
-KNOWN_DIGESTS: dict[str, dict[str, str]] = {
-    "6.2.0+91200": {
-        "": "b0c13ecb37b6d2e8e2414f482f62ddd916eec5f3c2db0711e9c0b7bb17823850",
-        "darwin-arm64": "8d59d1101ed9edfb9b7bcb99fd3df8835b779c061bdceec01acf51c7fbc56446",
-        "darwin-x64": "d64a71f0fdcd6597e7b1b7fba22be46f4ea64aae92f428b7149eecfb99626963",
-        "linux-x64": "054f309995789e2cb5e20a1f0e071db7ab817e6dec11ae45bcebb45d69216cac",
-        "win32-x64": "9c9657d007327e0bab923185c08c3c699989af2130e25353bedb2be04910467e",
-    },
-}
 
 # Only these parts of the VSIX are needed to run the server.
 EXTRACT_PREFIXES = ("extension/server/", "extension/analyzers/", "extension/jre/")
@@ -150,8 +143,7 @@ def ensure_server(
 def _install(tag: str, plat: str, install_dir: Path, progress: bool) -> None:
     asset = asset_name(tag, plat)
     url = RELEASE_URL.format(tag=tag.replace("+", "%2B"), asset=asset)
-    tag_platforms = KNOWN_DIGESTS.get(tag, {})
-    expected = tag_platforms.get(plat)
+    expected = PINS.digest(tag, asset)
     install_dir.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=install_dir.parent, prefix=".download-") as tmp:
         vsix = Path(tmp) / asset
