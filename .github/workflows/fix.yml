@@ -119,7 +119,17 @@ jobs:
       - name: Install dependencies
         run: just sync
 
+      # The branch's copy of the action, from the merged tree (so it's there even
+      # if the branch predates it), so it installs the extension version the
+      # branch's justfile expects.
+      - name: Install gh-actions-lock
+        uses: ./.github/actions/install-gh-actions-lock
+
+      # The job's GITHUB_TOKEN is read-only, and is all gh actions-lock needs to
+      # read the actions' public repositories.
       - name: Run fixes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: just fix
 
       # Bundles the merge commit even if `just fix` changed nothing. With

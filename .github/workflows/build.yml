@@ -43,28 +43,27 @@ jobs:
       - name: Run tests
         run: just test
 
-  # check-and-build is the required check, so it stands in for test and
-  # actions-lock too. A job skipped because a job it needs failed counts as
-  # passing for a required check, so it runs anyway (unless the run was
-  # cancelled) and fails first thing unless both succeeded.
+  # check-and-build is the required check, so it stands in for test too. A job
+  # skipped because a job it needs failed counts as passing for a required
+  # check, so it runs anyway (unless the run was cancelled) and fails first
+  # thing unless test succeeded.
   build:
     # Named apart from attestations.yml's build job, as master's ruleset
     # requires this check by name (see pyproject.toml).
     name: check-and-build
-    needs: [test, actions-lock]
+    needs: test
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
-      - name: Check that test and actions-lock succeeded
-        if: ${{ needs.test.result != 'success' || needs.actions-lock.result != 'success' }}
+      - name: Check that test succeeded
+        if: ${{ needs.test.result != 'success' }}
         env:
           TEST_RESULT: ${{ needs.test.result }}
-          ACTIONS_LOCK_RESULT: ${{ needs.actions-lock.result }}
         run: |
-          echo "::error::test: $TEST_RESULT, actions-lock: $ACTIONS_LOCK_RESULT"
+          echo "::error::test: $TEST_RESULT"
           exit 1
 
       - uses: actions/checkout@v7.0.1
@@ -89,7 +88,15 @@ jobs:
       - name: Install dependencies
         run: just sync
 
+      # For `just check`'s actions-lock-check.
+      - name: Install gh-actions-lock
+        uses: $/.github/actions/install-gh-actions-lock
+
+      # GH_TOKEN is the job's read-only token, which is all gh actions-lock
+      # needs to verify each locked commit against the action's repository.
       - name: Run checks
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: just check
 
       - name: Build package
@@ -688,37 +695,6 @@ jobs:
           name: step-summaries-${{ github.job }}
           path: ${{ runner.temp }}/step-summaries/
           if-no-files-found: ignore
-
-  # Checks .github/workflows/actions.lock, which pins every action the
-  # workflows use, transitive ones included, to a commit.
-  actions-lock:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-
-      # The release binary, checked against its SHA-256, so a moved tag or a
-      # replaced asset can't swap the verifier. `gh extension install --pin`
-      # takes only a release tag for a precompiled extension. The binary runs
-      # standalone, reading GH_TOKEN as the extension would.
-      - name: Install gh-actions-lock
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/gh-actions-lock" \
-            https://github.com/github/gh-actions-lock/releases/download/v0.4.1/linux-amd64
-          echo "39deb2fe714dbf74b073d8245fc7f3d50cd0eee18d5c0900e9e849ae933ae17e  $RUNNER_TEMP/gh-actions-lock" | sha256sum -c -
-          chmod +x "$RUNNER_TEMP/gh-actions-lock"
-
-      # Fails if actions.lock is missing an action a workflow uses, or a
-      # locked commit no longer verifies upstream. Rerun `gh actions-lock`
-      # after changing any `uses:`.
-      - name: Verify actions.lock
-        run: '"$RUNNER_TEMP/gh-actions-lock" --verify'
 
   # Tagging and releasing need a write-capable token, so they run in their own
   # job, only for pushes to master, and never alongside pull request code.
