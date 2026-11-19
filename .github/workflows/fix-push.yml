@@ -61,6 +61,7 @@ jobs:
       conclusion: ${{ steps.read-run.outputs.conclusion }}
       url: ${{ steps.read-run.outputs.url }}
       fixes: ${{ steps.check-pr.outputs.fixes }}
+      base_branch: ${{ steps.check-pr.outputs.base_branch }}
 
     steps:
       # Everything about the run comes from the API, which GitHub sets, rather
@@ -133,9 +134,10 @@ jobs:
           # A fork's PR can have a head branch of the same name, so only PRs
           # from this repository count. fix.yml refuses a branch with more than
           # one, and so does this, as the branch could have gained one since.
-          heads=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
-            --json headRefOid,isCrossRepository \
-            --jq '[.[] | select(.isCrossRepository | not) | .headRefOid]')
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
+            --json headRefOid,baseRefName,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not)]')
+          heads=$(jq '[.[].headRefOid]' <<< "$prs")
           count=$(jq length <<< "$heads")
           if [ "$count" = 0 ]; then
             echo "::error::Branch $BRANCH has no open pull request in this repository."
@@ -146,6 +148,7 @@ jobs:
             exit 1
           fi
           head_sha=$(jq -r '.[0]' <<< "$heads")
+          echo "base_branch=$(jq -r '.[0].baseRefName' <<< "$prs")" >> "$GITHUB_OUTPUT"
           if [ "$head_sha" != "$START_SHA" ]; then
             echo "::error::Branch $BRANCH is at $head_sha, not $START_SHA, where PR Fixes started; it has moved on, so run PR Fixes again."
             exit 1
@@ -158,9 +161,9 @@ jobs:
           echo "fixes=$([ "$fixes" = 0 ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
 
   # A fresh runner: it checks out the commit the fix run started from, fetches
-  # the bundled commits onto it and pushes them. AUTOFIX_TOKEN needs only
-  # contents write, without the workflows permission, so a bundle can't change
-  # the workflows either.
+  # the bundled commits onto it and pushes them. AUTOFIX_TOKEN has contents and
+  # workflows write, the latter so a fix can update .github/workflows/actions.lock,
+  # so this checks that the fixes change no other file under .github/workflows.
   push:
     needs: resolve
     if: needs.resolve.outputs.fixes == 'true'
@@ -210,7 +213,47 @@ jobs:
           AUTOFIX_TOKEN: ${{ secrets.AUTOFIX_TOKEN }}
           BRANCH: ${{ needs.resolve.outputs.branch }}
           START_SHA: ${{ needs.resolve.outputs.start_sha }}
+          BASE_BRANCH: ${{ needs.resolve.outputs.base_branch }}
         run: |
+          # The fix run made at most a merge of the base branch, then at most
+          # one commit of fixes (see fix.yml). The merge must be exactly what
+          # merging the base branch gives, and the fixes may change nothing
+          # under .github/workflows but actions.lock, which `just fix`
+          # regenerates. The base branch's own commits are trusted as they are.
+          check_workflows() {
+            local base="refs/remotes/origin/$BASE_BRANCH" merge fix="" changed
+            git rev-parse --verify --quiet "$base" > /dev/null || {
+              echo "::error::Base branch $BASE_BRANCH not found."
+              return 1
+            }
+            if git merge-base --is-ancestor "$head_sha" "$base"; then
+              return 0
+            fi
+            if [ "$(git rev-list --parents -n 1 "$head_sha" | wc -w)" = 3 ]; then
+              merge=$head_sha
+            else
+              fix=$head_sha
+              merge=$(git rev-parse "$head_sha^")
+            fi
+            if [ "$merge" != "$START_SHA" ] && ! git merge-base --is-ancestor "$merge" "$base"; then
+              if [ "$(git rev-list --parents -n 1 "$merge" | wc -w)" != 3 ] ||
+                [ "$(git rev-parse "$merge^1")" != "$START_SHA" ] ||
+                ! git merge-base --is-ancestor "$merge^2" "$base" ||
+                [ "$(git merge-tree --write-tree "$START_SHA" "$merge^2")" != "$(git rev-parse "$merge^{tree}")" ]; then
+                echo "::error::The bundle's $merge isn't a clean merge of $BASE_BRANCH into $START_SHA."
+                return 1
+              fi
+            fi
+            if [ -n "$fix" ]; then
+              changed=$(git diff --name-only "$fix^" "$fix" -- .github/workflows \
+                ':(exclude).github/workflows/actions.lock')
+              if [ -n "$changed" ]; then
+                echo "::error::The fixes change workflow files other than actions.lock: $changed"
+                return 1
+              fi
+            fi
+          }
+
           bundle="$RUNNER_TEMP/fixes/fixes.bundle"
           git bundle verify "$bundle"
           git fetch --no-tags "$bundle" HEAD
@@ -220,6 +263,7 @@ jobs:
             echo "::error::The bundle's head doesn't add commits to $START_SHA, where PR Fixes started."
             exit 1
           fi
+          check_workflows
           git -c core.hooksPath=/dev/null push \
             "--force-with-lease=refs/heads/${BRANCH}:${START_SHA}" \
             "https://x-access-token:${AUTOFIX_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \

@@ -80,7 +80,8 @@ Then `fix-push.yml` (PR Fixes Push), which always runs from `master` and runs no
 `autofix-comment.yml` waits for the fix run and dispatches `fix-push.yml` itself, as a run dispatched with a `GITHUB_TOKEN` starts no `workflow_run` workflow; a `workflow_run` trigger covers a fix run that a person starts by hand (Actions → PR Fixes → Run workflow, on the PR's branch).
 If either run fails, or either can't start, the PR gets one comment saying so, which later runs edit, so a success replaces an earlier failure.
 The fix runs on the branch rather than on `master` because code in a run can write to the Actions cache of the run's branch: run on `master`, the branch's code could plant cache entries that `master`'s jobs would restore.
-`AUTOFIX_TOKEN` is a fine-grained token with only contents write on this repository (not workflows, so a bundle can't change a workflow), so that its push, unlike a `GITHUB_TOKEN` push, triggers CI.
+`AUTOFIX_TOKEN` is a fine-grained token with only contents and workflows write on this repository, so that its push, unlike a `GITHUB_TOKEN` push, triggers CI; it needs workflows write to push `.github/workflows/actions.lock`, which `just fix` regenerates.
+So `fix-push.yml` checks that the bundle holds at most a clean merge of the base branch (which it redoes with `git merge-tree` and compares) and one commit of fixes that changes nothing under `.github/workflows` but `actions.lock`.
 It lives in the `autofix` environment, which only `master` can deploy to, as with `release`.
 A branch that predates `fix.yml` has to merge `master` in before `/autofix` can run on it.
 
