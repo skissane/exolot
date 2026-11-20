@@ -112,7 +112,8 @@ smoke:
     run() { uvx --isolated --no-cache --from "$wheel" exolot "$@"; }
     # The build hook records the commit, and whether the checkout had changes
     # (untracked files included), as the build saw them.
-    expected="exolot ${version} ($(git rev-parse --short=12 HEAD)"
+    commit="$(git rev-parse HEAD)"
+    expected="exolot ${version} (${commit:0:12}"
     if [ -n "$(git status --porcelain --untracked-files=normal -- .)" ]; then
         expected+=" with uncommitted changes"
     fi
