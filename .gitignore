@@ -11,3 +11,5 @@ patch-coverage.json
 .exolot-cache/
 self-analysis.json
 self-analysis.md
+# Only builds have it (see build_info.py), but keep a stray one out of Git.
+src/exolot/build_info.json
