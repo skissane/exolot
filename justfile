@@ -119,16 +119,25 @@ smoke:
     version="$(uv version --short)"
     wheel="dist/exolot-${version}-py3-none-any.whl"
     run() { uvx --isolated --no-cache --from "$wheel" exolot "$@"; }
+    # The build hook records the commit, and whether the checkout had changes
+    # (untracked files included), as the build saw them.
+    commit="$(git rev-parse HEAD)"
+    expected="exolot ${version} (${commit:0:12}"
+    if [ -n "$(git status --porcelain --untracked-files=normal -- .)" ]; then
+        expected+=" with uncommitted changes"
+    fi
+    expected+=")"
     actual="$(run --version)"
-    if [ "$actual" != "exolot ${version}" ]; then
-        echo "expected 'exolot ${version}' from ${wheel} --version, got '${actual}'" >&2
+    if [ "$actual" != "$expected" ]; then
+        echo "expected '${expected}' from ${wheel} --version, got '${actual}'" >&2
         exit 1
     fi
     run --help >/dev/null
     run cache-dir >/dev/null
     echo "${wheel} installs and runs"
 
-# Retries while the index catches up with a new upload.
+# Retries while the index catches up with a new upload. --version may name the
+# build's commit after the version, which this doesn't check (smoke does).
 # Check that a released version installs from PyPI (or the index given) and runs
 [positional-arguments]
 check-release version index="https://pypi.org/simple/":
@@ -136,7 +145,7 @@ check-release version index="https://pypi.org/simple/":
     set -euo pipefail
     for delay in 0 10 20 40 80 160; do
         sleep "$delay"
-        if actual="$(uvx --isolated --no-cache --default-index "$2" --from "exolot==$1" exolot --version)" && [ "$actual" = "exolot $1" ]; then
+        if actual="$(uvx --isolated --no-cache --default-index "$2" --from "exolot==$1" exolot --version)" && [[ "$actual" == "exolot $1" || "$actual" == "exolot $1 ("* ]]; then
             echo "exolot $1 installs from $2 and runs"
             exit 0
         fi
