@@ -28,7 +28,7 @@ build-backend = "hatchling.build"
 # Repository checks and CI helpers (see AGENTS.md). Its own group, so CI jobs
 # that hold a write-capable token can install it alone, hash-checked against
 # uv.lock, with `uv run --only-group repoutils`.
-repoutils = ["repoutils>=0.2.0"]
+repoutils = ["repoutils>=0.3.0"]
 dev = [
     { include-group = "repoutils" },
     "coverage>=7.17.0",
