@@ -1,0 +1,79 @@
+name: Bump sonarlint-vscode
+
+# Opens a PR bumping src/exolot/upstream.toml to sonarlint-vscode's newest
+# release that's at least 7 days old, with `repoutils github-releases bump
+# --pr` (configured in pyproject.toml's
+# [tool.repoutils.github-releases.sonarlint-vscode]). It takes each asset's
+# digest from GitHub's releases API and downloads nothing. It does nothing if
+# upstream.toml is up to date, or if that release's PR is already open.
+#
+# It runs daily, and by hand from master to bump sooner.
+#
+# One job is enough: it runs only master's justfile and the repoutils that
+# master's uv.lock pins (`uv run --only-group repoutils`, which doesn't build
+# or install exolot), and no code from sonarlint-vscode.
+#
+# GH_ACTIONS_TOKEN (Contents and Pull requests write) opens the PR, rather than
+# the GITHUB_TOKEN, as a PR a GITHUB_TOKEN opens starts no CI. It lives in the
+# release environment, which only master can deploy to.
+#
+# The PR isn't automerged: `integration`, which downloads four of the five
+# VSIXes and so checks their digests, isn't a required check.
+on:
+  schedule:
+    - cron: "41 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: bump-sonarlint-vscode
+
+permissions: {}
+
+jobs:
+  bump:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: release
+    # GH_ACTIONS_TOKEN does the writing.
+    permissions:
+      contents: read
+    timeout-minutes: 10
+
+    steps:
+      # On master as a branch, which the PR is opened into. The stored token
+      # is what `bump --pr` pushes the PR's branch with.
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: master
+          token: ${{ secrets.GH_ACTIONS_TOKEN }}
+          persist-credentials: true
+
+      # Keep version in step with pyproject.toml's [tool.uv] required-version.
+      # No cache, so nothing a cache entry holds runs alongside GH_ACTIONS_TOKEN.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: false
+
+      # Keep just-version in step with the justfile's minimum-version.
+      - name: Install just
+        uses: extractions/setup-just@v4.0.0
+        with:
+          just-version: "1.58.0"
+
+      # repoutils' PR body doesn't say what to do with the PR, so this adds it.
+      - name: Open the pull request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_ACTIONS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_ACTIONS_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          just upstream-bump --pr | tee "$RUNNER_TEMP/bump.log"
+          url=$(sed -n 's/^sonarlint-vscode: opened \(https:.*\)$/\1/p' "$RUNNER_TEMP/bump.log")
+          if [ -n "$url" ]; then
+            body=$(gh pr view "$url" --json body --jq .body)
+            note="Before merging, check that this PR's \`integration\` job passed, as it downloads four of the five VSIXes and so checks their digests (it isn't a required check). Once it's merged, cut a release (Actions → Bump Version) so that exolot's users get it."
+            gh pr edit "$url" --body "$body"$'\n\n'"$note"
+          fi

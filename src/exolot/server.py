@@ -29,7 +29,7 @@ PINS = upstream.load()
 
 DEFAULT_SERVER_VERSION = PINS.current
 
-RELEASE_URL = "https://github.com/SonarSource/sonarlint-vscode/releases/download/{tag}/{asset}"
+RELEASE_URL = f"https://github.com/{upstream.REPO}/releases/download/{{tag}}/{{asset}}"
 
 # Only these parts of the VSIX are needed to run the server.
 EXTRACT_PREFIXES = ("extension/server/", "extension/analyzers/", "extension/jre/")

@@ -1,6 +1,12 @@
 """The pinned sonarlint-vscode releases, read from the bundled upstream.toml.
 
-repoutils writes upstream.toml (see its header), so exolot only reads it.
+`repoutils github-releases bump` writes upstream.toml, configured in
+pyproject.toml's [tool.repoutils.github-releases.sonarlint-vscode], and the
+Bump sonarlint-vscode workflow runs it daily, so exolot only reads it. `repo`
+is the repository whose releases it pins, `current` is the release exolot uses
+by default, and each [releases."<tag>"] table maps each of that release's
+assets to its digest, as GitHub's releases API gives it. Earlier releases are
+kept, so `--server-version <tag>` still verifies its download.
 """
 
 from __future__ import annotations
@@ -12,6 +18,8 @@ from importlib import resources
 
 from .jsontypes import is_json_object
 
+# The repository whose release assets exolot downloads, which upstream.toml must pin.
+REPO = "SonarSource/sonarlint-vscode"
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 
 
@@ -39,6 +47,8 @@ def parse(text: str) -> Pins:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise PinsError(str(e)) from None
+    if data.get("repo") != REPO:
+        raise PinsError(f"repo should be {REPO!r}")
     current = data.get("current")
     if not isinstance(current, str):
         raise PinsError("current should be a str")
