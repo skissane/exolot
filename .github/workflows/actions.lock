@@ -21,6 +21,10 @@ workflows:
         - 'actions/upload-artifact@v7.0.2'
         - 'astral-sh/setup-uv@v10.3.3'
         - 'extractions/setup-just@v4.0.0'
+    '.github/workflows/bump-sonarlint-vscode.yml':
+        - 'actions/checkout@v7.0.1'
+        - 'astral-sh/setup-uv@v10.3.3'
+        - 'extractions/setup-just@v4.0.0'
     '.github/workflows/bump-version.yml':
         - 'actions/checkout@v7.0.1'
         - 'astral-sh/setup-uv@v10.3.3'
