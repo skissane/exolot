@@ -96,6 +96,10 @@ Releases are cut from `master`.
 The Bump Version workflow, run from `master`, opens a PR bumping `version` in `pyproject.toml` (with the `GH_ACTIONS_TOKEN` secret).
 Once it merges, `build.yml`'s `release` job pushes the tag `v<version>` over SSH with the `RELEASE_DEPLOY_KEY` deploy key, which triggers `publish-pypi.yml`, and then creates the GitHub release with the job's own `GITHUB_TOKEN`.
 `publish-pypi.yml` publishes to TestPyPI, checks the release installs from there, and publishes the same files to PyPI only once Simon approves the `pypi` environment's deployment, which only `v*` tags can make.
+The sonarlint-vscode release exolot downloads by default, and the digests it checks each VSIX against, are in `src/exolot/upstream.toml`, which `repoutils github-releases bump` writes (configured in `pyproject.toml`'s `[tool.repoutils.github-releases.sonarlint-vscode]`), so don't edit it by hand.
+The Bump sonarlint-vscode workflow (`bump-sonarlint-vscode.yml`) runs it daily on `master`, and opens a PR (with `GH_ACTIONS_TOKEN`) when sonarlint-vscode has a newer release that's at least 7 days old.
+It takes the digests from GitHub's releases API without downloading anything, so check that PR's `integration` job, which isn't required, before merging it, and cut a release after.
+`just upstream-check` reports whether there's a newer release; it isn't part of `just check`, as a new release would then fail unrelated PRs.
 `GH_ACTIONS_TOKEN` and `RELEASE_DEPLOY_KEY` live in the `release` environment, which only `master` can deploy to, so a workflow run from any other branch can't read them.
 The Inspect Secrets workflow (`inspect-secrets.yml`, run by hand from `master`) runs `repoutils secrets inspect` on each secret `[tool.repoutils.secrets]` lists, reporting each GitHub token's type, owner and expiry (never its value) in its job summary, and fails when a token expires within 14 days or GitHub rejects it.
 It has one job per environment that holds secrets, as a job gets an environment's secrets only by deploying to it, so add a job when you add an environment with secrets.

@@ -95,6 +95,23 @@ regex = '''^(?:[^"'#]|"{3}(?:[^"\\]|\\.|"(?!""))*"{3}|'{3}(?:[^'\\]|\\.|'(?!''))
 name = "# type: ignore"
 message = "please fix the type error instead, if you can"
 
+# The sonarlint-vscode release exolot downloads by default, and its assets'
+# digests, which `repoutils github-releases bump` writes to upstream.toml and
+# bump-sonarlint-vscode.yml runs daily. One pattern per asset exolot downloads
+# (server.asset_name), so a release that drops one fails to bump rather than
+# pinning fewer.
+[tool.repoutils.github-releases.sonarlint-vscode]
+repo = "SonarSource/sonarlint-vscode"
+file = "src/exolot/upstream.toml"
+assets = [
+    "sonarlint-vscode-[0-9]*.vsix",
+    "sonarlint-vscode-darwin-arm64-*.vsix",
+    "sonarlint-vscode-darwin-x64-*.vsix",
+    "sonarlint-vscode-linux-x64-*.vsix",
+    "sonarlint-vscode-win32-x64-*.vsix",
+]
+cooldown-days = 7
+
 # The secrets the workflows use, which `just secrets-workflows-check` checks,
 # and `just github-settings-check` checks the repository has.
 [tool.repoutils.secrets]
@@ -103,7 +120,8 @@ actions = ["CLAUDE_CODE_OAUTH_TOKEN"]
 # Dependabot's branches with this; only Dependabot's runs can read it.
 dependabot = ["DEPENDABOT_FIX_TOKEN"]
 # Only master's workflows can reach these: build.yml's release job pushes v*
-# tags with the deploy key, and bump-version.yml uses GH_ACTIONS_TOKEN.
+# tags with the deploy key, and bump-version.yml and bump-sonarlint-vscode.yml
+# open PRs with GH_ACTIONS_TOKEN.
 environments.release = ["GH_ACTIONS_TOKEN", "RELEASE_DEPLOY_KEY"]
 # fix-push.yml pushes /autofix's commits to a PR's branch with this.
 environments.autofix = ["AUTOFIX_TOKEN"]
@@ -144,8 +162,9 @@ immutable-releases = true
 
 # The deployment environments `repoutils environments` checks or creates.
 # Only master can deploy to release, which holds the secrets that can tag a
-# release or push a branch (build.yml's release job and bump-version.yml), so a
-# branch's own copy of a workflow can't read them.
+# release or push a branch (build.yml's release job, bump-version.yml and
+# bump-sonarlint-vscode.yml), so a branch's own copy of a workflow can't read
+# them.
 [tool.repoutils.environments.release]
 deployment-branches = "selected"
 allowed-branches = ["master"]

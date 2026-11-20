@@ -61,6 +61,15 @@ wait-for-base-coverage *args:
 dependabot-relock base:
     {{ repoutils }} dependabot-relock {{ quote(base) }}
 
+# Report whether sonarlint-vscode has a release past its cooldown that's newer than upstream.toml's current one (not in check, as a new release would fail unrelated PRs)
+upstream-check:
+    uv run repoutils github-releases check
+
+# Pin sonarlint-vscode's newest release past its cooldown in upstream.toml, if it's newer than the current one (--pr: on a new branch, in a new PR, as bump-sonarlint-vscode.yml does)
+[positional-arguments]
+upstream-bump *args:
+    {{ repoutils }} github-releases bump "$@"
+
 # These two report on the working tree they're run in ([no-cd]), so CI can run
 # this justfile, from the PR's base, on a checkout of the PR's head beside it.
 
