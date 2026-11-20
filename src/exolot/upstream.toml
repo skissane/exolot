@@ -2,7 +2,14 @@
 # so a comment or change of layout here doesn't last.
 
 repo = "SonarSource/sonarlint-vscode"
-current = "6.2.0+91200"
+current = "6.3.0+91276"
+
+[releases."6.3.0+91276"]
+"sonarlint-vscode-6.3.0.vsix" = "sha256:bfbb5ded3442b7a0e4303e05e861ce1a2f144f543dafb397a486007df411e4fc"
+"sonarlint-vscode-darwin-arm64-6.3.0.vsix" = "sha256:aa7baba25ec7e581304572ed00491591d7d3416c58f63962e78ca229ee97668b"
+"sonarlint-vscode-darwin-x64-6.3.0.vsix" = "sha256:4be83ecc177240c1215b137ccb6222356471e8c2e9f2651a9761c591851c8e4a"
+"sonarlint-vscode-linux-x64-6.3.0.vsix" = "sha256:d5aed5647915189210f74306925104e690869fd801100e3f9b8a9e920e548710"
+"sonarlint-vscode-win32-x64-6.3.0.vsix" = "sha256:4f4818144a41cb100959f87393dcd71858a2bd36f7dbbcf4ffed84a32ded80a4"
 
 [releases."6.2.0+91200"]
 "sonarlint-vscode-6.2.0.vsix" = "sha256:b0c13ecb37b6d2e8e2414f482f62ddd916eec5f3c2db0711e9c0b7bb17823850"
