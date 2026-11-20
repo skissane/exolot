@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from . import __version__, clone, compiledb, config, gitdiff, markdown, problems, report, rules
+from . import __version__, build_info, clone, compiledb, config, gitdiff, markdown, problems, report, rules
 from .analyze import SERVER_LOG_LEVELS, AnalysisSession
 from .exclude import Exclude, is_empty
 from .files import collect_files
@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="exolot",
         description="Analyze code locally with the SonarQube for IDE language server, no account needed.",
     )
-    parser.add_argument("--version", action="version", version=f"exolot {__version__}")
+    parser.add_argument("--version", action="version", version=build_info.describe(__version__, build_info.read()))
     sub = parser.add_subparsers(dest="command")
 
     server_opts = argparse.ArgumentParser(add_help=False)
