@@ -111,7 +111,7 @@ jobs:
       # Installs uv and just, downloads dist/, attests it and checks every
       # file has an attestation, with this workflow's identity.
       - name: Prepare publish
-        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.1
+        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.2
         # Keep in step with pyproject.toml's [tool.uv] required-version and
         # the justfile's minimum-version, which `just check-pins` checks.
         with:
@@ -179,7 +179,7 @@ jobs:
       # Installs uv and just, downloads dist/, attests it and checks every
       # file has an attestation, with this workflow's identity.
       - name: Prepare publish
-        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.1
+        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.2
         # Keep in step with pyproject.toml's [tool.uv] required-version and
         # the justfile's minimum-version, which `just check-pins` checks.
         with:

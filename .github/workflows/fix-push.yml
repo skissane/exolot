@@ -13,6 +13,13 @@ name: PR Fixes Push
 # - A workflow_run trigger, for a fix run a person started by hand. That always
 #   runs the default branch's copy, so a branch can't change it.
 #
+# autofix-comment.yml also dispatches it with the ID of its own run, a relock
+# run, when GitHub refused to start PR Fixes because the branch's actions.lock
+# is incomplete, and its relock job relocked it. That run's bundle may hold
+# only one commit on the PR's head, which changes only actions.lock. Its report
+# job reports the relock only if it wasn't pushed, as the fix run that follows
+# reports on the PR.
+#
 # It runs no code from the branch and restores no cache. It trusts nothing the
 # fix run did: it reads the run's branch, the commit it started from and its
 # name from GitHub's API, checks them against the PR, and pushes the bundle's
@@ -21,14 +28,14 @@ name: PR Fixes Push
 # there), or else the branch's only open PR. A branch can rename its own runs,
 # but only to another PR from the same branch, which this checks.
 #
-# Its report job then tells the PR how it went, in one comment that each run
-# edits (see post-comment). A failure posts it; a success only edits one an
-# earlier failure posted, so a PR that never failed gets no comment.
+# Its report job then tells the PR how it went, success or failure, in a new
+# comment (see post-comment), which notifies the PR's subscribers as an edit
+# doesn't, and hides the earlier ones as outdated.
 on:
   workflow_dispatch:
     inputs:
       run-id:
-        description: The ID of the PR Fixes run whose fixes to push
+        description: The ID of the PR Fixes run (or relock run) whose fixes to push
         required: true
         type: string
   workflow_run:
@@ -64,6 +71,7 @@ jobs:
       pull-requests: read
     timeout-minutes: 5
     outputs:
+      kind: ${{ steps.resolve.outputs.kind }}
       run_id: ${{ steps.resolve.outputs.run_id }}
       pr_number: ${{ steps.resolve.outputs.pr_number }}
       branch: ${{ steps.resolve.outputs.branch }}
@@ -75,6 +83,7 @@ jobs:
       base: ${{ steps.resolve.outputs.base }}
       fixes: ${{ steps.resolve.outputs.fixes }}
       already_pushed: ${{ steps.resolve.outputs.already_pushed }}
+      artifact: ${{ steps.resolve.outputs.artifact }}
 
     steps:
       # Everything about the run comes from the API, which GitHub sets, rather
@@ -86,7 +95,7 @@ jobs:
       # and looks for the fixes artifact.
       - name: Check the fix run and find its pull request
         id: resolve
-        uses: sjktools/repoutils/.github/actions/autofix-resolve@v0.5.1
+        uses: sjktools/repoutils/.github/actions/autofix-resolve@v0.5.2
         with:
           run-id: ${{ github.event.workflow_run.id || inputs.run-id }}
 
@@ -97,7 +106,8 @@ jobs:
   # commit, and that commit may change nothing in .github/workflows but
   # actions.lock. AUTOFIX_TOKEN has Contents write, and Workflows write for
   # actions.lock, so this check is what keeps a bundle from changing the
-  # workflows themselves.
+  # workflows themselves. A relock run's bundle may hold only one commit, which
+  # changes nothing but actions.lock.
   push:
     needs: resolve
     if: needs.resolve.outputs.fixes == 'true'
@@ -125,26 +135,30 @@ jobs:
       # the fix run started from: a plain push would also succeed if the branch
       # had since been reset to an ancestor, and restore the commits removed.
       - name: Push the fixes
-        uses: sjktools/repoutils/.github/actions/push-bundle@v0.5.1
+        uses: sjktools/repoutils/.github/actions/push-bundle@v0.5.2
         with:
           token: ${{ secrets.AUTOFIX_TOKEN }}
-          artifact: fixes
+          artifact: ${{ needs.resolve.outputs.artifact }}
+          bundle: fixes.bundle
           run-id: ${{ needs.resolve.outputs.run_id }}
           branch: ${{ needs.resolve.outputs.branch }}
           start: ${{ needs.resolve.outputs.start_sha }}
-          clean-merge-of: origin/${{ needs.resolve.outputs.base }}
-          deny-paths: .github/workflows
+          single-commit: ${{ needs.resolve.outputs.kind == 'relock' }}
+          clean-merge-of: ${{ needs.resolve.outputs.kind == 'fix' && format('origin/{0}', needs.resolve.outputs.base) || '' }}
+          deny-paths: ${{ needs.resolve.outputs.kind == 'fix' && '.github/workflows' || '' }}
           allow-paths: .github/workflows/actions.lock
 
   # It reports only when resolve could read the run's branch, as it finds the
-  # PR from that.
+  # PR from that. It doesn't report a relock that it pushed, as the fix run
+  # that autofix-comment.yml starts next reports on the PR.
   report:
     needs: [resolve, push]
     if: >-
       always() &&
       needs.resolve.outputs.branch != '' &&
       needs.resolve.outputs.already_pushed != 'true' &&
-      contains(fromJSON('["success", "failure", "timed_out"]'), needs.resolve.outputs.conclusion)
+      contains(fromJSON('["success", "failure", "timed_out"]'), needs.resolve.outputs.conclusion) &&
+      !(needs.resolve.outputs.kind == 'relock' && needs.push.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -163,6 +177,7 @@ jobs:
       - name: Write the report
         id: write
         env:
+          KIND: ${{ needs.resolve.outputs.kind }}
           BRANCH: ${{ needs.resolve.outputs.branch }}
           START_SHA: ${{ needs.resolve.outputs.start_sha }}
           FIX_CONCLUSION: ${{ needs.resolve.outputs.conclusion }}
@@ -179,30 +194,32 @@ jobs:
             exit 1
           fi
           body="$RUNNER_TEMP/autofix.md"
-          update_only=false
           # Push is skipped only when resolve found no bundle; any other result
           # means the fixes weren't pushed, whether a check refused them (the
           # branch moved on, say) or something failed.
-          if [ "$FIX_CONCLUSION" != success ]; then
+          if [ "$KIND" = relock ]; then
+            if [ "$FIX_CONCLUSION" != success ]; then
+              echo "/autofix [couldn't relock actions.lock]($FIX_URL) on $START_SHA, so nothing was pushed." > "$body"
+            elif [ "$RESOLVE_RESULT" = success ] && [ "$PUSH_RESULT" = skipped ]; then
+              echo "/autofix [relocked actions.lock]($FIX_URL) on $START_SHA, but that changed nothing." > "$body"
+            else
+              echo "/autofix relocked actions.lock on $START_SHA, but [didn't push it]($RUN_URL)." > "$body"
+            fi
+          elif [ "$FIX_CONCLUSION" != success ]; then
             echo "PR Fixes [failed]($FIX_URL) on $START_SHA, so nothing was pushed." > "$body"
           elif [ "$RESOLVE_RESULT" = success ] && [ "$PUSH_RESULT" = success ]; then
             echo "PR Fixes [pushed its fixes]($RUN_URL) on top of $START_SHA." > "$body"
-            update_only=true
           elif [ "$RESOLVE_RESULT" = success ] && [ "$PUSH_RESULT" = skipped ]; then
             echo "PR Fixes [found nothing to fix]($FIX_URL) on $START_SHA." > "$body"
-            update_only=true
           else
             echo "PR Fixes ran on $START_SHA, but [didn't push its fixes]($RUN_URL)." > "$body"
           fi
-          {
-            echo "body=$body"
-            echo "update_only=$update_only"
-          } >> "$GITHUB_OUTPUT"
+          echo "body=$body" >> "$GITHUB_OUTPUT"
 
       - name: Report on the pull request
-        uses: sjktools/repoutils/.github/actions/post-comment@v0.5.1
+        uses: sjktools/repoutils/.github/actions/post-comment@v0.5.2
         with:
           pr: ${{ needs.resolve.outputs.number }}
           body: ${{ steps.write.outputs.body }}
           name: autofix
-          update-only: ${{ steps.write.outputs.update_only }}
+          hide-previous: "true"

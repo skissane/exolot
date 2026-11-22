@@ -61,7 +61,7 @@ jobs:
       # does; these checks only fail early with a clearer message.
       - name: Find the branch's pull request
         id: check-pr
-        uses: sjktools/repoutils/.github/actions/autofix-check@v0.5.1
+        uses: sjktools/repoutils/.github/actions/autofix-check@v0.5.2
         with:
           head-sha: ${{ inputs.head-sha }}
           pr-number: ${{ inputs.pr-number }}
@@ -107,7 +107,7 @@ jobs:
 
       # repoutils' action, at the commit of the repoutils that uv.lock locks.
       - name: Install gh-actions-lock
-        uses: sjktools/repoutils/.github/actions/install-gh-actions-lock@v0.5.1
+        uses: sjktools/repoutils/.github/actions/install-gh-actions-lock@v0.5.2
 
       # The job's GITHUB_TOKEN is read-only, and is all gh actions-lock needs to
       # read the actions' public repositories.

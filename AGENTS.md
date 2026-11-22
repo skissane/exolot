@@ -69,7 +69,7 @@ Recipes that only check run `uv run repoutils <command>`.
 Recipes that CI runs with a write-capable token or `id-token: write` (posting PR comments and commit statuses, `check-attestations`) use the justfile's `repoutils` variable, `uv run --project <the justfile's directory> --only-group repoutils repoutils`, which installs only repoutils, hash-checked against `uv.lock`, and doesn't build or install exolot.
 repoutils also has composite actions, each running one repoutils command from the action's own commit with the runner's `python3`, installing nothing, which the workflows use as `uses: sjktools/repoutils/.github/actions/<action>@v<version>`:
 
-- `autofix-start`, `autofix-check`, `autofix-resolve` and `push-bundle` for `/autofix` (see below), and `push-bundle` for `dependabot-push`.
+- `autofix-start`, `autofix-relock`, `autofix-check`, `autofix-resolve` and `push-bundle` for `/autofix` (see below), and `push-bundle` for `dependabot-push`.
 - `post-comment` for `fix-push.yml`'s report and the Claude workflows' self-test reports.
 - `testpypi-dispatch` for `/testpypi`, `bump-version` for the Bump Version workflow, and `release-tag` for `build.yml`'s `release` job.
 - `inspect-secrets` for the Inspect Secrets workflow, and `claude-route` for the Claude workflows' `route` jobs.
@@ -103,7 +103,9 @@ Then `fix-push.yml` (PR Fixes Push), which always runs from `master` and runs no
 `autofix-comment.yml` passes the PR's number to `fix.yml`, which puts it in the run's name, as GitHub's API gives a run's name but not its inputs, and `fix-push.yml` reads it from there, so a branch with several open PRs (against different bases) fixes the one commented on.
 A fix run started by hand without a number needs the branch to have exactly one open PR in this repository.
 `repoutils autofix <PR>` starts a fix run as the comment does, for a client that can't post the comment as it is, such as Claude Code on the web, and finds the push run by `fix-push.yml`'s run name, which names the fix run.
-If either run fails, or either can't start, the PR gets one comment saying so, which later runs edit, so a success replaces an earlier failure.
+Each `/autofix` reports how it went, success or failure, in a new PR comment, which notifies the PR's subscribers as an edit wouldn't, and hides the earlier reports as outdated.
+GitHub won't start the branch's `fix.yml` while the branch's `actions.lock` doesn't list every action it uses, so then `autofix-comment.yml`'s `relock` job (repoutils' `autofix-relock` action) relocks the branch, with no token that can write and running nothing from the branch.
+Its `retry` job then has `fix-push.yml` push that relock, a single commit that changes only `actions.lock`, and starts PR Fixes again on the new head.
 The fix runs on the branch rather than on `master` because code in a run can write to the Actions cache of the run's branch: run on `master`, the branch's code could plant cache entries that `master`'s jobs would restore.
 `AUTOFIX_TOKEN` is a fine-grained token with only contents and workflows write on this repository, so that its push, unlike a `GITHUB_TOKEN` push, triggers CI; it needs workflows write to push `.github/workflows/actions.lock`, which `just fix` regenerates.
 So `fix-push.yml` checks that the bundle holds at most a clean merge of the base branch and one commit of fixes that changes nothing under `.github/workflows` but `actions.lock`.

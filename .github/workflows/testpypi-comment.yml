@@ -38,7 +38,7 @@ jobs:
       pull-requests: write # React to the comment and reply with the run's link
     steps:
       - name: Start the Publish workflow on the PR's branch
-        uses: sjktools/repoutils/.github/actions/testpypi-dispatch@v0.5.1
+        uses: sjktools/repoutils/.github/actions/testpypi-dispatch@v0.5.2
         with:
           pr: ${{ github.event.issue.number }}
           comment-id: ${{ github.event.comment.id }}
