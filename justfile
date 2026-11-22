@@ -8,6 +8,12 @@ set minimum-version := '1.58.0'
 # checkout (as CI's long-files and added-strings jobs do) still uses it.
 repoutils := "uv run --project " + quote(justfile_directory()) + " --only-group repoutils repoutils"
 
+# Dummy assignment, so every recipe run sets up the repo's local Git config
+# (see `repoutils git-config-setup`), e.g. blame.ignoreRevsFile for
+# .git-blame-ignore-revs. `eager` makes just evaluate it even though nothing
+# uses it, whether or not `set lazy` is on (casey/just#3759).
+eager _ := shell(repoutils + ' git-config-setup')
+
 # List available recipes
 default:
     @just --list
@@ -112,63 +118,22 @@ build:
 check-attestations dist="dist":
     {{ repoutils }} check-attestations "$1"
 
-# Install the wheel `just build` built into a fresh environment and check that it runs
+# Install the wheel `just build` built into a fresh environment and check that it runs and records this checkout's commit
 smoke:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    version="$(uv version --short)"
-    wheel="dist/exolot-${version}-py3-none-any.whl"
-    run() { uvx --isolated --no-cache --from "$wheel" exolot "$@"; }
-    # The build hook records the commit, and whether the checkout had changes
-    # (untracked files included), as the build saw them.
-    commit="$(git rev-parse HEAD)"
-    expected="exolot ${version} (${commit:0:12}"
-    if [ -n "$(git status --porcelain --untracked-files=normal -- .)" ]; then
-        expected+=" with uncommitted changes"
-    fi
-    expected+=")"
-    actual="$(run --version)"
-    if [ "$actual" != "$expected" ]; then
-        echo "expected '${expected}' from ${wheel} --version, got '${actual}'" >&2
-        exit 1
-    fi
-    run --help >/dev/null
-    run cache-dir >/dev/null
-    echo "${wheel} installs and runs"
+    {{ repoutils }} check-install --wheel dist --version-line --run=--help --run cache-dir
 
-# Retries while the index catches up with a new upload. --version may name the
-# build's commit after the version, which this doesn't check (smoke does).
+# Retries while the index catches up with a new upload. --version must also
+# give a 12-hex commit after the version (and a dev build's bumped version
+# counts as an uncommitted change).
 # Check that a released version installs from PyPI (or the index given) and runs
 [positional-arguments]
 check-release version index="https://pypi.org/simple/":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    for delay in 0 10 20 40 80 160; do
-        sleep "$delay"
-        if actual="$(uvx --isolated --no-cache --default-index "$2" --from "exolot==$1" exolot --version)" && [[ "$actual" == "exolot $1" || "$actual" == "exolot $1 ("* ]]; then
-            echo "exolot $1 installs from $2 and runs"
-            exit 0
-        fi
-    done
-    echo "exolot $1 did not install from $2 and run" >&2
-    exit 1
+    {{ repoutils }} check-install --version "$1" --index "$2" --version-line
 
 # Lint with ruff, failing on any warning too, as ruff only warns about such
-# things as an invalid noqa directive. --no-cache, as ruff gives those only for
-# files it reparses. uv's --quiet keeps uv's own warnings out of the check.
+# things as an invalid noqa directive (see `repoutils ruff-check --help`)
 lint:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    stderr="$(mktemp)"
-    trap 'rm -f "$stderr"' EXIT
-    status=0
-    uv run --quiet --group dev ruff check --no-cache . 2>"$stderr" || status=$?
-    cat "$stderr" >&2
-    if grep -q '^warning:' "$stderr"; then
-        echo 'ruff gave a warning (see above)' >&2
-        exit 1
-    fi
-    exit "$status"
+    uv run --group dev repoutils ruff-check .
 
 # Lint with ruff, applying its autofixes
 lint-fix:
@@ -210,6 +175,14 @@ whitespace-check:
 sentence-per-line-check:
     uv run repoutils check-sentence-per-line
 
+# Check AGENTS.md and README.md prose for long, clause-heavy sentences, or too many short ones (not yet in check: neither passes)
+prose-check:
+    uv run repoutils check-prose
+
+# Check that .git-blame-ignore-revs lists only full hashes of commits in the target's history (default: $BLAME_IGNORE_REVS_TARGET, else HEAD; CI passes a PR's base, as a PR's own commits are lost when it's squash-merged)
+blame-ignore-revs-check target=env("BLAME_IGNORE_REVS_TARGET", "HEAD"):
+    uv run repoutils check-blame-ignore-revs {{ quote(target) }}
+
 # Check that every workflow and local action installs the uv version pyproject.toml requires and the just version the justfile requires
 check-pins:
     uv run repoutils check-pins
@@ -226,6 +199,26 @@ secrets-workflows-check:
 variables-workflows-check:
     uv run repoutils variables check-workflows
 
+# Check that the justfile has the standard recipes, and that check, fix, ci and patch-coverage reach the standard ones
+check-justfile:
+    uv run repoutils check-justfile --just {{ quote(just_executable()) }} --justfile {{ quote(justfile()) }}
+
+# Check `secrets export` round-trips made-up secrets through age (on the PATH), also encrypting to the GitHub key given as USER/SHA256:FINGERPRINT
+secrets-export-test $SECRETS_EXPORT_KEY='':
+    {{ repoutils }} secrets export --self-test ${SECRETS_EXPORT_KEY:+--github-key "$SECRETS_EXPORT_KEY"}
+
+# Check that uv.lock only has wheels for the platforms pyproject.toml allows
+lock-platforms-check:
+    uv run repoutils check-lock-platforms
+
+# Check that dependency minimums in pyproject.toml match uv.lock
+requirements-check:
+    {{ repoutils }} requirements-min-versions check
+
+# Rewrite dependency minimums in pyproject.toml to the versions in uv.lock
+requirements-fix:
+    {{ repoutils }} requirements-min-versions fix
+
 # Check the GitHub settings pyproject.toml declares (labels, repository and security settings, rulesets, environments, secrets, deploy keys); needs an admin token, so CI doesn't run it
 github-settings-check *args:
     uv run repoutils github-settings check {{ args }}
@@ -238,16 +231,18 @@ github-settings-ensure *args:
 inspect-secrets *args:
     uv run repoutils secrets inspect-remote {{ args }}
 
-# Leaves out `just pyright`, a second-opinion type checker that CI deliberately doesn't run (yet).
+# Leaves out `just pyright`, a second-opinion type checker that CI deliberately
+# doesn't run (yet), and `just prose-check`, which the docs don't pass yet
+# (both listed in pyproject.toml's [tool.repoutils.justfile]).
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check
+check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check check-justfile lock-platforms-check requirements-check blame-ignore-revs-check
 
 # Formatting first fixes the long lines it can, so lint-fix stops only on
 # findings that need a hand edit.
 
 # Reformat code, autofix lint issues and update actions.lock
-fix: fmt just-fmt lint-fix actions-lock
+fix: fmt just-fmt lint-fix requirements-fix actions-lock
 
 # Check .github/workflows/actions.lock pins every action the workflows use, transitive ones included, to a commit that still verifies upstream (needs gh, logged in, with the github/gh-actions-lock extension)
 actions-lock-check:

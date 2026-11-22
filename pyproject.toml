@@ -38,16 +38,16 @@ file = "src/exolot/build_info.json"
 repoutils = ["repoutils>=0.5.0"]
 dev = [
     { include-group = "repoutils" },
-    "coverage>=7.17.0",
-    "diff-cover>=11.0.0",
-    "jactionlint>=2.4.0",
-    "jsonschema>=4.23",
+    "coverage>=7.17.3",
+    "diff-cover>=11.0.2",
+    "jactionlint>=2.6.0",
+    "jsonschema>=4.26.0",
     "mypy>=2.4.1",
     "pyright>=1.1.414",
-    "pytest>=8",
+    "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
-    "ruff>=0.14",
+    "ruff>=0.17.5",
     "types-jsonschema>=4.26.0.20261006",
 ]
 
@@ -65,6 +65,20 @@ See [AGENTS.md](https://github.com/skissane/exolot/blob/master/AGENTS.md) for mo
 [tool.repoutils]
 comment-prefix = "exolot"
 default-branch = "master"
+# The optional repoutils features exolot uses, which decide the standard
+# justfile recipes `just check-justfile` asks for.
+features = ["pypi-publication"]
+
+# The standard justfile recipes and dependencies exolot leaves out on purpose.
+# `check` leaves out `pyright` (see AGENTS.md), and `prose-check`, as AGENTS.md
+# and README.md don't pass it yet.
+[tool.repoutils.justfile]
+omit-dependencies = { check = ["pyright", "prose-check"] }
+
+# The platforms uv.lock may have wheels for, matching [tool.uv] environments.
+# "os" allows any arch, and "os:arch" one; "linux" matches manylinux and musllinux.
+[tool.repoutils.lock-platforms]
+supported = ["any", "linux:x86_64", "linux:aarch64", "macosx", "win:amd64"]
 
 # The Markdown files `just sentence-per-line-check` keeps one sentence per line.
 # README.md is left out until it's reflowed from its fixed-width wrapping.
@@ -345,6 +359,14 @@ description = "Dependabot's dependency updates"
 # Keep in step with the setup-uv `version` in .github/workflows.
 [tool.uv]
 required-version = ">=0.13.6"
+# Development (the dev group's wheels in uv.lock) is supported where CI runs:
+# macOS, Linux x86_64/aarch64 and Windows x86_64. exolot itself is pure Python.
+# `just lock-platforms-check` checks uv.lock keeps to these.
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
 
 [tool.ruff]
 line-length = 120
