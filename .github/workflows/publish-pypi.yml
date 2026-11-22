@@ -111,7 +111,12 @@ jobs:
       # Installs uv and just, downloads dist/, attests it and checks every
       # file has an attestation, with this workflow's identity.
       - name: Prepare publish
-        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.0
+        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.1
+        # Keep in step with pyproject.toml's [tool.uv] required-version and
+        # the justfile's minimum-version, which `just check-pins` checks.
+        with:
+          uv-version: "0.13.6"
+          just-version: "1.58.0"
 
       # --check-url skips files TestPyPI already has with the same hash, so
       # re-running this job after an upload that got through is safe.
@@ -174,7 +179,12 @@ jobs:
       # Installs uv and just, downloads dist/, attests it and checks every
       # file has an attestation, with this workflow's identity.
       - name: Prepare publish
-        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.0
+        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.1
+        # Keep in step with pyproject.toml's [tool.uv] required-version and
+        # the justfile's minimum-version, which `just check-pins` checks.
+        with:
+          uv-version: "0.13.6"
+          just-version: "1.58.0"
 
       # --check-url skips files PyPI already has with the same hash, so
       # re-running this job after an upload that got through is safe.

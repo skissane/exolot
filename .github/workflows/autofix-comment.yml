@@ -44,7 +44,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Run PR Fixes and push its fixes
-        uses: sjktools/repoutils/.github/actions/autofix-start@v0.5.0
+        uses: sjktools/repoutils/.github/actions/autofix-start@v0.5.1
         with:
           pr: ${{ github.event.issue.number }}
           comment-id: ${{ github.event.comment.id }}
