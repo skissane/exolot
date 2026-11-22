@@ -15,12 +15,12 @@ name: Attestations
 on:
   pull_request:
     paths:
-      - .github/actions/prepare-publish/**
       - .github/workflows/attestations.yml
       - .github/workflows/publish-*.yml
       - pyproject.toml
       - justfile
-      # Where the check-attestations command comes from (repoutils).
+      # Where the check-attestations command, and the prepare-publish action's
+      # version, come from (repoutils).
       - uv.lock
   workflow_dispatch:
 
@@ -89,4 +89,9 @@ jobs:
 
       # The same steps the publish jobs run before uv publish.
       - name: Prepare publish
-        uses: $/.github/actions/prepare-publish
+        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.2
+        # Keep in step with pyproject.toml's [tool.uv] required-version and
+        # the justfile's minimum-version, which `just check-pins` checks.
+        with:
+          uv-version: "0.13.6"
+          just-version: "1.58.0"

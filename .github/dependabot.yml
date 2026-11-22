@@ -1,20 +1,19 @@
-# Workflows and local actions name actions by version tag, and
-# .github/workflows/actions.lock pins each to a commit; Dependabot updates both
-# together. The cooldown skips releases younger than a week, so a
+# Workflows name actions by version tag, and .github/workflows/actions.lock
+# pins each to a commit; Dependabot updates both together. The cooldown skips releases younger than a week, so a
 # compromised release has time to be noticed and pulled before it lands here.
 version: 2
 updates:
-  # "/" covers .github/workflows; the local composite actions in
-  # .github/actions need listing too, as Dependabot reads only the action.yml
-  # of each directory listed.
   - package-ecosystem: github-actions
-    directories:
-      - /
-      - /.github/actions/*
+    directory: /
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
+    # repoutils' Bump downstream workflow moves its actions and its package
+    # together, at each release, as `just check-pins` needs both at one commit.
+    ignore:
+      # The wildcard also covers names that carry an action's path.
+      - dependency-name: "sjktools/repoutils*"
     labels:
       - dependencies
       - type:maintenance
@@ -26,6 +25,9 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # repoutils' Bump downstream workflow bumps it, along with its actions.
+    ignore:
+      - dependency-name: repoutils
     groups:
       dev:
         patterns:

@@ -61,56 +61,10 @@ jobs:
       # does; these checks only fail early with a clearer message.
       - name: Find the branch's pull request
         id: check-pr
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ inputs.head-sha }}
-          PR_NUMBER: ${{ inputs.pr-number }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          if [[ $GITHUB_REF != refs/heads/* ]] || [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]; then
-            echo "::error::Run this workflow on a pull request's branch (Use workflow from), not on $GITHUB_REF."
-            exit 1
-          fi
-          if [ -n "$EXPECTED_SHA" ] && [ "$EXPECTED_SHA" != "$GITHUB_SHA" ]; then
-            echo "::error::Branch $GITHUB_REF_NAME is at $GITHUB_SHA, not $EXPECTED_SHA as expected; it has moved on, so run PR Fixes again."
-            exit 1
-          fi
-          if [ -n "$PR_NUMBER" ]; then
-            if ! [[ $PR_NUMBER =~ ^[0-9]+$ ]]; then
-              echo "::error::$PR_NUMBER isn't a pull request number."
-              exit 1
-            fi
-            pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" \
-              --jq '"\(.state) \(.head.repo.full_name) \(.base.ref) \(.head.ref)"')
-            read -r state head_repository base_branch head_branch <<< "$pr"
-            if [ "$state" != open ]; then
-              echo "::error::Pull request #$PR_NUMBER is not open."
-              exit 1
-            fi
-            if [ "$head_repository" != "$GITHUB_REPOSITORY" ] || [ "$head_branch" != "$GITHUB_REF_NAME" ]; then
-              echo "::error::Pull request #$PR_NUMBER isn't from branch $GITHUB_REF_NAME of this repository."
-              exit 1
-            fi
-          else
-            # Without a number, the branch must have exactly one open PR, as
-            # two may have different bases and nothing says which to fix. A
-            # fork's PR can have a head branch of the same name, so only PRs
-            # from this repository count, and every page is read, so none
-            # goes uncounted.
-            base_branch=$(gh api --method GET --paginate "repos/$GITHUB_REPOSITORY/pulls" \
-              -f state=open -f head="$GITHUB_REPOSITORY_OWNER:$GITHUB_REF_NAME" -F per_page=100 \
-              --jq '.[] | select(.head.repo.full_name == env.GITHUB_REPOSITORY) | .base.ref')
-            count=$(grep -c . <<< "$base_branch" || true)
-            if [ "$count" = 0 ]; then
-              echo "::error::Branch $GITHUB_REF_NAME has no open pull request in this repository."
-              exit 1
-            fi
-            if [ "$count" != 1 ]; then
-              echo "::error::Branch $GITHUB_REF_NAME has $count open pull requests in this repository; run PR Fixes again with the number of the one to fix."
-              exit 1
-            fi
-          fi
-          echo "base_branch=$base_branch" >> "$GITHUB_OUTPUT"
+        uses: sjktools/repoutils/.github/actions/autofix-check@v0.5.2
+        with:
+          head-sha: ${{ inputs.head-sha }}
+          pr-number: ${{ inputs.pr-number }}
 
       # No credentials are kept, as the steps after this run the branch's own
       # justfile and dependencies. The run's own commit, which fix-push.yml
@@ -151,11 +105,9 @@ jobs:
       - name: Install dependencies
         run: just sync
 
-      # The branch's copy of the action, from the merged tree (so it's there even
-      # if the branch predates it), so it installs the extension version the
-      # branch's justfile expects.
+      # repoutils' action, at the commit of the repoutils that uv.lock locks.
       - name: Install gh-actions-lock
-        uses: ./.github/actions/install-gh-actions-lock
+        uses: sjktools/repoutils/.github/actions/install-gh-actions-lock@v0.5.2
 
       # The job's GITHUB_TOKEN is read-only, and is all gh actions-lock needs to
       # read the actions' public repositories.
