@@ -180,7 +180,7 @@ prose-check:
     uv run repoutils check-prose
 
 # Check that .git-blame-ignore-revs lists only full hashes of commits in the target's history (default: $BLAME_IGNORE_REVS_TARGET, else HEAD; CI passes a PR's base, as a PR's own commits are lost when it's squash-merged)
-check-blame-ignore-revs target=env("BLAME_IGNORE_REVS_TARGET", "HEAD"):
+blame-ignore-revs-check target=env("BLAME_IGNORE_REVS_TARGET", "HEAD"):
     uv run repoutils check-blame-ignore-revs {{ quote(target) }}
 
 # Check that every workflow and local action installs the uv version pyproject.toml requires and the just version the justfile requires
@@ -236,7 +236,7 @@ inspect-secrets *args:
 # (both listed in pyproject.toml's [tool.repoutils.justfile]).
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check check-justfile lock-platforms-check requirements-check check-blame-ignore-revs
+check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check check-justfile lock-platforms-check requirements-check blame-ignore-revs-check
 
 # Formatting first fixes the long lines it can, so lint-fix stops only on
 # findings that need a hand edit.
