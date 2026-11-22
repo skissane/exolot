@@ -23,7 +23,7 @@ Only running `just pyright` might, and only the first time on a machine with no 
 `just check-justfile` (part of `just check`) checks the justfile has repoutils' standard recipes, and that `check`, `fix`, `ci` and `patch-coverage` reach the standard ones.
 A recipe or dependency exolot leaves out on purpose goes in `pyproject.toml`'s `[tool.repoutils.justfile]`, which today keeps `pyright` and `prose-check` out of `check`.
 Every `just` run first runs `repoutils git-config-setup`, which points the checkout's `blame.ignoreRevsFile` at `.git-blame-ignore-revs`, so `git blame` skips the commits listed there (none yet).
-`just blame-ignore-revs-check` (part of `just check`) fails unless each entry is a full hash of a commit in `HEAD`'s history, or `$BLAME_IGNORE_REVS_TARGET`'s.
+`just blame-ignore-revs-check` (part of `just check`) fails unless each entry is a full hash of a commit in the history of `$BLAME_IGNORE_REVS_TARGET`, or of `HEAD` when that variable is unset.
 On PRs, CI sets that to the base branch, as a PR's own commits are lost when it's squash-merged, so list a commit only once it's on `master`.
 `just prose-check` flags long, clause-heavy sentences in `AGENTS.md` and `README.md`, which don't pass it yet.
 `just lock-platforms-check` (part of `just check`) fails if `uv.lock` has wheels for platforms outside `[tool.uv] environments`: macOS, Linux x86_64 and aarch64, and Windows x86_64, where CI runs.
