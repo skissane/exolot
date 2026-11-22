@@ -112,63 +112,22 @@ build:
 check-attestations dist="dist":
     {{ repoutils }} check-attestations "$1"
 
-# Install the wheel `just build` built into a fresh environment and check that it runs
+# Install the wheel `just build` built into a fresh environment and check that it runs and records this checkout's commit
 smoke:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    version="$(uv version --short)"
-    wheel="dist/exolot-${version}-py3-none-any.whl"
-    run() { uvx --isolated --no-cache --from "$wheel" exolot "$@"; }
-    # The build hook records the commit, and whether the checkout had changes
-    # (untracked files included), as the build saw them.
-    commit="$(git rev-parse HEAD)"
-    expected="exolot ${version} (${commit:0:12}"
-    if [ -n "$(git status --porcelain --untracked-files=normal -- .)" ]; then
-        expected+=" with uncommitted changes"
-    fi
-    expected+=")"
-    actual="$(run --version)"
-    if [ "$actual" != "$expected" ]; then
-        echo "expected '${expected}' from ${wheel} --version, got '${actual}'" >&2
-        exit 1
-    fi
-    run --help >/dev/null
-    run cache-dir >/dev/null
-    echo "${wheel} installs and runs"
+    {{ repoutils }} check-install --wheel dist --version-line --run=--help --run cache-dir
 
-# Retries while the index catches up with a new upload. --version may name the
-# build's commit after the version, which this doesn't check (smoke does).
+# Retries while the index catches up with a new upload. --version must also
+# give a 12-hex commit after the version (and a dev build's bumped version
+# counts as an uncommitted change).
 # Check that a released version installs from PyPI (or the index given) and runs
 [positional-arguments]
 check-release version index="https://pypi.org/simple/":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    for delay in 0 10 20 40 80 160; do
-        sleep "$delay"
-        if actual="$(uvx --isolated --no-cache --default-index "$2" --from "exolot==$1" exolot --version)" && [[ "$actual" == "exolot $1" || "$actual" == "exolot $1 ("* ]]; then
-            echo "exolot $1 installs from $2 and runs"
-            exit 0
-        fi
-    done
-    echo "exolot $1 did not install from $2 and run" >&2
-    exit 1
+    {{ repoutils }} check-install --version "$1" --index "$2" --version-line
 
 # Lint with ruff, failing on any warning too, as ruff only warns about such
-# things as an invalid noqa directive. --no-cache, as ruff gives those only for
-# files it reparses. uv's --quiet keeps uv's own warnings out of the check.
+# things as an invalid noqa directive (see `repoutils ruff-check --help`)
 lint:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    stderr="$(mktemp)"
-    trap 'rm -f "$stderr"' EXIT
-    status=0
-    uv run --quiet --group dev ruff check --no-cache . 2>"$stderr" || status=$?
-    cat "$stderr" >&2
-    if grep -q '^warning:' "$stderr"; then
-        echo 'ruff gave a warning (see above)' >&2
-        exit 1
-    fi
-    exit "$status"
+    uv run --group dev repoutils ruff-check .
 
 # Lint with ruff, applying its autofixes
 lint-fix:
