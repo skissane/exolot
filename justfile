@@ -8,6 +8,12 @@ set minimum-version := '1.58.0'
 # checkout (as CI's long-files and added-strings jobs do) still uses it.
 repoutils := "uv run --project " + quote(justfile_directory()) + " --only-group repoutils repoutils"
 
+# Dummy assignment, so every recipe run sets up the repo's local Git config
+# (see `repoutils git-config-setup`), e.g. blame.ignoreRevsFile for
+# .git-blame-ignore-revs. `eager` makes just evaluate it even though nothing
+# uses it, whether or not `set lazy` is on (casey/just#3759).
+eager _ := shell(repoutils + ' git-config-setup')
+
 # List available recipes
 default:
     @just --list

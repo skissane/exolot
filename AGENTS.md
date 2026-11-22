@@ -22,6 +22,7 @@ Only running `just pyright` might, and only the first time on a machine with no 
 `just whitespace-check` (part of `just check`) fails on trailing whitespace, a leading blank line, or a missing or extra final newline in any Git-tracked text file.
 `just check-justfile` (part of `just check`) checks the justfile has repoutils' standard recipes, and that `check`, `fix`, `ci` and `patch-coverage` reach the standard ones.
 A recipe or dependency exolot leaves out on purpose goes in `pyproject.toml`'s `[tool.repoutils.justfile]`, which today keeps `pyright` and `prose-check` out of `check`.
+Every `just` run first runs `repoutils git-config-setup`, which points the checkout's `blame.ignoreRevsFile` at `.git-blame-ignore-revs`, so `git blame` skips the commits listed there (none yet).
 `just prose-check` flags long, clause-heavy sentences in `AGENTS.md` and `README.md`, which don't pass it yet.
 `just lock-platforms-check` (part of `just check`) fails if `uv.lock` has wheels for platforms outside `[tool.uv] environments`: macOS, Linux x86_64 and aarch64, and Windows x86_64, where CI runs.
 `just requirements-check` (part of `just check`) fails if a dependency's minimum in `pyproject.toml` isn't the version `uv.lock` locks, and `just requirements-fix` (part of `just fix`) raises the minimums to match.
