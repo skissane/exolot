@@ -301,11 +301,11 @@ dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "repoutils", specifier = ">=0.3.0" },
+    { name = "repoutils", specifier = ">=0.3.1.dev44971433689", index = "https://test.pypi.org/simple/" },
     { name = "ruff", specifier = ">=0.14" },
     { name = "types-jsonschema", specifier = ">=4.26.0.20261006" },
 ]
-repoutils = [{ name = "repoutils", specifier = ">=0.3.0" }]
+repoutils = [{ name = "repoutils", specifier = ">=0.3.1.dev44971433689", index = "https://test.pypi.org/simple/" }]
 
 [[package]]
 name = "iniconfig"
@@ -762,11 +762,11 @@ wheels = [
 
 [[package]]
 name = "repoutils"
-version = "0.3.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b6/bc/cd05d5684d42f3ca4e5bb057883ca9f6e43930ca82ba73fa4a00b4aea0b5/repoutils-0.3.0.tar.gz", hash = "sha256:91599ea73f3ffce85929f06bbab2c27807b067f644b08d751d3157a4a722451a", size = 358928, upload-time = "2026-11-20T10:01:10.566Z" }
+version = "0.3.1.dev44971433689"
+source = { registry = "https://test.pypi.org/simple/" }
+sdist = { url = "https://test-files.pythonhosted.org/packages/f0/1c/496fe03cff8959e1ea33b30b3607afaedde9e3dbaf77dded29e4b1adb667/repoutils-0.3.1.dev44971433689.tar.gz", hash = "sha256:1a341064638c1e9acf1382ca79b1d0af8dce08f1d539771cdd20f682c369724b", size = 447591, upload-time = "2026-11-22T01:26:35.603Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/a8/43db07f16455c0307397a47469adea08aa6878b2dd7c8827bdc547faff2f/repoutils-0.3.0-py3-none-any.whl", hash = "sha256:7e80fd24f4b1d8bc08f9417816cab4571a24b9285475419d704f9c0d622490a5", size = 196200, upload-time = "2026-11-20T10:01:09.356Z" },
+    { url = "https://test-files.pythonhosted.org/packages/01/3d/843f05c1387f49102a618930c2eb10f159d2dd198a890ff79b82f9985a10/repoutils-0.3.1.dev44971433689-py3-none-any.whl", hash = "sha256:ea440ebfde55ba4e1947939f9c71637fbdd3af38a98c4b22c667d49671468221", size = 245400, upload-time = "2026-11-22T01:26:33.952Z" },
 ]
 
 [[package]]
