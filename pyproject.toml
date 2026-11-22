@@ -23,7 +23,7 @@ exolot = "exolot.cli:main"
 [build-system]
 # repoutils provides the build hook below. uv.lock doesn't lock build
 # requirements, so it's pinned here by version.
-requires = ["hatchling", "repoutils==0.5.0"]
+requires = ["hatchling", "repoutils==0.5.1"]
 build-backend = "hatchling.build"
 
 # Records the commit a build comes from in the sdist and the wheel, for
@@ -35,7 +35,7 @@ file = "src/exolot/build_info.json"
 # Repository checks and CI helpers (see AGENTS.md). Its own group, so CI jobs
 # that hold a write-capable token can install it alone, hash-checked against
 # uv.lock, with `uv run --only-group repoutils`.
-repoutils = ["repoutils>=0.5.0"]
+repoutils = ["repoutils>=0.5.1"]
 dev = [
     { include-group = "repoutils" },
     "coverage>=7.17.3",
