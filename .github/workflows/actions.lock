@@ -8,10 +8,10 @@ workflows:
         - 'actions/upload-artifact@v7.0.2'
         - 'astral-sh/setup-uv@v10.3.3'
         - 'extractions/setup-just@v4.0.0'
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/autofix-comment.yml':
         - 'actions/checkout@v7.0.1'
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/build.yml':
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
@@ -20,43 +20,43 @@ workflows:
         - 'actions/upload-artifact@v7.0.2'
         - 'astral-sh/setup-uv@v10.3.3'
         - 'extractions/setup-just@v4.0.0'
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/bump-sonarlint-vscode.yml':
         - 'actions/checkout@v7.0.1'
         - 'astral-sh/setup-uv@v10.3.3'
         - 'extractions/setup-just@v4.0.0'
     '.github/workflows/bump-version.yml':
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/claude-code-review.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
         - 'anthropics/claude-code-action@v1.0.276'
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/claude.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
         - 'anthropics/claude-code-action@v1.0.276'
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/fix-push.yml':
         - 'actions/checkout@v7.0.1'
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/fix.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
         - 'astral-sh/setup-uv@v10.3.3'
         - 'extractions/setup-just@v4.0.0'
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/inspect-secrets.yml':
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/publish-pypi.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
         - 'astral-sh/setup-uv@v10.3.3'
         - 'extractions/setup-just@v4.0.0'
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
     '.github/workflows/testpypi-comment.yml':
         - 'actions/upload-artifact@v7.0.2'
-        - 'sjktools/repoutils@v0.5.1'
+        - 'sjktools/repoutils@v0.5.2'
 dependencies:
     'actions/cache@v6.1.0':
         ref: 'v6.1.0'
@@ -124,9 +124,9 @@ dependencies:
         commit: 'sha1-0c5077e51419868618aeaa5fe8019c62421857d6'
         owner_id: 108928776
         repo_id: 512644635
-    'sjktools/repoutils@v0.5.1':
-        ref: 'v0.5.1'
-        commit: 'sha1-ab8a22bada9bb642a31e3afe3b09591567c9eaa2'
+    'sjktools/repoutils@v0.5.2':
+        ref: 'v0.5.2'
+        commit: 'sha1-ce5233761a54edbdffa6b3587fd3f7b8d5cc04ec'
         owner_id: 354208802
         repo_id: 1452432712
         uses:
