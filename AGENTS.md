@@ -20,6 +20,11 @@ The `pyright` package bundles pyright itself, and its `nodeenv` dependency downl
 Only running `just pyright` might, and only the first time on a machine with no `node` on its `PATH`, in which case it downloads Node.js into `~/.cache/pyright-python/nodeenv` and reuses it after that.
 `just lint` (part of `just check`) runs ruff with `--no-cache` and fails on any warning ruff prints, such as an invalid `noqa` directive, as well as on its findings; ruff itself only prints its warnings, and gives them only for files it reparses.
 `just whitespace-check` (part of `just check`) fails on trailing whitespace, a leading blank line, or a missing or extra final newline in any Git-tracked text file.
+`just check-justfile` (part of `just check`) checks the justfile has repoutils' standard recipes, and that `check`, `fix`, `ci` and `patch-coverage` reach the standard ones.
+A recipe or dependency exolot leaves out on purpose goes in `pyproject.toml`'s `[tool.repoutils.justfile]`, which today keeps `pyright` and `prose-check` out of `check`.
+`just prose-check` flags long, clause-heavy sentences in `AGENTS.md` and `README.md`, which don't pass it yet.
+`just lock-platforms-check` (part of `just check`) fails if `uv.lock` has wheels for platforms outside `[tool.uv] environments`: macOS, Linux x86_64 and aarch64, and Windows x86_64, where CI runs.
+`just requirements-check` (part of `just check`) fails if a dependency's minimum in `pyproject.toml` isn't the version `uv.lock` locks, and `just requirements-fix` (part of `just fix`) raises the minimums to match.
 `just lint-workflows` (part of `just check`) runs `jactionlint` over the workflows and `.github/dependabot.yml`, with the rules `.github/jactionlint.yaml` turns on; it shellchecks their `run:` steps only if `shellcheck` is on your `PATH` (it is on GitHub's Ubuntu runners), and otherwise prints a note and skips them.
 Before opening a PR, also run `just patch-coverage`, which runs `just coverage` (tests with a coverage report and `coverage.xml`) and then reports which changed lines since `origin/master` the tests miss; pass another base as its first argument, e.g. `just patch-coverage origin/some-branch`.
 Cover the changed lines it reports where a test is worth it.

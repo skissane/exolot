@@ -210,6 +210,10 @@ whitespace-check:
 sentence-per-line-check:
     uv run repoutils check-sentence-per-line
 
+# Check AGENTS.md and README.md prose for long, clause-heavy sentences, or too many short ones (not yet in check: neither passes)
+prose-check:
+    uv run repoutils check-prose
+
 # Check that every workflow and local action installs the uv version pyproject.toml requires and the just version the justfile requires
 check-pins:
     uv run repoutils check-pins
@@ -226,6 +230,26 @@ secrets-workflows-check:
 variables-workflows-check:
     uv run repoutils variables check-workflows
 
+# Check that the justfile has the standard recipes, and that check, fix, ci and patch-coverage reach the standard ones
+check-justfile:
+    uv run repoutils check-justfile --just {{ quote(just_executable()) }} --justfile {{ quote(justfile()) }}
+
+# Check `secrets export` round-trips made-up secrets through age (on the PATH), also encrypting to the GitHub key given as USER/SHA256:FINGERPRINT
+secrets-export-test $SECRETS_EXPORT_KEY='':
+    {{ repoutils }} secrets export --self-test ${SECRETS_EXPORT_KEY:+--github-key "$SECRETS_EXPORT_KEY"}
+
+# Check that uv.lock only has wheels for the platforms pyproject.toml allows
+lock-platforms-check:
+    uv run repoutils check-lock-platforms
+
+# Check that dependency minimums in pyproject.toml match uv.lock
+requirements-check:
+    {{ repoutils }} requirements-min-versions check
+
+# Rewrite dependency minimums in pyproject.toml to the versions in uv.lock
+requirements-fix:
+    {{ repoutils }} requirements-min-versions fix
+
 # Check the GitHub settings pyproject.toml declares (labels, repository and security settings, rulesets, environments, secrets, deploy keys); needs an admin token, so CI doesn't run it
 github-settings-check *args:
     uv run repoutils github-settings check {{ args }}
@@ -238,16 +262,18 @@ github-settings-ensure *args:
 inspect-secrets *args:
     uv run repoutils secrets inspect-remote {{ args }}
 
-# Leaves out `just pyright`, a second-opinion type checker that CI deliberately doesn't run (yet).
+# Leaves out `just pyright`, a second-opinion type checker that CI deliberately
+# doesn't run (yet), and `just prose-check`, which the docs don't pass yet
+# (both listed in pyproject.toml's [tool.repoutils.justfile]).
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check
+check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check check-justfile lock-platforms-check requirements-check
 
 # Formatting first fixes the long lines it can, so lint-fix stops only on
 # findings that need a hand edit.
 
 # Reformat code, autofix lint issues and update actions.lock
-fix: fmt just-fmt lint-fix actions-lock
+fix: fmt just-fmt lint-fix requirements-fix actions-lock
 
 # Check .github/workflows/actions.lock pins every action the workflows use, transitive ones included, to a commit that still verifies upstream (needs gh, logged in, with the github/gh-actions-lock extension)
 actions-lock-check:
