@@ -301,11 +301,11 @@ dev = [
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "repoutils", specifier = ">=0.3.0" },
+    { name = "repoutils", specifier = ">=0.4.0" },
     { name = "ruff", specifier = ">=0.14" },
     { name = "types-jsonschema", specifier = ">=4.26.0.20261006" },
 ]
-repoutils = [{ name = "repoutils", specifier = ">=0.3.0" }]
+repoutils = [{ name = "repoutils", specifier = ">=0.4.0" }]
 
 [[package]]
 name = "iniconfig"
@@ -762,11 +762,11 @@ wheels = [
 
 [[package]]
 name = "repoutils"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b6/bc/cd05d5684d42f3ca4e5bb057883ca9f6e43930ca82ba73fa4a00b4aea0b5/repoutils-0.3.0.tar.gz", hash = "sha256:91599ea73f3ffce85929f06bbab2c27807b067f644b08d751d3157a4a722451a", size = 358928, upload-time = "2026-11-20T10:01:10.566Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/77/84fe9ece6f96f1b43e394e8e48ad00b8660dc97ab8f231ce8105d755022a/repoutils-0.4.0.tar.gz", hash = "sha256:8cd3b5fc69ce4179df9e1d8ed606afd6496b6796737d4d8915400fa3e47d8181", size = 461128, upload-time = "2026-11-22T04:58:07.129Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d4/a8/43db07f16455c0307397a47469adea08aa6878b2dd7c8827bdc547faff2f/repoutils-0.3.0-py3-none-any.whl", hash = "sha256:7e80fd24f4b1d8bc08f9417816cab4571a24b9285475419d704f9c0d622490a5", size = 196200, upload-time = "2026-11-20T10:01:09.356Z" },
+    { url = "https://files.pythonhosted.org/packages/54/36/0c878a35249f6d84ce4131432ece004a306ef48f9422c235533a6e56cb03/repoutils-0.4.0-py3-none-any.whl", hash = "sha256:fd3d9e02b0f5cc3bfa31fb975c474987cceb53f4704c7981cc92c38772873498", size = 254690, upload-time = "2026-11-22T04:58:05.807Z" },
 ]
 
 [[package]]
