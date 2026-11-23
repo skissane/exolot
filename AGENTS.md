@@ -13,7 +13,7 @@ CI (`.github/workflows/build.yml`) calls the `justfile`'s recipes rather than ru
 Run `just ci` before opening a PR to run everything CI runs.
 `just check` runs every check without fixing anything or running tests.
 `just fix` applies every autofix, and `just --list` shows the individual recipes.
-Both need `gh` logged in with the gh-actions-lock extension for `actions-lock-check` and `actions-lock` (see below).
+`just check` and `just fix` both need `gh` logged in with the gh-actions-lock extension for `actions-lock-check` and `actions-lock` (see below).
 Whatever `just fix` fixes, `just check` checks.
 `just mypy` (part of `just check`) type-checks `src` and `tests` with mypy in strict mode (`pyproject.toml`'s `[tool.mypy]`).
 All new code (tests included) needs full type annotations.
@@ -26,7 +26,7 @@ Running it after changing types is optional and welcome, as it catches some thin
 The `pyright` package bundles pyright itself, and its `nodeenv` dependency downloads nothing when installed (`uv sync` fetches no Node.js).
 Only running `just pyright` on a machine with no `node` on its `PATH` downloads Node.js into `~/.cache/pyright-python/nodeenv` on the first run and reuses it after that.
 `just lint` (part of `just check`) runs ruff with `--no-cache` and fails on any warning ruff prints (such as an invalid `noqa` directive) as well as on its findings.
-ruff itself only prints warnings and gives them only for files it reparses.
+ruff itself prints its warnings without failing on them, and gives them only for files it reparses.
 `just whitespace-check` (part of `just check`) fails on trailing whitespace, a leading blank line or a missing or extra final newline in any Git-tracked text file.
 `just doubled-spaces-check` (part of `just check`) fails on doubled spaces between words in `AGENTS.md` and `README.md` prose, and `just doubled-spaces-fix` (part of `just fix`) collapses them.
 `just check-justfile` (part of `just check`) checks that the justfile has repoutils' standard recipes and that `check`, `fix`, `ci` and `patch-coverage` reach the standard ones.
@@ -51,11 +51,10 @@ On those PRs, its `post-patch-coverage` job also posts the patch coverage report
 The report includes the project's coverage and its change from the base commit's `coverage/project` status.
 The comment warns without failing anything when a PR drops total coverage by more than 2 points or leaves patch coverage more than 1 point below the base's total.
 `[tool.repoutils.coverage]` can change both thresholds.
-The base's CI may still be running when a PR's coverage is ready.
-The coverage job first runs `just wait-for-base-coverage`, which waits up to 10 minutes for the base's `coverage/project` status and gives up with a warning rather than a failure.
+The base's CI may still be running when a PR's coverage is ready, so the coverage job first runs `just wait-for-base-coverage`, which waits up to 10 minutes for the base's `coverage/project` status and gives up with a warning rather than a failure.
 `just ci` leaves out CI's `integration` job (`just integration`), which runs the end-to-end tests and downloads the ~250 MB language server.
 Run `just integration` yourself when you change how exolot talks to the server or unpacks it.
-CI pins its tools across the repository.
+CI pins its tools.
 Every `setup-uv` step sets `version` to the minimum in `pyproject.toml`'s `[tool.uv] required-version`, and every `setup-just` step sets `just-version` to the `justfile`'s `minimum-version`.
 `.python-version` names an exact Python patch release, while the test matrix overrides it with each minor version.
 To upgrade uv or just, change the minimum and every workflow's pin together.
@@ -74,11 +73,11 @@ exolot has no composite actions of its own and uses repoutils' instead (see belo
 `gh actions-lock` needs GitHub's GraphQL API, which Claude Code sessions can't reach.
 In those sessions `just check` fails at `actions-lock-check` and `just fix` fails at its last step, `actions-lock` (after its other fixes have run).
 Run the other recipes `check` lists instead.
-After a `uses:` change, open the PR as a draft and comment `/autofix` (see below) to relock in Actions and push the result.
+In those sessions, after a `uses:` change, open the PR as a draft and comment `/autofix` (see below) to relock in Actions and push the result.
 `just actions-lock-check` (part of `just check`) runs `gh actions-lock --verify` and fails if the lockfile is missing an action or a locked commit no longer verifies upstream.
 In CI it runs in `check-and-build` (the `build` job, named apart from `attestations.yml`'s `build` job) with `GITHUB_TOKEN` (`contents: read`).
-`check-and-build` is the only required check and also waits on `test`, failing unless `test` succeeded so a failure blocks merging.
-It runs even when `test` fails because a job skipped due to a failed dependency would count as passing.
+`check-and-build` is the only required check and also waits on `test`, failing unless `test` succeeded, so a failure blocks merging.
+It runs even when `test` fails, because a job skipped due to a failed dependency would count as passing.
 `check-and-build` and `fix.yml` install the extension with repoutils' `install-gh-actions-lock` action.
 That action downloads the `linux-amd64` release binary of the version its `install.sh` pins, checks its SHA-256 and installs it as a local extension.
 `gh extension install --pin` isn't used there because it takes only a release tag for a precompiled extension.
@@ -87,7 +86,7 @@ Dependabot bumps the actions weekly with a 7-day cooldown and regenerates the lo
 It bumps the dev dependencies in `uv.lock` weekly too, using its own uv.
 Dependabot's uv can write `uv.lock` in a newer format than the pinned uv, churning lines unrelated to the bump.
 On Dependabot's uv PRs, `build.yml`'s `dependabot-fix` job runs `just dependabot-relock origin/<base>` (`repoutils dependabot-relock`).
-It restores the merge base's `uv.lock` and re-locks it with the pinned uv, upgrading only the packages Dependabot bumped to its exact versions.
+It restores the merge base's `uv.lock` and re-locks it with the pinned uv, upgrading only the packages Dependabot bumped, to exactly the versions it chose.
 If that fails or locks other versions, the job fails and Dependabot's `uv.lock` stays.
 `dependabot-fix` runs the branch's code with a read-only token and uploads its commit as a Git bundle.
 Then `dependabot-push` (which runs nothing from the branch) uses repoutils' `push-bundle` action to check that the bundle is one commit on the PR head changing only `uv.lock`.
@@ -102,7 +101,8 @@ A matrix job adds its matrix values to the artifact's name, as each artifact in 
 
 ## repoutils
 
-The repository checks and CI helpers come from [repoutils](https://github.com/sjktools/repoutils), a dev dependency in its own `repoutils` dependency group configured in `pyproject.toml`'s `[tool.repoutils]`.
+The repository checks and CI helpers come from [repoutils](https://github.com/sjktools/repoutils), a dev dependency in its own `repoutils` dependency group.
+It's configured in `pyproject.toml`'s `[tool.repoutils]`.
 See repoutils' README for each command.
 Recipes that only check run `uv run repoutils <command>`.
 Recipes that CI runs with a write-capable token or `id-token: write` (posting PR comments and commit statuses, `check-attestations`) use the justfile's `repoutils` variable (`uv run --project <the justfile's directory> --only-group repoutils repoutils`).
@@ -145,11 +145,11 @@ Keep each added suppression that's actually needed, with no reply or explanation
 
 ## `/autofix`
 
-A PR comment that is just `/autofix` from the repository's owner (or an organization member) runs `just fix` on the PR's branch and pushes the result with the `AUTOFIX_TOKEN` secret.
+A PR comment that is just `/autofix` from the repository's owner (or a member, were it an organization's repository) runs `just fix` on the PR's branch and pushes the result with the `AUTOFIX_TOKEN` secret.
 It works only on an open PR from this repository.
 `autofix-comment.yml` dispatches `fix.yml` (PR Fixes) on the PR's branch.
 `fix.yml` merges the base branch in, runs `just fix` with no secrets and a read-only `GITHUB_TOKEN`, and uploads its commits as a Git bundle.
-Then `fix-push.yml` (PR Fixes Push) runs from `master` and executes no code from the branch.
+Then `fix-push.yml` (PR Fixes Push) always runs from `master` and executes no code from the branch.
 It checks that the bundle only adds commits to the branch and pushes them with repoutils' `autofix-resolve` and `push-bundle` actions.
 `autofix-comment.yml`'s `autofix-start` action (`repoutils autofix`) waits for the fix run and dispatches `fix-push.yml` itself, as a run dispatched with a `GITHUB_TOKEN` starts no `workflow_run` workflow.
 A `workflow_run` trigger covers a fix run that a person starts by hand (Actions → PR Fixes → Run workflow, on the PR's branch).
@@ -167,7 +167,7 @@ If it ran on `master`, the branch's code could plant cache entries that `master`
 `AUTOFIX_TOKEN` is a fine-grained token with only contents and workflows write on this repository, so its push triggers CI (unlike a `GITHUB_TOKEN` push).
 It needs workflows write to push `.github/workflows/actions.lock`, which `just fix` regenerates.
 `fix-push.yml` checks that the bundle holds at most a clean merge of the base branch and one commit of fixes that changes nothing under `.github/workflows` except `actions.lock`.
-It lives in the `autofix` environment, which only `master` can deploy to, as with `release`.
+`AUTOFIX_TOKEN` lives in the `autofix` environment, which only `master` can deploy to, as with `release`.
 A branch that predates `fix.yml` has to merge `master` in before `/autofix` can run on it.
 
 ## Releases and GitHub settings
@@ -179,7 +179,7 @@ Once the PR merges, `build.yml`'s `release` job uses repoutils' `release-tag` ac
 That tag triggers `publish-pypi.yml`, and the job then creates the GitHub release with its own `GITHUB_TOKEN`.
 `publish-pypi.yml` publishes to TestPyPI and checks that the release installs from there.
 It publishes the same files to PyPI only once Simon approves the `pypi` environment's deployment, which only `v*` tags can make.
-The sonarlint-vscode release exolot downloads by default and the digests it checks each VSIX against are in `src/exolot/upstream.toml`.
+`src/exolot/upstream.toml` holds the sonarlint-vscode release exolot downloads by default, and the digests it checks each VSIX against.
 `repoutils github-releases bump` writes that file (configured in `pyproject.toml`'s `[tool.repoutils.github-releases.sonarlint-vscode]`), so don't edit it by hand.
 The Bump sonarlint-vscode workflow (`bump-sonarlint-vscode.yml`) runs it daily on `master` and opens a PR with `GH_ACTIONS_TOKEN` when sonarlint-vscode has a newer release at least 7 days old.
 It takes the digests from GitHub's releases API without downloading anything, so check that PR's `integration` job (which isn't required) before merging it, and cut a release after.
@@ -196,8 +196,8 @@ Add a job when you add an environment with secrets.
 Two tag rulesets protect `v*` tags: nobody can move or delete one, and only a deploy key can create one.
 That deploy key must be the repository's only one with write access, as the ruleset's bypass covers them all.
 Immutable releases stop a published release's assets and tag from changing.
-The jobs that publish or attest a release install uv with `enable-cache: false` (`prepare-publish` does).
-The jobs that tag or bump a release install no uv at all, so a poisoned Actions cache entry can't reach them.
+A poisoned Actions cache entry can't reach the jobs that publish, attest, tag or bump a release.
+Those that publish or attest install uv with `enable-cache: false` (`prepare-publish` does), and those that tag or bump install no uv at all.
 
 `pyproject.toml`'s `[tool.repoutils]` declares these settings along with the labels, the repository settings and `master`'s ruleset.
 `just github-settings-check` checks that the repository matches it, and `just github-settings-ensure` applies it (see repoutils' README).
@@ -259,6 +259,6 @@ Close duplicates and things that won't be done with GitHub's "duplicate" and "no
 
 An open issue with no `priority:` label is untriaged (`is:open -label:priority:p0 -label:priority:p1 -label:priority:p2 -label:priority:p3`).
 When asked what to work on next, start from the `priority:p1` issues.
-Update an issue's labels when you learn more about it, e.g. when a fix turns out bigger than its `size:` or is split into sub-issues and loses its `size:`.
+Update an issue's labels when you learn more about it, e.g. when its fix turns out bigger than its `size:`, or when it's split into sub-issues and so loses its `size:`.
 Use only these labels: applying a label that doesn't exist creates a new grey one, so a typo or a new value silently adds to the scheme.
 Propose a new dimension or value to the owner rather than inventing one.

@@ -18,9 +18,9 @@ time (and see the note on C/C++ and C# below).
 ## How it works
 
 exolot downloads the SonarQube for IDE extension for VS Code (a `.vsix` zip
-file) from the
-[sonarlint-vscode GitHub releases](https://github.com/SonarSource/sonarlint-vscode/releases)
-and checks its sha256 digest. It unpacks the language server, the language
+file) from the [sonarlint-vscode GitHub
+releases](https://github.com/SonarSource/sonarlint-vscode/releases) and checks
+its sha256 digest. It unpacks the language server, the language
 analyzers and the bundled Java runtime into a cache directory. It then runs the
 language server headlessly, opens each file you ask it to analyze and prints
 the issues the server reports.
@@ -89,7 +89,7 @@ exolot uses, in this order:
 
 The server takes one database for all the files. If different files find
 different databases, exolot doesn't send any C, C++ or Objective-C files to the
-server, and it skips files that find none. It warns that those files weren't
+server. It always skips files that find none. It warns that those files weren't
 analyzed. It doesn't check that the database has an entry for each file,
 leaving files without an entry to the analyzer. A nonexistent path given with
 `--compile-commands` or the config file is an error (exit status 2).
@@ -180,11 +180,11 @@ be fetched.
   `--format json` it prints a list of `{"code", "name", "count"}` objects. The
   exit status is the same as without it.
 - `--format markdown` prints the issues as a GitHub-flavoured Markdown table
-  (Location, Rule and Message) with Markdown and HTML characters escaped. With
-  `--statistics` it prints a Count, Rule and Name table. Its paths are relative
-  to the root of the git repository each file is in (so links work from any
-  subdirectory). Files outside one get paths relative to the current directory,
-  or absolute paths if they're outside it too.
+  (Location, Rule and Message), escaping characters Markdown or HTML would
+  interpret. With `--statistics` it prints a Count, Rule and Name table. Its
+  paths are relative to the root of the git repository each file is in (so
+  links work from any subdirectory). Files outside one get paths relative to
+  the current directory, or absolute paths if they're outside it too.
 - `--link-template TEMPLATE` (with `--format markdown` or `github-comment`)
   links each location to a URL made from TEMPLATE, e.g.
   `--link-template 'https://github.com/OWNER/REPO/blob/SHA/{path}#L{line}'`.
@@ -193,15 +193,16 @@ be fetched.
   request workflow `GITHUB_SHA` is the merge commit, so use the PR's head SHA
   instead. In GitHub Actions (when `GITHUB_ACTIONS` is `true`), it defaults to
   links to the commit checked out in the current directory's git repository in
-  the workflow's repository (`GITHUB_SERVER_URL` and `GITHUB_REPOSITORY`).
+  the workflow's repository (`GITHUB_SERVER_URL` and `GITHUB_REPOSITORY`), so
+  the links match the code analyzed.
   `--no-links` turns that off.
 - `--format github-comment` prints a Markdown report for a pull request
   comment. It includes an "exolot's findings" heading, the `preamble` from the
   project's config file (see below), the commit analyzed and (in GitHub
   Actions) a link to the workflow run. Then it lists the issues in
   `--format markdown`'s tables with a count, or with `--diff-base` puts those
-  on changed lines first. Long reports are cut short with a note to stay under
-  GitHub's 65,536-character comment limit.
+  on changed lines first. Long reports are cut short to stay under GitHub's
+  65,536-character comment limit, with a note saying so.
   exolot doesn't post the comment itself; use `gh pr comment --body-file` or an
   action that posts or updates a comment. It can't be combined with
   `--statistics`.
