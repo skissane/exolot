@@ -175,6 +175,14 @@ whitespace-check:
 sentence-per-line-check:
     uv run repoutils check-sentence-per-line
 
+# Check AGENTS.md and README.md prose for doubled spaces between words
+doubled-spaces-check:
+    uv run repoutils check-doubled-spaces
+
+# Collapse doubled spaces between words in AGENTS.md and README.md prose to one space
+doubled-spaces-fix:
+    uv run repoutils check-doubled-spaces --fix
+
 # Check AGENTS.md and README.md prose for long, clause-heavy sentences, or too many short ones (not yet in check: neither passes)
 prose-check:
     uv run repoutils check-prose
@@ -236,13 +244,13 @@ inspect-secrets *args:
 # (both listed in pyproject.toml's [tool.repoutils.justfile]).
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check check-justfile lock-platforms-check requirements-check blame-ignore-revs-check
+check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check doubled-spaces-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check check-justfile lock-platforms-check requirements-check blame-ignore-revs-check
 
 # Formatting first fixes the long lines it can, so lint-fix stops only on
 # findings that need a hand edit.
 
 # Reformat code, autofix lint issues and update actions.lock
-fix: fmt just-fmt lint-fix requirements-fix actions-lock
+fix: fmt just-fmt lint-fix requirements-fix doubled-spaces-fix actions-lock
 
 # Check .github/workflows/actions.lock pins every action the workflows use, transitive ones included, to a commit that still verifies upstream (needs gh, logged in, with the github/gh-actions-lock extension)
 actions-lock-check:
