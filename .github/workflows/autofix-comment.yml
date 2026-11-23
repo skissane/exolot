@@ -59,7 +59,7 @@ jobs:
 
       - name: Run PR Fixes and push its fixes
         id: autofix
-        uses: sjktools/repoutils/.github/actions/autofix-start@v0.5.2
+        uses: sjktools/repoutils/.github/actions/autofix-start@v0.5.4
         with:
           pr: ${{ github.event.issue.number }}
           comment-id: ${{ github.event.comment.id }}
@@ -81,7 +81,7 @@ jobs:
 
     steps:
       - name: Relock actions.lock
-        uses: sjktools/repoutils/.github/actions/autofix-relock@v0.5.2
+        uses: sjktools/repoutils/.github/actions/autofix-relock@v0.5.4
         with:
           head-sha: ${{ needs.dispatch.outputs.head-sha }}
 
@@ -107,7 +107,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Push the relock, then run PR Fixes and push its fixes
-        uses: sjktools/repoutils/.github/actions/autofix-start@v0.5.2
+        uses: sjktools/repoutils/.github/actions/autofix-start@v0.5.4
         with:
           pr: ${{ github.event.issue.number }}
           comment-id: ${{ github.event.comment.id }}
