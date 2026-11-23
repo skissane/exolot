@@ -70,10 +70,9 @@ default-branch = "master"
 features = ["pypi-publication"]
 
 # The standard justfile recipes and dependencies exolot leaves out on purpose.
-# `check` leaves out `pyright` (see AGENTS.md), and `prose-check`, as AGENTS.md
-# and README.md don't pass it yet.
+# `check` leaves out `pyright` (see AGENTS.md).
 [tool.repoutils.justfile]
-omit-dependencies = { check = ["pyright", "prose-check"] }
+omit-dependencies = { check = ["pyright"] }
 
 # The platforms uv.lock may have wheels for, matching [tool.uv] environments.
 # "os" allows any arch, and "os:arch" one; "linux" matches manylinux and musllinux.

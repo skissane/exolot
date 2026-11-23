@@ -183,7 +183,7 @@ doubled-spaces-check:
 doubled-spaces-fix:
     uv run repoutils check-doubled-spaces --fix
 
-# Check AGENTS.md and README.md prose for long, clause-heavy sentences, or too many short ones (not yet in check: neither passes)
+# Check AGENTS.md and README.md prose for long, clause-heavy sentences, or too many short ones
 prose-check:
     uv run repoutils check-prose
 
@@ -240,11 +240,10 @@ inspect-secrets *args:
     uv run repoutils secrets inspect-remote {{ args }}
 
 # Leaves out `just pyright`, a second-opinion type checker that CI deliberately
-# doesn't run (yet), and `just prose-check`, which the docs don't pass yet
-# (both listed in pyproject.toml's [tool.repoutils.justfile]).
+# doesn't run (yet), as listed in pyproject.toml's [tool.repoutils.justfile].
 
 # Run all checks, without fixing anything or running tests
-check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check doubled-spaces-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check check-justfile lock-platforms-check requirements-check blame-ignore-revs-check
+check: lint fmt-check just-fmt-check mypy lint-workflows actions-lock-check whitespace-check sentence-per-line-check doubled-spaces-check prose-check check-pins check-checkout-credentials secrets-workflows-check variables-workflows-check check-justfile lock-platforms-check requirements-check blame-ignore-revs-check
 
 # Formatting first fixes the long lines it can, so lint-fix stops only on
 # findings that need a hand edit.
