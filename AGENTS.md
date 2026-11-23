@@ -20,6 +20,7 @@ The `pyright` package bundles pyright itself, and its `nodeenv` dependency downl
 Only running `just pyright` might, and only the first time on a machine with no `node` on its `PATH`, in which case it downloads Node.js into `~/.cache/pyright-python/nodeenv` and reuses it after that.
 `just lint` (part of `just check`) runs ruff with `--no-cache` and fails on any warning ruff prints, such as an invalid `noqa` directive, as well as on its findings; ruff itself only prints its warnings, and gives them only for files it reparses.
 `just whitespace-check` (part of `just check`) fails on trailing whitespace, a leading blank line, or a missing or extra final newline in any Git-tracked text file.
+`just doubled-spaces-check` (part of `just check`) fails on doubled spaces between words in `AGENTS.md` and `README.md` prose, and `just doubled-spaces-fix` (part of `just fix`) collapses them.
 `just check-justfile` (part of `just check`) checks the justfile has repoutils' standard recipes, and that `check`, `fix`, `ci` and `patch-coverage` reach the standard ones.
 A recipe or dependency exolot leaves out on purpose goes in `pyproject.toml`'s `[tool.repoutils.justfile]`, which today keeps `pyright` and `prose-check` out of `check`.
 Every `just` run first runs `repoutils git-config-setup`, which points the checkout's `blame.ignoreRevsFile` at `.git-blame-ignore-revs`, so `git blame` skips the commits listed there (none yet).

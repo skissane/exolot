@@ -92,7 +92,7 @@ jobs:
 
       # For `just check`'s actions-lock-check.
       - name: Install gh-actions-lock
-        uses: sjktools/repoutils/.github/actions/install-gh-actions-lock@v0.5.2
+        uses: sjktools/repoutils/.github/actions/install-gh-actions-lock@v0.5.4
 
       # GH_TOKEN is the job's read-only token, which is all gh actions-lock
       # needs to verify each locked commit against the action's repository.
@@ -802,7 +802,7 @@ jobs:
       # bumped dependency's build code, so push-bundle takes only what it is
       # meant to change: one commit on the PR head, touching nothing but uv.lock.
       - name: Push the fix
-        uses: sjktools/repoutils/.github/actions/push-bundle@v0.5.2
+        uses: sjktools/repoutils/.github/actions/push-bundle@v0.5.4
         with:
           token: ${{ secrets.DEPENDABOT_FIX_TOKEN }}
           artifact: dependabot-fix
@@ -838,6 +838,6 @@ jobs:
       # Runs repoutils from the action's own commit with the runner's python3,
       # installing nothing, so nothing from a cache runs alongside the deploy key.
       - name: Tag and release the version
-        uses: sjktools/repoutils/.github/actions/release-tag@v0.5.2
+        uses: sjktools/repoutils/.github/actions/release-tag@v0.5.4
         with:
           deploy-key: ${{ secrets.RELEASE_DEPLOY_KEY }}

@@ -95,7 +95,7 @@ jobs:
       # and looks for the fixes artifact.
       - name: Check the fix run and find its pull request
         id: resolve
-        uses: sjktools/repoutils/.github/actions/autofix-resolve@v0.5.2
+        uses: sjktools/repoutils/.github/actions/autofix-resolve@v0.5.4
         with:
           run-id: ${{ github.event.workflow_run.id || inputs.run-id }}
 
@@ -135,7 +135,7 @@ jobs:
       # the fix run started from: a plain push would also succeed if the branch
       # had since been reset to an ancestor, and restore the commits removed.
       - name: Push the fixes
-        uses: sjktools/repoutils/.github/actions/push-bundle@v0.5.2
+        uses: sjktools/repoutils/.github/actions/push-bundle@v0.5.4
         with:
           token: ${{ secrets.AUTOFIX_TOKEN }}
           artifact: ${{ needs.resolve.outputs.artifact }}
@@ -217,7 +217,7 @@ jobs:
           echo "body=$body" >> "$GITHUB_OUTPUT"
 
       - name: Report on the pull request
-        uses: sjktools/repoutils/.github/actions/post-comment@v0.5.2
+        uses: sjktools/repoutils/.github/actions/post-comment@v0.5.4
         with:
           pr: ${{ needs.resolve.outputs.number }}
           body: ${{ steps.write.outputs.body }}

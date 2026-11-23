@@ -89,7 +89,7 @@ jobs:
 
       # The same steps the publish jobs run before uv publish.
       - name: Prepare publish
-        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.2
+        uses: sjktools/repoutils/.github/actions/prepare-publish@v0.5.4
         # Keep in step with pyproject.toml's [tool.uv] required-version and
         # the justfile's minimum-version, which `just check-pins` checks.
         with:
