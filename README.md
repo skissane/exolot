@@ -76,8 +76,9 @@ your build, e.g. with [Bear](https://github.com/rizsotto/Bear) (`bear -- make`)
 or CMake (`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`). Bear's database lists only
 the files it saw compiled, not headers
 ([Bear#204](https://github.com/rizsotto/Bear/issues/204)). If header files
-get no issues, [compdb](https://github.com/Sarcasm/compdb) can add them (e.g.
-`compdb -p . list > /tmp/with-headers.json` for `--compile-commands`).
+get no issues, [compdb](https://github.com/Sarcasm/compdb) can add them. For
+example, run `compdb -p . list > /tmp/with-headers.json`, then pass that file
+as `--compile-commands`.
 exolot uses, in this order:
 
 1. `--compile-commands PATH`.
