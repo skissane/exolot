@@ -57,7 +57,7 @@ jobs:
     steps:
       - name: Route
         id: route
-        uses: sjktools/repoutils/.github/actions/claude-route@v0.5.2
+        uses: sjktools/repoutils/.github/actions/claude-route@v0.5.4
         with:
           text: ${{ github.event.comment.body || github.event.review.body }}
 
@@ -168,7 +168,7 @@ jobs:
       # Posts a new report and hides this workflow's earlier ones as outdated.
       - name: Comment self-test report on PR
         if: always() && steps.self-test-report.outputs.report != ''
-        uses: sjktools/repoutils/.github/actions/post-comment@v0.5.2
+        uses: sjktools/repoutils/.github/actions/post-comment@v0.5.4
         with:
           pr: ${{ github.event.pull_request.number }}
           body: ${{ steps.self-test-report.outputs.report }}
