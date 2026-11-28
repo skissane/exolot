@@ -79,12 +79,9 @@ omit-dependencies = { check = ["pyright"] }
 [tool.repoutils.lock-platforms]
 supported = ["any", "linux:x86_64", "linux:aarch64", "macosx", "win:amd64"]
 
-# The Markdown files `just sentence-per-line-check` keeps one sentence per line.
-# README.md is left out until it's reflowed from its fixed-width wrapping.
-[tool.repoutils.sentence-per-line]
-files = ["AGENTS.md"]
-
-# The files `just long-files` lists as over the line limit (see AGENTS.md).
+# The files `just long-files` lists as over the line limit (see AGENTS.md). Its
+# report starts with repoutils' default policy, which says a long file needn't
+# be split unless that makes the code better.
 [tool.repoutils.long-files]
 include = ["*.py"]
 limit = 500

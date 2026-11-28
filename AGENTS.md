@@ -3,9 +3,8 @@
 Notes for AI coding agents (and humans) working on exolot.
 See `README.md` for what exolot does, how it works and how to run the tests.
 
-This file is written one sentence per line rather than wrapped at a fixed width.
+This file and `README.md` are written one sentence per line rather than wrapped at a fixed width.
 `just sentence-per-line-check` (part of `just check`) enforces that formatting.
-`README.md` is still wrapped, so the check leaves it out for now.
 
 ## Commands
 
